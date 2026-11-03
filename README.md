@@ -7,7 +7,7 @@ The document, contribution and meeting tracker for the ITU-T Focus Group on Trus
 - Production requires HTTPS, private credentials, a restricted PostgreSQL role and administrator MFA. Member MFA is optional. SMTP is deferred until coordinated with ITU.
 - The production database and user uploads are private release artifacts, never repository files. Import only the approved FG-TIDA export, not the upstream IETF development database.
 
-Start with [production deployment](deploy/README.md), [the launch checklist](deploy/LAUNCH-CHECKLIST.md), [security guidance](SECURITY.md) and [FG-TIDA workflows](ietf/fgtida/WORKFLOW.md).
+Start with [Render deployment](deploy/RENDER.md), [generic production deployment](deploy/README.md), [the launch checklist](deploy/LAUNCH-CHECKLIST.md), [security guidance](SECURITY.md) and [FG-TIDA workflows](ietf/fgtida/WORKFLOW.md).
 
 Upstream copyrights and the [license](LICENSE) are retained. The original development notes below are upstream reference material and are not the FG-TIDA production deployment procedure.
 

@@ -1584,3 +1584,7 @@ if SERVER_MODE != 'production':
 YOUTUBE_DOMAINS = ['www.youtube.com', 'youtube.com', 'youtu.be', 'm.youtube.com', 'youtube-nocookie.com', 'www.youtube-nocookie.com']
 
 IETF_DOI_PREFIX = "10.17487"
+
+if SERVER_MODE == 'production' and os.environ.get('FGTIDA_HOSTING') == 'render':
+    from ietf.fgtida.render_settings import apply_render_settings
+    apply_render_settings(globals())

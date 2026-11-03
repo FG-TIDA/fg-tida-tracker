@@ -11,6 +11,30 @@ Verified locally:
 - The encrypted data-transfer package passed decryption, checksum and tampering-rejection checks. The key is kept separately. Detailed exports and audit reports are not in Git.
 - A disposable production-mode restore passed HTTPS-page, restricted-database-role, MFA-gate, signed-in-contribution, disabled-SMTP and PDF-rendering checks. Its synthetic test authenticator is not the real administrator's enrollment.
 
+## Render preparation — 4 November 2026
+
+The [single-instance Render profile](RENDER.md) now supports a maintenance-only
+first deployment, static-file serving, a local shared Memcached process, Render
+secret-file permissions, PostgreSQL health checks and a verified artifact restore.
+It deliberately disables Celery publishing rather than silently using a fake
+broker. No additional Redis service or dedicated worker is needed for the current
+FG-TIDA outbox workflows.
+
+The production image built successfully. Twelve focused security/Render tests
+passed in both development and the final production image. A disposable
+PostgreSQL 18 instance accepted all migrations and the 648-record FG-TIDA fixture;
+29 artifacts, 89 public documents and six meetings were verified. Normal HTTPS
+pages, registration forms, static assets, canonical redirects, private-path
+boundaries, WG1/WG2/WG3/Incubation contributions, the agenda and PDF rendering
+passed. Administrator MFA and final SMTP gates rejected incomplete setup as
+expected. Test authenticators existed only in the isolated test database.
+
+The staged-source scan found no leaked secrets; a separate check found no
+exported account-password hashes or actual administrator username. Exports,
+synthetic test credentials and local audit files are not part of the commit.
+These checks do not clear the OS advisories or complete the live Render/ITU
+configuration. Deploy `bootstrap` first, not the full public website.
+
 ## Launch blockers
 
 1. **OS-library advisories:** the container scan flags high-severity Expat findings [CVE-2026-117610](https://security-tracker.debian.org/tracker/CVE-2026-117610) and [CVE-2026-118370](https://security-tracker.debian.org/tracker/CVE-2026-118370), and zlib [CVE-2026-85091](https://security-tracker.debian.org/tracker/CVE-2026-85091). The vendor currently lists the stable Debian 13 package versions as vulnerable; fixes are listed in unstable. Do not mix unstable packages into the production image as an automatic workaround. Rebuild with vendor-supported patched packages or have the selected hosting/security team validate a patched supported runtime. Additional vendor-tracked medium/low findings remain in the private scan report; they were not blanket-suppressed.

@@ -123,7 +123,8 @@ STATIC_URL = '/static/'
 STATIC_IETF_ORG = 'https://static.ietf.org'
 STATIC_IETF_ORG_INTERNAL = STATIC_IETF_ORG
 SESSION_ENGINE = 'django.contrib.sessions.backends.db'
-CELERY_BROKER_URL = required('FGTIDA_CELERY_BROKER_URL')
+CELERY_BROKER_URL = (None if os.environ.get('FGTIDA_HOSTING') == 'render'
+                     else required('FGTIDA_CELERY_BROKER_URL'))
 CACHES = {alias: {
     'BACKEND': 'django.core.cache.backends.memcached.PyMemcacheCache',
     'LOCATION': os.environ.get('MEMCACHED_SERVICE_HOST', 'cache') + ':' + os.environ.get('MEMCACHED_SERVICE_PORT', '11211'),

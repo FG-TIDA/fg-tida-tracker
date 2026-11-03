@@ -14,7 +14,16 @@ def on_setup_logging(**kwargs):
 # Set the default Django settings module for the 'celery' program
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ietf.settings')
 
-app = celery.Celery('ietf')
+class TrackerCelery(celery.Celery):
+    def send_task(self, *args, **kwargs):
+        # The Render profile uses durable PostgreSQL outbox commands. Never
+        # silently lose work in an in-memory broker or connect to a default MQ.
+        if os.environ.get('FGTIDA_HOSTING') == 'render':
+            raise RuntimeError('Celery publishing is disabled in the single-instance Render profile.')
+        return super().send_task(*args, **kwargs)
+
+
+app = TrackerCelery('ietf')
 
 # Using a string here means the worker doesn't have to serialize
 # the configuration object to child processes.

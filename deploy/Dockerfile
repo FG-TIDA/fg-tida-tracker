@@ -15,7 +15,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DJANGO_SETTINGS_MODULE=ietf.set
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential libpq-dev libmagic1 libpango-1.0-0 libpangoft2-1.0-0 libcairo2 \
-    libgdk-pixbuf-2.0-0 libffi-dev shared-mime-info patch ca-certificates \
+    libgdk-pixbuf-2.0-0 libffi-dev shared-mime-info patch ca-certificates memcached \
     && rm -rf /var/lib/apt/lists/*
 COPY deploy/requirements-runtime.lock ./requirements-runtime.lock
 RUN python -m pip install --no-cache-dir --upgrade pip==26.3 \
@@ -26,11 +26,17 @@ COPY debug.py ./
 RUN python -c "import pathlib, django; from ietf.utils import patch; root=pathlib.Path(django.__file__).parent.parent; names=['change-oidc-provider-field-sizes-228.patch','fix-oidc-access-token-post.patch','fix-jwkest-jwt-logging.patch','tastypie-django22-fielderror-response.patch']; assert all(patch.fromfile(pathlib.Path('patch')/name).apply(root=bytes(root)) for name in names)"
 COPY deploy/gunicorn.conf.py ./deploy/gunicorn.conf.py
 COPY deploy/entrypoint.sh ./deploy/entrypoint.sh
+COPY deploy/render_start.py deploy/render_bootstrap.py ./deploy/
 RUN chmod 755 deploy/entrypoint.sh
 COPY --from=frontend /build/ietf/static/dist ./ietf/static/dist
 COPY --from=frontend /build/ietf/static/dist-neue ./ietf/static/dist-neue
 COPY --from=frontend /build/ietf/secr/static/dist ./ietf/secr/static/dist
-RUN useradd --uid 10001 --create-home tracker && mkdir -p /data/media/photo /data/proceedings /data/documents /data/charters /data/static && chown -R tracker:tracker /data
+RUN useradd --uid 10001 --create-home --shell /bin/sh tracker \
+    && (getent group 1000 || groupadd --gid 1000 render-secrets) \
+    && usermod -a -G "$(getent group 1000 | cut -d: -f1)" tracker \
+    && install -d -m 700 -o tracker -g tracker /home/tracker/.ssh \
+    && mkdir -p /data/media/photo /data/proceedings /data/documents /data/charters /data/static \
+    && chown -R tracker:tracker /data
 COPY deploy/requirements-production-extra.txt ./requirements-production-extra.txt
 RUN pip install --no-cache-dir -r requirements-production-extra.txt
 # Browser automation is a development/test dependency, not a server dependency.
