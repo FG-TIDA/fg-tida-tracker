@@ -35,6 +35,8 @@ def notify_of_event(event: DocEvent):
 @receiver(post_save, dispatch_uid="notify_of_events_receiver_uid")
 def notify_of_events_receiver(sender, instance, **kwargs):
     """Call notify_of_event after saving a new DocEvent"""
+    if kwargs.get('raw', False):
+        return  # Fixture relationships may not exist yet; restores must not send mail.
     if not isinstance(instance, DocEvent):
         return
 

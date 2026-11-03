@@ -40,6 +40,7 @@ sitemaps = {
 }
 
 urlpatterns = [
+    path('', include('ietf.fgtida.urls')),
     url(r'^$', views_search.frontpage),
     url(r'^health/', lambda _: HttpResponse()),
     url(r'^accounts/', include('ietf.ietfauth.urls')),

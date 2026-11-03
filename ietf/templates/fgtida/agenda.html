@@ -1,0 +1,55 @@
+{% extends "base.html" %}{% load tz fgtida static %}
+{% block title %}{{ meeting.display_title }} agenda | FG-TIDA{% endblock %}
+{% block content %}
+<h1>{{ meeting.display_title }} agenda</h1>
+<p>{% meeting_status meeting %}</p>
+<p>{{ meeting.city }} · {{ meeting.date|date:"j F Y" }} – {{ meeting.end_date|date:"j F Y" }}</p>
+{% include 'fgtida/meeting_nav.html' %}
+{% if perms.meeting.change_meeting %}<p><a class="btn btn-outline-primary" href="{% url 'admin:meeting_meeting_change' meeting.pk %}">Edit meeting</a> <a class="btn btn-outline-primary" href="{% url 'admin:meeting_session_add' %}?meeting={{ meeting.pk }}">Add session</a> <a class="btn btn-outline-primary" href="{% url 'admin:meeting_timeslot_add' %}?meeting={{ meeting.pk }}">Add time slot</a></p>{% endif %}
+<div class="row g-4 fgtida-schedule"><div class="col-lg-10">
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4"><h2 class="display-6 mb-0">Schedule</h2>
+<div class="d-flex align-items-center gap-2"><strong><i class="bi bi-globe" aria-hidden="true"></i> Timezone:</strong><div class="btn-group" role="group" aria-label="Schedule timezone">
+<button type="submit" form="agenda-filters" name="tz" value="meeting" class="btn {% if zone_mode == 'meeting' %}btn-primary{% else %}btn-outline-secondary{% endif %}" aria-pressed="{% if zone_mode == 'meeting' %}true{% else %}false{% endif %}">Meeting</button>
+<button type="submit" form="agenda-filters" name="tz" value="local" class="btn {% if zone_mode == 'local' %}btn-primary{% else %}btn-outline-secondary{% endif %}" aria-pressed="{% if zone_mode == 'local' %}true{% else %}false{% endif %}">Local</button>
+<button type="submit" form="agenda-filters" name="tz" value="UTC" class="btn {% if zone_mode == 'UTC' %}btn-primary{% else %}btn-outline-secondary{% endif %}" aria-pressed="{% if zone_mode == 'UTC' %}true{% else %}false{% endif %}">UTC</button>
+</div></div></div>
+<div class="alert alert-warning py-3">{% if meeting.agenda_warning_note %}{{ meeting.agenda_warning_note|rich_text }}{% else %}<strong>Note:</strong> The agenda may change before or during the meeting.{% endif %}</div>
+{% if meeting.agenda_info_note %}<div class="alert alert-info">{{ meeting.agenda_info_note|rich_text }}</div>{% endif %}
+<form method="get" id="agenda-filters" class="mb-4">
+<input type="hidden" name="local_zone" id="agenda-local-zone" value="{{ local_zone }}">
+<input type="hidden" id="agenda-zone" value="{{ zone_mode }}">
+<label for="agenda-meeting" class="form-label">Meeting</label><select id="agenda-meeting" name="meeting" class="form-select mb-3">{% for option in meeting_choices %}<option value="{{ option.number }}" {% if option.pk == meeting.pk %}selected{% endif %}>{{ option.display_title }} — {{ option.date|date:"j F Y" }}{% if option.city %} · {{ option.city }}{% endif %}</option>{% endfor %}</select>
+<details id="agenda-filter-panel" {% if query or selected_group %}open{% endif %}><summary>Filter sessions</summary><div class="row g-3 align-items-end mt-1">
+<div class="col-md-3"><label class="form-label" for="agenda-group">Working group</label><select id="agenda-group" name="group" class="form-select"><option value="">All groups</option>{% for group in groups %}<option value="{{ group.acronym }}" {% if selected_group == group.acronym %}selected{% endif %}>{{ group.name }}</option>{% endfor %}</select></div>
+<div class="col-md-4"><label class="form-label" for="agenda-search">Search sessions</label><input class="form-control" id="agenda-search" name="q" value="{{ query }}" type="search"></div>
+<div class="col-md-2"><button class="btn btn-primary" type="submit" name="tz" value="{{ zone_mode }}">Apply</button> <a href="{% url 'fgtida:meeting' meeting.number %}">Reset</a></div>
+</div></details></form>
+<p>Showing times in <strong>{{ display_zone }}</strong>.</p>
+<noscript><p>Local time detection requires JavaScript. Meeting and UTC time remain available.</p></noscript>
+<div class="d-flex justify-content-end gap-2 mb-2 fgtida-agenda-tools" hidden><button type="button" id="agenda-colors" class="btn btn-outline-secondary" aria-pressed="false" title="Colour sessions by group" aria-label="Colour sessions by group"><i class="bi bi-palette" aria-hidden="true"></i></button><button type="button" id="agenda-find" class="btn btn-outline-secondary" title="Search sessions" aria-label="Search sessions"><i class="bi bi-search" aria-hidden="true"></i></button></div>
+<p id="agenda-pick-empty" class="alert alert-info" hidden>No picked sessions are visible. Turn off “Picked only” to choose sessions.</p>
+{% timezone display_zone %}
+{% if days %}<div class="table-responsive"><table class="table table-bordered table-striped align-middle fgtida-agenda-table"><thead><tr><th scope="col">Time</th><th scope="col">Location</th><th scope="col">Event</th></tr></thead><tbody>
+{% for day, entries in days %}<tr id="day-{{ day|date:'Y-m-d' }}"><th colspan="3" class="text-center fgtida-day-heading">{{ day|date:"l, j F Y" }}</th></tr>
+{% for entry in entries %}<tr id="assignment-{{ entry.pk }}" data-session="{{ entry.session.pk }}" data-group="{{ entry.session.group.acronym }}"><td class="text-nowrap">{{ entry.timeslot.time|date:"H:i" }} – {{ entry.ends_at|date:"H:i" }}</td><td>{% if entry.timeslot.location %}{{ entry.timeslot.location.name }}{% else %}To be confirmed{% endif %}</td><td>
+{% session_actions entry.session %}<details class="fgtida-agenda-event"><summary>{{ entry.session.name|default:entry.session.group.name }}</summary>
+{% session_status entry.session %}
+{% if entry.session.group %}<a href="{% url 'fgtida:group' entry.session.group.acronym %}">{{ entry.session.group.name }}</a>{% endif %}
+{% if entry.session.agenda_note %}<div>{{ entry.session.agenda_note|rich_text }}</div>{% endif %}
+{% if entry.session.current_status == 'canceled' or entry.session.current_status == 'canceledpa' %}<p class="text-warning-emphasis">This session is cancelled. Its materials remain available for reference.</p>{% elif entry.session.remote_instructions %}<div><strong>Remote participation:</strong> {{ entry.session.remote_instructions|rich_text }}</div>{% endif %}
+{% for doc in entry.session.public_materials %}{% if doc.type_id != 'agenda' %}<div class="mt-2"><a href="{% url 'fgtida:document' doc.name %}">{{ doc.title }}</a> {% document_formats doc %}</div>{% endif %}{% endfor %}
+{% if perms.meeting.change_session %}<a href="{% url 'admin:meeting_session_change' entry.session.pk %}">Edit session and schedule</a>{% endif %}
+</details></td></tr>{% endfor %}{% endfor %}</tbody></table></div>
+{% else %}<div class="alert alert-info">{% if filtered %}No scheduled sessions match these filters.{% else %}Agenda not published yet. Scheduled sessions and their materials will appear here when available.{% endif %}</div>{% endif %}
+{% endtimezone %}
+</div><aside class="col-lg-2" aria-label="Agenda calendar"><div class="border rounded p-3 fgtida-agenda-sidebar">
+<div class="fgtida-agenda-tools" hidden><button id="agenda-filter-toggle" class="btn btn-success w-100 mb-2" type="button"><i class="bi bi-funnel" aria-hidden="true"></i> Filter…</button><button id="agenda-pick-toggle" class="btn btn-outline-success w-100 mb-2" type="button" aria-pressed="false"><i class="bi bi-ui-checks" aria-hidden="true"></i> Pick…</button><div id="agenda-pick-options" hidden><label><input type="checkbox" id="agenda-picked-only" class="form-check-input"> Picked only</label><p class="small mt-2">Picks are saved on this device.</p></div></div>
+<h3 class="h6 text-center text-body-secondary my-3">Calendar</h3>
+<details class="mb-3"><summary class="btn fgtida-calendar-button w-100 mb-2"><i class="bi bi-calendar3" aria-hidden="true"></i> Cal View</summary><div class="d-flex justify-content-between align-items-center"><a href="{{ previous_month_url }}" aria-label="Previous month">‹</a><h3 class="h6 mb-0">{{ calendar_month|date:"F Y" }}</h3><a href="{{ next_month_url }}" aria-label="Next month">›</a></div><table class="table table-sm text-center mt-3 fgtida-month"><thead><tr><th>Mo</th><th>Tu</th><th>We</th><th>Th</th><th>Fr</th><th>Sa</th><th>Su</th></tr></thead><tbody>{% for week in calendar_rows %}<tr>{% for cell in week %}<td class="{% if cell.outside %}text-body-secondary{% endif %}">{% if cell.active %}<a class="{% if cell.selected %}badge bg-primary{% else %}fw-bold{% endif %}" href="{{ cell.url }}" aria-label="Sessions on {{ cell.date|date:'j F Y' }}">{{ cell.date.day }}</a>{% else %}{{ cell.date.day }}{% endif %}</td>{% endfor %}</tr>{% endfor %}</tbody></table><a href="{{ all_days_url }}">Show all days</a><p class="small text-body-secondary mt-2 mb-0">Select a highlighted date to view its sessions.</p></details><a class="btn fgtida-calendar-download w-100" href="{% url 'fgtida:meeting-calendar' meeting.number %}"><i class="bi bi-calendar-check" aria-hidden="true"></i> .ics</a>
+<h3 class="h6 text-center text-body-secondary mt-4">Jump to…</h3><nav aria-label="Agenda days" class="nav nav-pills flex-column gap-1">{% for day, entries in days %}<a class="nav-link" href="#day-{{ day|date:'Y-m-d' }}">{{ day|date:"D M j" }}</a>{% empty %}<span class="small text-body-secondary">Dates appear when sessions are scheduled.</span>{% endfor %}</nav>
+</div></aside></div>
+{% if unscheduled %}<section><h3>Sessions without assigned times</h3>{% for session in unscheduled %}<p>{{ session.name|default:session.group.name }} {% session_status session %}{% if perms.meeting.change_session %} · <a href="{% url 'admin:meeting_session_change' session.pk %}">Edit session and schedule</a>{% endif %}</p>{% endfor %}</section>{% endif %}
+{% if scheduling_history %}<details class="mb-3"><summary>Scheduling history (latest 100 changes)</summary><table class="table"><thead><tr><th>Changed</th><th>Session</th><th>Recorded status</th></tr></thead><tbody>{% for event in scheduling_history %}<tr><td>{{ event.schedulingevent__time|date:"Y-m-d H:i T" }}</td><td>{{ event.name }}</td><td>{{ event.schedulingevent__status__name }}</td></tr>{% endfor %}</tbody></table></details>{% endif %}
+<p><a href="{% url 'fgtida:meeting-calendar' meeting.number %}"><i class="bi bi-calendar-event" aria-hidden="true"></i> Download schedule</a> · Contact the <a href="mailto:{{ platform_content.secretariat_email }}">FG-TIDA Secretariat</a></p>
+{% endblock %}
+{% block js %}{{ block.super }}<script src="{% static 'js/fgtida-agenda.js' %}"></script>{% endblock %}

@@ -1,3 +1,4 @@
+import os
 DATABASES = {
     'default': {
         'HOST': 'db',
@@ -5,7 +6,7 @@ DATABASES = {
         'NAME': 'datatracker',
         'ENGINE': 'django.db.backends.postgresql',
         'USER': 'django',
-        'PASSWORD': 'RkTkDPFnKpko',
+        'PASSWORD': os.environ['FGTIDA_DEV_DB_PASSWORD'],
     },
     'blobdb': {
         'HOST': 'blobdb',
@@ -13,6 +14,6 @@ DATABASES = {
         'NAME': 'blob',
         'ENGINE': 'django.db.backends.postgresql',
         'USER': 'dt',
-        'PASSWORD': 'abcd1234',
+        'PASSWORD': os.environ['FGTIDA_DEV_DB_PASSWORD'],
     },
 }

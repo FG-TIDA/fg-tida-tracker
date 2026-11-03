@@ -1,0 +1,11 @@
+<h1>{{ group_obj.name }} <span class="text-body-secondary">({{ group_obj.acronym }})</span></h1>
+<nav aria-label="Group sections" class="mb-4"><ul class="nav nav-tabs flex-wrap">
+<li class="nav-item"><a class="nav-link {% if section == 'about' %}active{% endif %}" href="{% url 'fgtida:group' group_obj.acronym %}">About</a></li>
+<li class="nav-item"><a class="nav-link {% if section == 'documents' %}active{% endif %}" href="{% url 'fgtida:group-documents' group_obj.acronym %}">Documents</a></li>
+<li class="nav-item"><a class="nav-link {% if section == 'meetings' %}active{% endif %}" href="{% url 'fgtida:group-meetings' group_obj.acronym %}">Meetings</a></li>
+<li class="nav-item"><a class="nav-link {% if section == 'milestones' %}active{% endif %}" href="{% url 'fgtida:milestones' group_obj.acronym %}">Milestones</a></li>
+<li class="nav-item"><a class="nav-link {% if section == 'members' %}active{% endif %}" href="{% url 'fgtida:members' group_obj.acronym %}">Members</a></li>
+<li class="nav-item"><a class="nav-link {% if section == 'photos' %}active{% endif %}" href="{% url 'fgtida:photos' group_obj.acronym %}">Photos</a></li>
+<li class="nav-item"><a class="nav-link {% if section == 'history' %}active{% endif %}" href="{% url 'fgtida:group-history' group_obj.acronym %}">History</a></li>
+{% if group_obj.list_archive %}<li class="nav-item"><a class="nav-link" href="{{ group_obj.list_archive }}">List archive <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a></li>{% endif %}
+</ul></nav>

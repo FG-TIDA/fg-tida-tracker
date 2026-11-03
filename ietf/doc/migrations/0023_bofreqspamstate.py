@@ -4,6 +4,8 @@ from django.db import migrations
 
 
 def forward(apps, schema_editor):
+    if not apps.get_model('doc', 'StateType').objects.filter(slug='bofreq').exists():
+        return
     State = apps.get_model("doc", "State")
     State.objects.get_or_create(
         type_id="bofreq",

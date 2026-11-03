@@ -1,0 +1,22 @@
+name: FG-TIDA source security
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tracked-source-secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Export tracked source only
+        run: |
+          mkdir -p "$RUNNER_TEMP/release-source"
+          git archive HEAD | tar -x -C "$RUNNER_TEMP/release-source"
+      - name: Scan source with reviewed fixture fingerprints
+        run: |
+          docker run --rm -w /repo -v "$RUNNER_TEMP/release-source:/repo:ro" ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f dir /repo --redact --exit-code 1

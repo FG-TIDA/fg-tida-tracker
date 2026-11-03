@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Important dates | FG-TIDA{% endblock %}
+{% block content %}
+<h1>Important dates</h1>
+<p>Official meeting dates and deadlines published by the FG-TIDA administrators.</p>
+{% if perms.meeting.add_importantdate %}<p><a class="btn btn-primary" href="{% url 'admin:meeting_importantdate_add' %}">Add important date</a></p>{% endif %}
+{% for meeting in page %}
+<section class="mb-5">
+<h2><a href="{% url 'fgtida:meeting' meeting.number %}">{{ meeting.display_title }}</a></h2>
+<p>{{ meeting.date|date:"j F Y" }} – {{ meeting.end_date|date:"j F Y" }}{% if meeting.city %} · {{ meeting.city }}{% endif %}</p>
+<div class="table-responsive"><table class="table table-striped"><thead><tr><th scope="col">Date</th><th scope="col">Weekday</th><th scope="col">Description</th></tr></thead><tbody>
+{% for date in meeting.published_dates %}<tr><td class="text-nowrap">{{ date.date|date:"Y-m-d" }}</td><td>{{ date.date|date:"l" }}</td><td>{{ date.name.name }}{% if perms.meeting.change_importantdate %} <a href="{% url 'admin:meeting_importantdate_change' date.pk %}" aria-label="Edit {{ date.name.name }}">Edit</a>{% endif %}</td></tr>{% endfor %}
+</tbody></table></div></section>
+{% empty %}<div class="alert alert-info">No official important dates have been published yet.</div>{% endfor %}
+{% include 'fgtida/pagination.html' %}
+<p>Questions? Contact the <a href="mailto:{{ platform_content.secretariat_email }}">FG-TIDA Secretariat</a>.</p>
+{% endblock %}

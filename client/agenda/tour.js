@@ -1,8 +1,51 @@
-import Shepherd from 'shepherd.js'
-import 'shepherd.js/dist/css/shepherd.css'
+// The inherited agenda guide needs no third-party object-merging dependency.
+// FG-TIDA uses its own agenda view; retain a native guide for the legacy bundle.
+class Tour {
+  steps = []
+  position = -1
+  dialog = null
+
+  addSteps (steps) { this.steps = steps }
+  cancel = () => {
+    this.dialog?.close()
+    this.dialog?.remove()
+    this.dialog = null
+  }
+  start = () => { this.position = -1; this.next() }
+  next = () => {
+    this.cancel()
+    let step
+    do { step = this.steps[++this.position] } while (step?.showOn && !step.showOn())
+    if (!step) return
+    const dialog = document.createElement('dialog')
+    dialog.className = 'rounded border p-4'
+    dialog.setAttribute('aria-labelledby', 'agenda-guide-heading')
+    const heading = document.createElement('h2')
+    heading.id = 'agenda-guide-heading'
+    heading.textContent = step.title
+    const description = document.createElement('p')
+    description.textContent = new DOMParser().parseFromString(step.text, 'text/html').body.textContent
+    const buttons = document.createElement('div')
+    buttons.className = 'd-flex gap-2 justify-content-end'
+    const exit = document.createElement('button')
+    exit.className = 'btn btn-secondary'
+    exit.textContent = 'Close'
+    exit.addEventListener('click', this.cancel)
+    const next = document.createElement('button')
+    next.className = 'btn btn-primary'
+    next.textContent = this.position === this.steps.length - 1 ? 'Finish' : 'Next'
+    next.addEventListener('click', this.next)
+    buttons.append(exit, next)
+    dialog.append(heading, description, buttons)
+    document.body.append(dialog)
+    this.dialog = dialog
+    dialog.addEventListener('cancel', this.cancel)
+    dialog.showModal()
+  }
+}
 
 export function initTour ({ mobileMode, pickerMode }) {
-  const tour = new Shepherd.Tour({
+  const tour = new Tour({
     useModalOverlay: true,
     defaultStepOptions: {
       classes: 'shepherd-theme-custom',

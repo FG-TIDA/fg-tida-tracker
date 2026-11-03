@@ -4,6 +4,8 @@ from django.db import migrations
 
 def forward(apps, schema_editor):
     MailTrigger = apps.get_model("mailtrigger", "MailTrigger")
+    if not MailTrigger.objects.filter(slug='ballot_approved_charter').exists():
+        return
     Recipient = apps.get_model("mailtrigger", "Recipient")
     mt = MailTrigger.objects.get(pk="ballot_approved_charter")
     mt.to.remove(mt.to.first())

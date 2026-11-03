@@ -1,43 +1,591 @@
-{# Copyright The IETF Trust 2015, All Rights Reserved #}
+{# FG-TIDA Tracker homepage #}
 {% extends "base.html" %}
-{% load origin %}
 {% load static %}
+
 {% block title %}
-    IETF Datatracker
-    {% if server_mode != "production" %}&ndash; {{ server_mode|capfirst }} Mode{% endif %}
+    FG-TIDA | Meeting &amp; Document Tracker
 {% endblock %}
+
 {% block content %}
-    {% origin %}
-    <div class="row">
-        <div class="col-md-12">
-            <div class="text-center p-5">
-                <div class="ietflogo mx-auto p-3">
-                    {% include "logo.html" with org="ietf" only %}
-                </div>
-                {% if server_mode != "production" %}
-                    <h1 class="text-danger">Datatracker &ndash; {{ server_mode|capfirst }} Mode</h1>
-                {% else %}
-                    <h1>Datatracker</h1>
-                {% endif %}
-                <p>
-                    The IETF Datatracker is the day-to-day front-end to the IETF database for people
-                    who work on IETF standards.
-                    <br>
-                    It contains data about the documents, working groups,
-                    meetings, agendas, minutes, presentations, and more, of the IETF.
-                </p>
-                <p>
-                    The primary public face of the IETF is at
-                    <a href="https://www.ietf.org/">www.ietf.org</a>.
-                </p>
+
+<style>
+    /* =========================================================
+       FG-TIDA HOMEPAGE
+       ========================================================= */
+
+    .fg-tida-home {
+        --fg-blue: #069CD4;
+        --fg-blue-dark: #087BA8;
+        --fg-blue-soft: #EAF7FC;
+        --fg-ink: #173344;
+        --fg-muted: #607583;
+        --fg-border: #DCE8EE;
+
+        color: var(--fg-ink);
+        padding-bottom: 3rem;
+    }
+
+    /* HERO */
+
+    .fg-tida-hero {
+        background: linear-gradient(
+            120deg,
+            #F7FCFE 0%,
+            #EDF8FC 100%
+        );
+
+        border: 1px solid #D6EBF3;
+        border-left: 6px solid var(--fg-blue);
+
+        border-radius: .85rem;
+
+        padding: 2.5rem 3rem;
+        margin-bottom: 3rem;
+    }
+
+    .fg-tida-hero-content {
+        display: flex;
+        align-items: center;
+        gap: 2.2rem;
+
+        max-width: 1050px;
+        margin: 0 auto;
+    }
+
+    /* LOGO */
+
+    .fg-tida-brand {
+        flex: 0 0 auto;
+    }
+
+    .fg-tida-logo {
+        display: block;
+
+        width: 64px !important;
+        max-width: 64px !important;
+        height: auto !important;
+
+        object-fit: contain;
+    }
+
+    /* HERO TEXT */
+
+    .fg-tida-hero-text {
+        flex: 1;
+    }
+
+    .fg-tida-eyebrow {
+        margin: 0 0 .45rem;
+
+        color: var(--fg-blue-dark);
+
+        font-size: .72rem;
+        font-weight: 700;
+        letter-spacing: .14em;
+        text-transform: uppercase;
+    }
+
+    .fg-tida-hero h1 {
+        margin: 0 0 .7rem;
+
+        color: var(--fg-ink);
+
+        font-size: 2.6rem;
+        font-weight: 700;
+        line-height: 1.1;
+        letter-spacing: -.03em;
+    }
+
+    .fg-tida-lead {
+        max-width: 760px;
+
+        margin: 0 0 1.4rem;
+
+        color: var(--fg-muted);
+
+        font-size: 1.05rem;
+        line-height: 1.65;
+    }
+
+    /* BUTTONS */
+
+    .fg-tida-hero-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .7rem;
+    }
+
+    .fg-tida-btn-primary {
+        background: var(--fg-blue-dark);
+        border-color: var(--fg-blue-dark);
+        color: #fff;
+        font-weight: 600;
+    }
+
+    .fg-tida-btn-primary:hover {
+        background: #066B91;
+        border-color: #066B91;
+        color: #fff;
+    }
+
+    .fg-tida-btn-secondary {
+        background: #fff;
+        border: 1px solid #9FCFE0;
+        color: var(--fg-blue-dark);
+        font-weight: 600;
+    }
+
+    .fg-tida-btn-secondary:hover {
+        background: var(--fg-blue-soft);
+        color: var(--fg-blue-dark);
+    }
+
+    /* INTRO */
+
+    .fg-tida-intro {
+        max-width: 760px;
+        margin: 0 auto 2.5rem;
+        text-align: center;
+    }
+
+    .fg-tida-section-label {
+        color: var(--fg-blue-dark);
+
+        font-size: .72rem;
+        font-weight: 700;
+        letter-spacing: .13em;
+        text-transform: uppercase;
+
+        margin-bottom: .4rem;
+    }
+
+    .fg-tida-intro h2 {
+        font-size: 1.7rem;
+        font-weight: 700;
+
+        margin-bottom: .7rem;
+    }
+
+    .fg-tida-intro p {
+        color: var(--fg-muted);
+        line-height: 1.65;
+    }
+
+    /* CARDS */
+
+    .fg-tida-areas {
+        margin-bottom: 3.25rem;
+    }
+
+    .fg-tida-area-card {
+        display: flex;
+        flex-direction: column;
+
+        height: 100%;
+        min-height: 225px;
+
+        padding: 1.5rem;
+
+        background: #fff;
+
+        border: 1px solid var(--fg-border);
+        border-radius: .75rem;
+
+        color: var(--fg-ink);
+        text-decoration: none !important;
+
+        transition:
+            transform .18s ease,
+            box-shadow .18s ease,
+            border-color .18s ease;
+    }
+
+    .fg-tida-area-card:hover {
+        color: var(--fg-ink);
+
+        border-color: #9CCFE2;
+
+        transform: translateY(-3px);
+
+        box-shadow:
+            0 10px 24px
+            rgba(20, 80, 105, .10);
+    }
+
+    .fg-tida-card-number {
+        display: inline-flex;
+
+        align-items: center;
+        justify-content: center;
+
+        width: 2.2rem;
+        height: 2.2rem;
+
+        margin-bottom: 1rem;
+
+        background: var(--fg-blue-soft);
+
+        color: var(--fg-blue-dark);
+
+        border-radius: .5rem;
+
+        font-size: .75rem;
+        font-weight: 800;
+    }
+
+    .fg-tida-area-card h3 {
+        margin-bottom: .65rem;
+
+        font-size: 1.15rem;
+        font-weight: 700;
+
+        color: var(--fg-ink);
+    }
+
+    .fg-tida-area-card p {
+        color: var(--fg-muted);
+
+        font-size: .94rem;
+        line-height: 1.6;
+
+        margin-bottom: 1rem;
+    }
+
+    .fg-tida-card-link {
+        margin-top: auto;
+
+        color: var(--fg-blue-dark);
+
+        font-size: .88rem;
+        font-weight: 700;
+    }
+
+    /* SEARCH */
+
+    .fg-tida-search {
+        padding: 2rem;
+
+        background: #F7FAFC;
+
+        border: 1px solid var(--fg-border);
+        border-radius: .8rem;
+    }
+
+    .fg-tida-search-heading {
+        margin-bottom: 1.3rem;
+    }
+
+    .fg-tida-search-heading h2 {
+        font-size: 1.5rem;
+        font-weight: 700;
+    }
+
+    .fg-tida-search-heading p {
+        color: var(--fg-muted);
+    }
+
+    .fg-tida-search-form {
+        background: #fff;
+
+        border: 1px solid var(--fg-border);
+        border-radius: .65rem;
+
+        padding: 1.25rem;
+    }
+
+    /* MOBILE */
+
+    @media (max-width: 767.98px) {
+
+        .fg-tida-hero {
+            padding: 2rem 1.4rem;
+        }
+
+        .fg-tida-hero-content {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 1.2rem;
+        }
+
+        .fg-tida-logo {
+            width: 55px !important;
+            max-width: 55px !important;
+        }
+
+        .fg-tida-hero h1 {
+            font-size: 2.1rem;
+        }
+
+        .fg-tida-intro {
+            text-align: left;
+        }
+    }
+
+</style>
+
+
+<div class="fg-tida-home">
+
+    <!-- HERO -->
+
+    <section class="fg-tida-hero">
+
+        <div class="fg-tida-hero-content">
+
+            <div class="fg-tida-brand">
+
+                <img
+                    src="{% static 'images/fg-tida-logo.png' %}"
+                    alt="FG-TIDA logo"
+                    class="fg-tida-logo"
+                >
+
             </div>
-            <div class="p-5">
-                <h2>IETF Document Search</h2>
-                {% include "doc/search/search_form.html" %}
+
+
+            <div class="fg-tida-hero-text">
+
+                <p class="fg-tida-eyebrow">
+                    ITU-T FOCUS GROUP
+                </p>
+
+                <h1>
+                    FG-TIDA Tracker
+                </h1>
+
+                <p class="fg-tida-lead">
+                    Meetings, working groups, documents, use cases and
+                    deliverables of the Focus Group on Trust and Identity
+                    for Humans and Agentic AI.
+                </p>
+
+
+        <div class="fg-tida-hero-actions">
+        <a
+            class="btn fg-tida-btn-primary"
+            href="{% url 'fgtida:upcoming' %}"
+    >
+            View meetings
+        </a>
+
+        <a
+            class="btn fg-tida-btn-secondary"
+            href="{% url 'fgtida:documents' %}"
+    >
+            Search documents
+        </a>
+
+            <a
+            class="btn fg-tida-btn-secondary"
+                href="https://itu.int/en/ITU-T/focusgroups/tida/Pages/default.aspx"
+                target="_blank"
+                 rel="noopener noreferrer"
+    >
+                Official FG-TIDA page ↗
+            </a>
+
             </div>
+
+            </div>
+
         </div>
-    </div>
+
+    </section>
+
+
+    <!-- INTRO -->
+
+    <section class="fg-tida-intro">
+
+        <p class="fg-tida-section-label">
+            Explore FG-TIDA
+        </p>
+
+        <h2>
+            FG-TIDA activities in one place
+        </h2>
+
+        <p>
+            Access meetings, working-group activities,
+            themes, use cases and the documents supporting
+            the work of FG-TIDA.
+        </p>
+
+    </section>
+
+
+    <!-- AREAS -->
+
+    <section class="fg-tida-areas">
+
+        <div class="row g-4">
+
+
+            <div class="col-md-6 col-lg-3">
+
+                <a
+                    class="fg-tida-area-card"
+                    href="{% url 'fgtida:upcoming' %}"
+                >
+
+                    <span class="fg-tida-card-number">
+                        01
+                    </span>
+
+                    <h3>
+                        Meetings
+                    </h3>
+
+                    <p>
+                        Past and upcoming meetings, agendas,
+                        sessions, minutes and meeting materials.
+                    </p>
+
+                    <span class="fg-tida-card-link">
+                        Explore meetings →
+                    </span>
+
+                </a>
+
+            </div>
+
+
+            <div class="col-md-6 col-lg-3">
+
+                <a
+                    class="fg-tida-area-card"
+                    href="{% url 'fgtida:groups' %}"
+                >
+
+                    <span class="fg-tida-card-number">
+                        02
+                    </span>
+
+                    <h3>
+                        Working groups
+                    </h3>
+
+                    <p>
+                        Working-group activities,
+                        priorities and deliverables.
+                    </p>
+
+                    <span class="fg-tida-card-link">
+                        Explore working groups →
+                    </span>
+
+                </a>
+
+            </div>
+
+
+            <div class="col-md-6 col-lg-3">
+
+                <a
+                    class="fg-tida-area-card"
+                    href="{% url 'fgtida:documents' %}?category=themes"
+                >
+
+                    <span class="fg-tida-card-number">
+                        03
+                    </span>
+
+                    <h3>
+                        Themes &amp; use cases
+                    </h3>
+
+                    <p>
+                        Focus areas and practical
+                        use cases explored by FG-TIDA.
+                    </p>
+
+                    <span class="fg-tida-card-link">
+                        Explore the work →
+                    </span>
+
+                </a>
+
+            </div>
+
+
+            <div class="col-md-6 col-lg-3">
+
+                <a
+                    class="fg-tida-area-card"
+                    href="{% url 'fgtida:documents' %}"
+                >
+
+                    <span class="fg-tida-card-number">
+                        04
+                    </span>
+
+                    <h3>
+                        Documents
+                    </h3>
+
+                    <p>
+                        Technical documents,
+                        meeting materials and resources.
+                    </p>
+
+                    <span class="fg-tida-card-link">
+                        Find documents →
+                    </span>
+
+                </a>
+
+            </div>
+
+
+        </div>
+
+    </section>
+
+
+    <!-- SEARCH -->
+
+    <section class="fg-tida-search">
+
+        <div class="fg-tida-search-heading">
+
+            <p class="fg-tida-section-label">
+                Documents
+            </p>
+
+            <h2>
+                Search the tracker
+            </h2>
+
+            <p>
+                Search FG-TIDA documents and supporting materials.
+            </p>
+
+        </div>
+
+
+        <div class="fg-tida-search-form">
+
+            <form action="{% url 'fgtida:documents' %}" method="get" role="search">
+                <label for="tida-home-query" class="form-label">Document title, identifier or topic</label>
+                <div class="input-group">
+                    <input id="tida-home-query" name="q" type="search" maxlength="200" class="form-control" placeholder="Search FG-TIDA records">
+                    <button class="btn fg-tida-btn-primary" type="submit">Search</button>
+                </div>
+                <p class="text-muted small mt-2 mb-0">Search FG-TIDA documents by name, title or abstract. Additional filters are available on the search page.</p>
+            </form>
+
+        </div>
+
+    </section>
+
+
+</div>
+
 {% endblock %}
+
+
 {% block js %}
-    <script src="{% static "ietf/js/doc-search.js" %}"></script>
+    {{ block.super }}
+
+
 {% endblock %}

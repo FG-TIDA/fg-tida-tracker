@@ -1,0 +1,6 @@
+{% extends 'base.html' %}{% load django_bootstrap5 %}
+{% block title %}Submit a contribution | FG-TIDA{% endblock %}
+{% block content %}<h1>Submit a proposal or contribution</h1>
+<p>Choose a working group, or Incubation if your proposal needs a new working group. The submitted file is sent to the group's configured recipients (FG management for Incubation) once email delivery is available. It becomes public only after editorial acceptance. For assistance, contact <a href="mailto:{{ platform_content.secretariat_email }}">the secretariat</a>.</p>
+<form method="post" enctype="multipart/form-data">{% csrf_token %}{% bootstrap_form form %}<button class="btn btn-primary" type="submit">Submit for review</button></form>
+<h2 class="mt-4">My submissions</h2><table class="table"><thead><tr><th>Title</th><th>Submitted</th><th>Status</th></tr></thead><tbody>{% for item in submissions %}<tr><td><a href="{% url 'fgtida:contribution' item.pk %}">{{ item.title }}</a></td><td>{{ item.created }}</td><td>{{ item.get_status_display }}</td></tr>{% empty %}<tr><td colspan="3">No submissions yet.</td></tr>{% endfor %}</tbody></table>{% include 'fgtida/pagination.html' %}{% endblock %}

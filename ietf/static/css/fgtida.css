@@ -1,0 +1,88 @@
+:root { --fg-tida-header-height: 76px; }
+body.navbar-offset { padding-top: calc(var(--fg-tida-header-height) + 24px); }
+html { scroll-padding-top: calc(var(--fg-tida-header-height) + 24px); }
+#fg-tida-navbar.fg-tida-navbar {
+    background: #069cd4;
+    --bs-navbar-color: #062a3b;
+    --bs-navbar-hover-color: #001a26;
+    --bs-navbar-active-color: #001a26;
+    --bs-navbar-brand-color: #062a3b;
+    --bs-navbar-brand-hover-color: #001a26;
+    --bs-navbar-toggler-border-color: #062a3b;
+}
+.fg-tida-navbar .navbar-brand,
+.fg-tida-navbar .nav-link { color: #062a3b; }
+.fg-tida-navbar .nav-link:hover,
+.fg-tida-navbar .nav-link:focus { color: #001a26; text-decoration: underline; }
+.fg-tida-navbar .navbar-brand { display: flex; align-items: center; }
+.fg-tida-navbar .navbar-toggler { background-color: #fff; }
+.fg-tida-navbar .navbar-brand img { flex-shrink: 0; }
+.fg-tida-navbar .fg-tida-bug-link {
+    color: #df2339;
+    background: #fff;
+    border-radius: .375rem;
+    padding: .45rem .7rem;
+    font-weight: 400;
+    line-height: 1.3;
+    white-space: nowrap;
+    transition: background-color .15s ease, color .15s ease;
+}
+.fg-tida-navbar .fg-tida-bug-link .bi { margin-left: .3rem; }
+.fg-tida-navbar .fg-tida-bug-link:hover,
+.fg-tida-navbar .fg-tida-bug-link:focus {
+    color: #c7192e;
+    background: #fff;
+    text-decoration: none;
+}
+.fg-tida-navbar .fg-tida-bug-link:focus-visible {
+    outline: 2px solid #062a3b;
+    outline-offset: 3px;
+}
+.fg-tida-rich-text { overflow-x: auto; overflow-wrap: anywhere; }
+.fg-tida-rich-text table { width: 100%; margin: 1rem 0; border-collapse: collapse; }
+.fg-tida-rich-text th, .fg-tida-rich-text td {
+    border: 1px solid var(--bs-border-color); padding: .5rem .75rem; vertical-align: top;
+}
+.fg-tida-rich-text th { background: var(--bs-tertiary-bg); font-weight: 600; }
+.fg-tida-rich-text pre { white-space: pre-wrap; }
+.fgtida-agenda-table thead th { background: linear-gradient(#66717a, #343b41); color: #fff; }
+.fgtida-agenda-table td:first-child { font-weight: 700; }
+.fgtida-agenda-event summary { font-size: 1.15rem; cursor: pointer; padding: .25rem 0; }
+.fgtida-agenda-event[open] summary { margin-bottom: .75rem; }
+.fgtida-month { font-size: .85rem; }
+.fgtida-agenda-table { border-radius: .4rem; overflow: hidden; }
+.fgtida-agenda-table th { padding: .65rem .8rem; }
+.fgtida-agenda-table thead tr:first-child th { text-align: center; }
+.fgtida-agenda-table td { padding: .35rem .7rem; vertical-align: middle; }
+.fgtida-agenda-table th:first-child { width: 9rem; }
+.fgtida-agenda-table th:nth-child(2) { width: 23%; }
+.fgtida-session-actions { float: right; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .22rem; margin: .1rem 0 .1rem .65rem; }
+.fgtida-resource-icon { display: inline-flex; align-items: center; justify-content: center; min-width: 1.65rem; height: 1.7rem; padding: .15rem .22rem; border-radius: .2rem; text-decoration: none; color: #0657d9; background: #edf4ff; font-size: 1rem; }
+.fgtida-resource-icon:hover, .fgtida-resource-icon:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; }
+.resource-notes { color: #008358; background: #eaf7f0; }
+.resource-recording { color: #7141bc; background: #f3edf9; }
+.resource-registration { color: #008e99; background: #e6f6f7; }
+.resource-pdf { color: #bc2340; background: #fff0f3; }
+.resource-pptx { color: #b64b13; background: #fff0e7; }
+.resource-tar { color: #67502c; background: #faf3e7; gap: .12rem; }
+.fgtida-tar-label { font-size: .55rem; font-weight: 700; }
+.resource-unavailable { color: #89929b; background: #f0f1f2; cursor: help; }
+.fgtida-resource-menu summary { list-style: none; cursor: pointer; }
+.fgtida-resource-menu summary::-webkit-details-marker { display: none; }
+.fgtida-resource-list { display: flex; flex-direction: column; max-width: 18rem; padding: .4rem; background: var(--bs-body-bg); border: 1px solid var(--bs-border-color); }
+.fgtida-resource-list a { padding: .25rem; }
+.fgtida-agenda-event[open] { padding-bottom: .5rem; }
+.fgtida-agenda-table .fgtida-day-heading { background: linear-gradient(#66717a, #343b41); color: #fff; }
+.fgtida-agenda-event summary { list-style: none; font-size: 1rem; }
+.fgtida-agenda-event summary::-webkit-details-marker { display: none; }
+.fgtida-agenda-event summary:hover { text-decoration: underline; }
+.fgtida-session-pick { float: right; margin-left: .65rem; }
+.fgtida-agenda-sidebar { position: sticky; top: calc(var(--fg-tida-header-height) + 1rem); max-height: calc(100vh - var(--fg-tida-header-height) - 2rem); overflow-y: auto; }
+.fgtida-agenda-sidebar .btn { padding: .7rem .4rem; font-weight: 600; }
+.fgtida-calendar-button { color: #fff; background: #7041bf; }
+.fgtida-calendar-button:hover { color: #fff; background: #593299; }
+.fgtida-calendar-download { color: #593299; background: #e4daf3; }
+.fgtida-calendar-download:hover { color: #47277c; background: #d4c3ed; }
+.fgtida-schedule [hidden] { display: none !important; }
+.fgtida-agenda-sidebar .nav-link { font-weight: 600; }
+@media (max-width: 991.98px) { .fgtida-agenda-sidebar { position: static; max-height: none; } }

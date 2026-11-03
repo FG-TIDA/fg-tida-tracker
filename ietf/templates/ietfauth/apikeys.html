@@ -56,10 +56,12 @@
     {% else %}
         <p>You have no personal API keys.</p>
     {% endif %}
+    {% if settings.FGTIDA_ONLY %}<p>API key creation is not enabled for this FG-TIDA installation. Existing keys can be reviewed and revoked here.</p>{% else %}
     <a href="{% url 'ietf.ietfauth.views.apikey_create' %}"
        class="btn btn-primary add-apikey my-3">
         Get a new personal API key
     </a>
+    {% endif %}
 {% endblock %}
 {% block js %}
     <script src="{% static "ietf/js/list.js" %}"></script>

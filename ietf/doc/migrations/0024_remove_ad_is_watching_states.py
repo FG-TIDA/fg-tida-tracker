@@ -59,6 +59,8 @@ def forward(apps, schema_editor):
     Document = apps.get_model("doc", "Document")
     State = apps.get_model("doc", "State")
     StateType = apps.get_model("doc", "StateType")
+    if not StateType.objects.filter(slug='draft-iesg').exists():
+        return
     Person = apps.get_model("person", "Person")
     
     save_document_in_history = get_helper(

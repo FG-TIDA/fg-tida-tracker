@@ -1,0 +1,9 @@
+<div class="fgtida-session-actions" aria-label="Session resources">
+{% for action in actions %}
+{% if action.links|length == 1 %}<a class="fgtida-resource-icon resource-{{ action.key }}" href="{{ action.links.0.1 }}" title="{{ action.label }}: {{ action.links.0.0 }}" aria-label="{{ action.label }}: {{ action.links.0.0 }}"><i class="bi bi-{{ action.icon }}" aria-hidden="true"></i></a>
+{% elif action.links %}<details class="fgtida-resource-menu"><summary class="fgtida-resource-icon resource-{{ action.key }}" title="{{ action.label }}" aria-label="{{ action.label }}"><i class="bi bi-{{ action.icon }}" aria-hidden="true"></i></summary><span class="fgtida-resource-list">{% for label, url in action.links %}<a href="{{ url }}">{{ label }}</a>{% endfor %}</span></details>
+{% else %}<span class="fgtida-resource-icon resource-unavailable" aria-disabled="true" tabindex="0" title="{{ action.label }} — not yet available" aria-label="{{ action.label }} — not yet available"><i class="bi bi-{{ action.icon }}" aria-hidden="true"></i></span>{% endif %}
+{% endfor %}
+<a class="fgtida-resource-icon resource-registration" href="{% url 'fgtida:registration' %}" title="Register on the official FG-TIDA website" aria-label="Register on the official FG-TIDA website"><i class="bi bi-headset" aria-hidden="true"></i></a>
+<a class="fgtida-resource-icon resource-tar" href="{% url 'fgtida:session-materials-tar' session.pk %}" title="Download all session materials as TAR" aria-label="Download all session materials as TAR"><i class="bi bi-file-earmark-zip" aria-hidden="true"></i><span class="fgtida-tar-label">TAR</span></a>
+</div>

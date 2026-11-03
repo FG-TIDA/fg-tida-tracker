@@ -17,7 +17,12 @@ __release_branch__ = ''
 # set this to ".p1", ".p2", etc. after patching
 __patch__   = ""
 
-if __version__ == '1.0.0-dev' and __release_hash__ == '' and __release_branch__ == '':
+import os
+import shutil
+
+if os.environ.get('FGTIDA_RELEASE_VERSION'):
+    __version__ = os.environ['FGTIDA_RELEASE_VERSION']
+elif __version__ == '1.0.0-dev' and __release_hash__ == '' and __release_branch__ == '' and shutil.which('git'):
     import subprocess
     branch = subprocess.run(
         ["/usr/bin/git", "branch", "--show-current"],

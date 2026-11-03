@@ -6,6 +6,8 @@ from django.db import migrations
 def forward(apps, schema_editor):
     Group = apps.get_model("group", "Group")
     GroupFeatures = apps.get_model("group", "GroupFeatures")
+    if not Group.objects.filter(acronym='iab').exists():
+        return
     iab = Group.objects.get(acronym="iab")
     iab.used_roles = [
         "chair",

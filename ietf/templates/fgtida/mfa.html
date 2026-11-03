@@ -1,0 +1,12 @@
+{% extends 'base.html' %}{% load django_bootstrap5 %}
+{% block title %}{{ title }} | FG-TIDA{% endblock %}
+{% block content %}<h1>{{ title }}</h1>
+{% if message %}<p>{{ message }}</p>{% endif %}
+{% if begin %}<p>Use an authenticator app to add a second factor to your password. Administrators must enable this before accessing their account.</p><form method="post" action="{% url 'fgtida:mfa-setup' %}">{% csrf_token %}<button class="btn btn-primary" name="begin" value="1">Begin authenticator setup</button></form>{% endif %}
+{% if seed %}<p>In your authenticator app, choose “Enter a setup key”. Use <strong>FG-TIDA — {{ account }}</strong> as the account name, select <strong>time-based</strong>, and enter this key:</p><p><code>{{ seed }}</code></p><p>Keep this key private. Enter the six-digit code from the app and your current password below.</p>{% endif %}
+{% if codes %}<p>Save these recovery codes somewhere private. Each works once if you lose your authenticator. They will not be shown again, and any previous codes no longer work.</p><ul>{% for code in codes %}<li><code>{{ code }}</code></li>{% endfor %}</ul><a class="btn btn-primary" href="{{ continue_url }}">I saved my codes — continue</a>{% endif %}
+{% if managing %}<p>Two-factor authentication is enabled.{% if mandatory %} It is required for your administrator account.{% endif %} Confirm your password and a fresh authenticator or recovery code to make changes.</p>{% endif %}
+{% if form %}<form method="post">{% csrf_token %}{% bootstrap_form form %}{% if managing %}<button class="btn btn-primary" name="action" value="codes">Replace recovery codes</button>{% if not mandatory %} <button class="btn btn-outline-danger" name="action" value="disable">Disable two-factor authentication</button>{% endif %}{% else %}<button class="btn btn-primary" type="submit">Verify</button>{% endif %}</form>{% endif %}
+<p class="mt-3">Lost your authenticator and recovery codes? Contact {{ platform_content.secretariat_email }} for identity-verified recovery. Password reset and security questions do not disable MFA.</p>
+<form method="post" action="{% url 'django.contrib.auth.views.logout' %}">{% csrf_token %}<button class="btn btn-link" type="submit">Sign out</button></form>
+{% endblock %}

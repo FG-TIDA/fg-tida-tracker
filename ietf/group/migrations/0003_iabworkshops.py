@@ -5,6 +5,8 @@ from django.db import migrations
 def forward(apps, schema_editor):
     GroupFeatures = apps.get_model("group", "GroupFeatures")
     GroupTypeName = apps.get_model("name", "GroupTypeName")
+    if not GroupTypeName.objects.filter(slug='ietf').exists():
+        return  # Fresh FG-TIDA database has no IETF group hierarchy.
 
     iabworkshop = GroupFeatures.objects.create(
         type_id="iabworkshop",

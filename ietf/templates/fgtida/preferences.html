@@ -1,0 +1,13 @@
+{% extends 'base.html' %}{% load django_bootstrap5 %}
+{% block title %}Preferences | FG-TIDA{% endblock %}
+{% block content %}<h1>Preferences</h1>
+<h2 class="h4">Appearance</h2>
+<div class="btn-group mb-4" id="bd-theme" role="group" aria-label="Color theme">
+<button type="button" class="btn btn-outline-primary" data-bs-theme-value="light"><i class="bi bi-sun" aria-hidden="true"></i> Light</button>
+<button type="button" class="btn btn-outline-primary" data-bs-theme-value="dark"><i class="bi bi-moon-stars" aria-hidden="true"></i> Dark</button>
+<button type="button" class="btn btn-outline-primary" data-bs-theme-value="auto"><i class="bi bi-circle-half" aria-hidden="true"></i> Automatic</button>
+</div>
+<h2 class="h4">Agenda</h2>
+<p>Agendas open in Meeting time. Use the agenda's time-zone selector to switch to Local (your device's time zone) or UTC.</p>
+<p>Appearance settings are saved in this browser.</p>
+{% endblock %}

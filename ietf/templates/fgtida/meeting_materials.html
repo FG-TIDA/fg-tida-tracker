@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% load fgtida %}
+{% block title %}Materials | {{ meeting.display_title }} | FG-TIDA{% endblock %}
+{% block content %}
+<h1>{{ meeting.display_title }}</h1>
+<p>{{ meeting.date|date:"j F Y" }} – {{ meeting.end_date|date:"j F Y" }} · {{ meeting.city }}</p>
+{% include 'fgtida/meeting_nav.html' with section='materials' %}
+<h2>Meeting documents</h2>
+{% if upload_session %}<div class="d-flex gap-2 mb-3">
+{% if perms.doc.add_document %}<a class="btn btn-outline-primary" href="{% url 'admin:doc_document_add' %}?meeting_session={{ upload_session.pk }}&amp;group={{ upload_session.group_id }}">Upload meeting document</a>{% endif %}
+{% if perms.fgtida.add_sessionresource %}<a class="btn btn-outline-primary" href="{% url 'admin:fgtida_sessionresource_add' %}?session={{ upload_session.pk }}">Upload file or recording</a>{% endif %}
+</div>{% elif perms.meeting.add_session %}<p><a href="{% url 'admin:meeting_session_add' %}?meeting={{ meeting.pk }}">Add a session</a> to attach meeting materials.</p>{% endif %}
+<div class="table-responsive"><table class="table table-striped align-middle"><thead><tr><th>Title</th><th>Type</th><th>Files</th>{% if perms.doc.change_document %}<th>Manage</th>{% endif %}</tr></thead><tbody>
+{% for doc in page %}<tr><td><a href="{% url 'fgtida:document' doc.name %}">{{ doc.title }}</a></td><td>{% document_type doc %}</td><td>{% document_formats doc %}</td>{% if perms.doc.change_document %}<td><a href="{% url 'admin:doc_document_change' doc.pk %}">Edit</a></td>{% endif %}</tr>
+{% empty %}<tr><td colspan="4">No meeting documents have been uploaded.</td></tr>{% endfor %}
+</tbody></table></div>
+{% if page.has_other_pages %}<nav aria-label="Document pages">{% if page.has_previous %}<a href="?page={{ page.previous_page_number }}&amp;resources_page={{ resources_page.number }}">Previous</a>{% endif %} Page {{ page.number }} of {{ page.paginator.num_pages }} {% if page.has_next %}<a href="?page={{ page.next_page_number }}&amp;resources_page={{ resources_page.number }}">Next</a>{% endif %}</nav>{% endif %}
+{% if resources_page.paginator.count %}<h2 class="mt-4">Session files and links</h2>
+<div class="table-responsive"><table class="table table-striped align-middle"><thead><tr><th>Title</th><th>Type</th><th>Session</th>{% if perms.fgtida.change_sessionresource %}<th>Manage</th>{% endif %}</tr></thead><tbody>
+{% for resource in resources_page %}<tr><td><a href="{{ resource.resource_url }}">{{ resource.title }}</a>{% if resource.filename %}<div class="small text-body-secondary">{{ resource.filename }}</div>{% endif %}</td><td>{{ resource.get_kind_display }}</td><td>{{ resource.session.name }}</td>{% if perms.fgtida.change_sessionresource %}<td><a href="{% url 'admin:fgtida_sessionresource_change' resource.pk %}">Edit</a></td>{% endif %}</tr>{% endfor %}
+</tbody></table></div>
+{% if resources_page.has_other_pages %}<nav aria-label="Session resource pages">{% if resources_page.has_previous %}<a href="?page={{ page.number }}&amp;resources_page={{ resources_page.previous_page_number }}">Previous</a>{% endif %} Page {{ resources_page.number }} of {{ resources_page.paginator.num_pages }} {% if resources_page.has_next %}<a href="?page={{ page.number }}&amp;resources_page={{ resources_page.next_page_number }}">Next</a>{% endif %}</nav>{% endif %}
+{% endif %}
+{% endblock %}

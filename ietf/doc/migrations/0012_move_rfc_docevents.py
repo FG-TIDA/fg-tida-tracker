@@ -9,6 +9,8 @@ def forward(apps, schema_editor):
     DocAlias = apps.get_model("doc", "DocAlias")
     DocEvent = apps.get_model("doc", "DocEvent")
     Document = apps.get_model("doc", "Document")
+    if not Document.objects.exists():
+        return
 
     # queryset with events migrated regardless of whether before or after the "published_rfc" event
     events_always_migrated = DocEvent.objects.filter(

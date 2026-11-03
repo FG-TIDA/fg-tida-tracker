@@ -8,6 +8,9 @@ class StrongPasswordValidator:
     code = "weak"
     min_zxcvbn_score = 3
 
+    def get_help_text(self):
+        return 'Use a strong, hard-to-guess password or a long unique passphrase.'
+
     def __init__(self, message=None, code=None, min_zxcvbn_score=None):
         if message is not None:
             self.message = message

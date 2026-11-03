@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% load fgtida %}
+{% block title %}Document search | FG-TIDA Datatracker{% endblock %}
+{% block content %}
+{% if group_obj %}{% include 'fgtida/group_tabs.html' %}<h2>Group documents</h2>{% else %}<h1>FG-TIDA Document Search</h1>{% endif %}
+{% include 'fgtida/search_form.html' %}
+{% if perms.doc.add_document %}<p><a class="btn btn-primary" href="{% url 'admin:doc_document_add' %}">Add document</a></p>{% endif %}
+<p>{{ page.paginator.count }} document{{ page.paginator.count|pluralize }}</p>
+<div class="table-responsive"><table class="table table-striped"><thead><tr><th>Document</th><th>Formats / resources</th><th>Type</th><th>Group</th><th>State</th><th>Updated</th></tr></thead><tbody>
+{% for doc in page %}<tr><td><a href="{% url 'fgtida:document' doc.name %}">{{ doc.title }}</a> {% document_recency doc %}<div class="small text-muted">{{ doc.name }}{% if doc.rev %}-{{ doc.rev }}{% endif %}</div></td><td>{% document_formats doc %}</td><td>{% document_type doc %}</td><td><a href="{% url 'fgtida:group' doc.group.acronym %}">{{ doc.group.acronym|upper }}</a></td><td>{% document_states doc %}</td><td>{{ doc.time|date:"Y-m-d" }}</td></tr>{% empty %}<tr><td colspan="6">No matching documents.</td></tr>{% endfor %}
+</tbody></table></div>
+{% include 'fgtida/pagination.html' %}
+{% endblock %}

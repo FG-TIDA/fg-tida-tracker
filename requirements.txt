@@ -1,8 +1,11 @@
 # -*- conf-mode -*-
-setuptools>=80.9.0  # Require this first, to prevent later errors
+setuptools>=84.1.0  # Require this first, to prevent later errors
+Brotli>=1.2.1
+certifi>=2026.10.19
 #
 aiosmtpd>=1.4.6
 argon2-cffi>=25.1.0  # For the Argon2 password hasher option
+django-otp==1.7.3
 beautifulsoup4>=4.13.4  # Only used in tests
 bibtexparser>=2.0.0  # Only used in tests
 bleach>=6.2.0  # project is deprecated but supported
@@ -14,7 +17,8 @@ celery>=5.5.3
 coverage>=7.9.2
 cryptography>=50.0.1  # account migration password envelope
 defusedxml>=0.7.1    # for TastyPie when using xml; not a declared dependency
-Django>=4.2.30,<5
+pypdf>=6.21.4,<7    # FG-TIDA PDF content indexing; security fixes
+Django>=5.2.18,<5.3
 django-admin-rangefilter>=0.13.3
 django-analytical>=3.2.0
 django-bootstrap5>=25.1
@@ -28,11 +32,11 @@ django-markup>=1.10    # Limited use - need to reconcile against direct use of m
 django-oidc-provider==0.8.2    # 0.8.3 changes logout flow and claim return
 django-simple-history>=3.10.1
 django-storages>=1.14.6
-django-stubs>=4.2.7,<5    # The django-stubs version used determines the the mypy version indicated below
+django-stubs>=5.2,<5.3
 django-tastypie>=0.15.1  # Version must be kept in sync with Django
 django-vite>=3.1.0
 django-widget-tweaks>=1.4.12
-djangorestframework>=3.16.0
+djangorestframework>=3.18.2
 docutils>=0.22.0  # Used only by dbtemplates for RestructuredText
 types-docutils>=0.21.0  # should match docutils (0.22.0 not out yet)
 drf-spectacular>=0.27
@@ -54,7 +58,7 @@ markdown>=3.8.0
 types-markdown>=3.8.0
 mock>=5.2.0  # should replace with unittest.mock and remove dependency
 types-mock>=5.2.0
-mypy~=1.11.2  # Version requirements loosely determined by django-stubs.
+mypy>=1.18,<2  # Compatible with django-stubs 5.2.
 oic>=1.7.0  # Used only by tests
 opentelemetry-sdk>=1.38.0
 opentelemetry-instrumentation-django>=0.59b0
@@ -62,7 +66,7 @@ opentelemetry-instrumentation-psycopg2>=0.59b0
 opentelemetry-instrumentation-pymemcache>=0.59b0
 opentelemetry-instrumentation-requests>=0.59b0
 opentelemetry-exporter-otlp-proto-http>=1.38.0
-pillow>=11.3.0
+pillow>=13.0.0
 psycopg2>=2.9.10
 pyang>=2.6.1
 pydyf>=0.12.1

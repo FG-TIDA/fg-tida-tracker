@@ -1,0 +1,12 @@
+# Reviewed inherited upstream synthetic fixtures/examples only. See SECURITY.md.
+/repo/docker/configs/settings_local.py:private-key:136
+/repo/ietf/api/tests.py:generic-api-key:1701
+/repo/ietf/api/tests.py:generic-api-key:1771
+/repo/ietf/api/tests.py:generic-api-key:1779
+/repo/ietf/api/tests.py:generic-api-key:1787
+/repo/ietf/group/migrations/0008_alter_group_used_roles_and_more.py:generic-api-key:50
+/repo/ietf/nomcom/factories.py:private-key:37
+/repo/ietf/templates/api/index.html:generic-api-key:183
+/repo/ietf/templates/api/index.html:generic-api-key:224
+/repo/ietf/templates/nomcom/private_key.html:private-key:13
+/repo/k8s/rabbitmq.yaml:generic-api-key:128

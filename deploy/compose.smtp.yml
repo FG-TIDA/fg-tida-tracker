@@ -1,0 +1,9 @@
+# Enable only after ITU authorizes the sender and SMTP credentials.
+# docker compose -f deploy/compose.yml -f deploy/compose.smtp.yml ...
+services:
+  app:
+    secrets: [smtp_password]
+  worker:
+    secrets: [smtp_password]
+secrets:
+  smtp_password: {file: ./secrets/smtp_password}

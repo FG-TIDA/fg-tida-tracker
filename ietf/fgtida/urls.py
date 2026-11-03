@@ -1,0 +1,68 @@
+from django.urls import path
+from . import views
+from . import contributions
+from . import accounts
+from . import account_changes
+from . import resource_files
+from . import session_materials
+from . import mfa
+
+app_name = 'fgtida'
+urlpatterns = [
+    path('accounts/mfa/', mfa.manage, name='mfa-settings'),
+    path('accounts/mfa/setup/', mfa.setup, name='mfa-setup'),
+    path('accounts/mfa/verify/', mfa.verify, name='mfa-verify'),
+    path('session/<int:pk>/materials.tar', session_materials.archive, name='session-materials-tar'),
+    path('session-resources/<int:pk>/file/', resource_files.download, name='session-resource-file'),
+    path('accounts/csrf/', accounts.csrf_token, name='csrf-token'),
+    path('admin/password_change/', account_changes.change, {'kind': 'password'}),
+    path('accounts/profile/', account_changes.change, name='profile-edit'),
+    path('accounts/password/', account_changes.change, {'kind': 'password'}, name='password-edit'),
+    path('accounts/username/', account_changes.change, {'kind': 'username'}, name='username-edit'),
+    path('accounts/editexternalresources/', account_changes.change),
+    path('accounts/create/', accounts.create, name='signup'),
+    path('accounts/create/confirm/<str:auth>/', accounts.confirm, name='signup-confirm'),
+    path('accounts/reset/', accounts.reset, name='reset'),
+    path('accounts/reset/confirm/<str:auth>/', accounts.reset_confirm, name='reset-confirm'),
+    path('accounts/security/', accounts.security, name='security'),
+    path('admin-tools/database-access/', views.database_access, name='database-access'),
+    path('submit/', contributions.submit, name='submit'),
+    path('submit/<int:pk>/', contributions.detail, name='contribution'),
+    path('submit/<int:pk>/download/', contributions.detail, {'download': True}, name='contribution-download'),
+    path('', views.home, name='home'),
+    path('accounts/settings/', views.preferences, name='preferences'),
+    path('doc/', views.search, name='documents'),
+    path('doc/<slug:name>/', views.document, name='document'),
+    path('doc/<slug:name>/history/', views.history, name='history'),
+    path('doc/<slug:name>/compare/', views.compare, name='compare'),
+    path('doc/<slug:name>/revision/<str:rev>/', views.document, name='revision'),
+    path('doc/<slug:name>/download/<str:rev>/', views.download, name='download'),
+    path('doc/<slug:name>/text/<str:rev>/', views.document_text, name='text'),
+    path('group/fg-tida/', views.groups, name='groups'),
+    path('group/<slug:acronym>/about/', views.group, name='group'),
+    path('group/<slug:acronym>/documents/', views.search, name='group-documents'),
+    path('group/<slug:acronym>/members/', views.group, {'section': 'members'}, name='members'),
+    path('group/<slug:acronym>/photos/', views.group, {'section': 'photos'}, name='photos'),
+    path('group/<slug:acronym>/history/', views.group, {'section': 'history'}, name='group-history'),
+    path('group/<slug:acronym>/milestones/', views.group, {'section': 'milestones'}, name='milestones'),
+    path('group/<slug:acronym>/meetings/', views.meetings, name='group-meetings'),
+    path('group/<slug:acronym>/meetings/past/', views.meetings, {'scope': 'past'}, name='group-past'),
+    path('group/<slug:acronym>/calendar.ics', views.calendar, name='group-calendar'),
+    path('people/<int:person_id>/', views.person, name='person'),
+    path('people/<int:person_id>/photo/', views.member_photo, name='photo'),
+    path('meeting/calendar.ics', views.calendar, name='calendar'),
+    path('meeting/agenda/', views.current_agenda, name='current-agenda'),
+    path('meeting/', views.meetings, name='meetings'),
+    path('meeting/registration/', views.registration, name='registration'),
+    path('meeting/important-dates/', views.important_dates, name='important-dates'),
+    path('meeting/upcoming/', views.meetings, name='upcoming'),
+    path('meeting/past/', views.meetings, {'scope': 'past'}, name='past'),
+    path('meeting/<slug:num>/agenda/', views.meeting, name='meeting'),
+    path('meeting/<slug:num>/floor-plan/<int:pk>/', views.floor_plan, name='floor-plan'),
+    path('meeting/<slug:num>/agenda', views.meeting),
+    path('meeting/<slug:num>/materials/', views.meeting, {'section': 'materials'}, name='materials'),
+    path('meeting/<slug:num>/important-dates/', views.meeting, {'section': 'dates'}, name='meeting-dates'),
+    path('meeting/<slug:num>/calendar.ics', views.calendar, name='meeting-calendar'),
+    path('work/', views.legacy),
+    path('work/<path:path>', views.legacy),
+]

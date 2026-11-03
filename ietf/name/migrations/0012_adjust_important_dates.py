@@ -15,9 +15,7 @@ def markdown_names(apps, schema_editor):
         ('cutoffbofreq', "Cut-off date for BOF proposal requests to Area Directors at UTC 23:59. To request a __BoF__ session use the [IETF BoF Request Tool](/doc/bof-requests)."),
     ]
     for slug, newDescription in changes:
-        datename = ImportantDateName.objects.get(pk=slug) # If the slug does not exist, then Django will throw an exception :-)
-        datename.desc = newDescription
-        datename.save()
+        ImportantDateName.objects.filter(pk=slug).update(desc=newDescription)
 
 class Migration(migrations.Migration):
     dependencies = [

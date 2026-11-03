@@ -4,6 +4,8 @@ from django.db import migrations
 
 def forward(apps, schema_editor):
     MailTrigger = apps.get_model("mailtrigger", "MailTrigger")
+    if not MailTrigger.objects.filter(slug='slides_proposed').exists():
+        return
     Recipient = apps.get_model("mailtrigger", "Recipient")
     r = Recipient.objects.create(
         slug="slides_proposer",

@@ -6,6 +6,8 @@ from django.db import migrations
 def forward(apps, schema_editor):
     Mailtrigger = apps.get_model("mailtrigger", "MailTrigger")
     Recipient = apps.get_model("mailtrigger", "Recipient")
+    if not Recipient.objects.filter(pk='liaison_to_contacts').exists():
+        return
     recipients_to = Recipient.objects.get(pk="liaison_to_contacts")
     recipients_cc = list(
         Recipient.objects.filter(

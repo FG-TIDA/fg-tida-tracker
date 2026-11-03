@@ -37,6 +37,7 @@ class DisableMigrations(object):
 MIGRATION_MODULES = DisableMigrations()
 
 
+_runtime_database = DATABASES['default'].copy()
 DATABASES = {
     'default': {
         'HOST': 'db',
@@ -44,7 +45,7 @@ DATABASES = {
         'NAME': 'test.db',
         'ENGINE': 'django.db.backends.postgresql',
         'USER': 'django',
-        'PASSWORD': 'RkTkDPFnKpko',
+        'PASSWORD': _runtime_database['PASSWORD'],
         },
     }
 

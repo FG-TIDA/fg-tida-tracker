@@ -4,6 +4,8 @@ from django.db import migrations
 
 
 def forward(apps, schema_editor):
+    if not apps.get_model('doc', 'StateType').objects.filter(slug='draft-rfceditor').exists():
+        return
     State = apps.get_model("doc", "State")
     for slug, name in [("in_progress", "In Progress"), ("blocked", "Blocked")]:
         State.objects.get_or_create(

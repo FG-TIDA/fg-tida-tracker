@@ -1,0 +1,7 @@
+<nav aria-label="Meeting sections"><ul class="nav nav-tabs mb-4">
+<li class="nav-item"><a class="nav-link {% if section == 'agenda' %}active{% endif %}" {% if section == 'agenda' %}aria-current="page"{% endif %} href="{% url 'fgtida:meeting' meeting.number %}">Agenda</a></li>
+<li class="nav-item"><a class="nav-link {% if section == 'materials' %}active{% endif %}" {% if section == 'materials' %}aria-current="page"{% endif %} href="{% url 'fgtida:materials' meeting.number %}">Materials</a></li>
+<li class="nav-item"><a class="nav-link {% if section == 'dates' %}active{% endif %}" {% if section == 'dates' %}aria-current="page"{% endif %} href="{% url 'fgtida:meeting-dates' meeting.number %}">Important dates</a></li>
+{% for plan in meeting.floorplan_set.all %}<li class="nav-item"><a class="nav-link" href="{% url 'fgtida:floor-plan' meeting.number plan.pk %}" title="{{ plan.name }}">Floor Plan <i class="bi bi-file-earmark-pdf" aria-hidden="true"></i></a></li>{% endfor %}
+<li class="nav-item"><a class="nav-link" href="{% url 'fgtida:registration' %}">Registration <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a></li>
+</ul></nav>

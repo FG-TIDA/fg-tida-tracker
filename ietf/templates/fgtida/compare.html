@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block title %}Compare revisions | {{ doc.title }}{% endblock %}
+{% block content %}<h1>{{ doc.title }}</h1><p><a href="{% url 'fgtida:history' doc.name %}">Back to document history</a></p><h2>Compare revisions</h2>
+<form method="get" class="d-flex gap-3 align-items-end mb-4 flex-wrap"><div><label for="from-rev" class="form-label">From revision</label><select id="from-rev" name="from" class="form-select">{% for rev in revisions %}<option {% if before == rev %}selected{% endif %}>{{ rev }}</option>{% endfor %}</select></div><div><label for="to-rev" class="form-label">To revision</label><select id="to-rev" name="to" class="form-select">{% for rev in revisions %}<option {% if after == rev %}selected{% endif %}>{{ rev }}</option>{% endfor %}</select></div><button class="btn btn-primary" type="submit">Compare</button></form>
+{% if diff == None %}<p>Text comparison is unavailable for these revisions or exceeds the comparison size limit. Download the original files from the document page.</p>{% elif diff %}<pre style="white-space:pre-wrap;overflow-wrap:anywhere">{{ diff }}</pre>{% else %}<p>No text differences.</p>{% endif %}{% endblock %}

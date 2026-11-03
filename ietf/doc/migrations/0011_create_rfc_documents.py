@@ -5,6 +5,8 @@ from django.db import migrations
 
 def forward(apps, schema_editor):
     Document = apps.get_model("doc", "Document")
+    if not Document.objects.exists():
+        return  # Nothing to convert in a fresh installation.
     DocAlias = apps.get_model("doc", "DocAlias")
     DocumentAuthor = apps.get_model("doc", "DocumentAuthor")
     

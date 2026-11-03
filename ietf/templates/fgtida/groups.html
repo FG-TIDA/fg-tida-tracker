@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block title %}Groups | FG-TIDA Datatracker{% endblock %}
+{% block content %}<h1>FG-TIDA groups</h1>{% if perms.group.add_group %}<a class="btn btn-primary mb-3" href="{% url 'admin:group_group_add' %}">Add group</a>{% endif %}
+<nav class="d-flex gap-3 mb-3" aria-label="Group states"><a href="?">All groups</a><a href="?state=active">Active</a><a href="?state=proposed">Proposed</a><a href="?state=conclude">Concluded</a></nav>
+<table class="table table-striped"><thead><tr><th>Group</th><th>Name</th><th>Type</th><th>State</th></tr></thead><tbody>{% for group in groups %}<tr><td><a href="{% url 'fgtida:group' group.acronym %}">{{ group.acronym|upper }}</a></td><td>{{ group.name }}</td><td>{{ group.type.name }}</td><td>{{ group.state.name }}</td></tr>{% endfor %}</tbody></table>{% endblock %}

@@ -48,7 +48,7 @@ sys.path.append(PROJECT_DIR)
 from ietf import __version__
 import debug
 
-DEBUG = True
+DEBUG = os.environ.get('FGTIDA_ENV') != 'production'
 debug.debug = DEBUG
 
 DEBUG_AGENDA = False
@@ -56,7 +56,8 @@ DEBUG_AGENDA = False
 # Valid values:
 # 'production', 'test', 'development'
 # Override this in settings_local.py if it's not the desired setting:
-SERVER_MODE = 'development'
+SERVER_MODE = 'production' if os.environ.get('FGTIDA_ENV') == 'production' else 'development'
+FGTIDA_ONLY = True
 
 # Domain name of the IETF
 IETF_DOMAIN = 'ietf.org'
@@ -72,7 +73,6 @@ PASSWORD_HASHERS = [
     "django.contrib.auth.hashers.Argon2PasswordHasher",
     "django.contrib.auth.hashers.BCryptSHA256PasswordHasher",
     "django.contrib.auth.hashers.PBKDF2PasswordHasher",
-    "django.contrib.auth.hashers.SHA1PasswordHasher",
 ]
 
 
@@ -103,7 +103,7 @@ TOOLS_SERVER = 'tools.' + IETF_DOMAIN
 # Override this in the settings_local.py file:
 SERVER_EMAIL = 'Django Server <django-project@' + IETF_DOMAIN + '>'
 
-DEFAULT_FROM_EMAIL = 'IETF Secretariat <ietf-secretariat-reply@' + IETF_DOMAIN + '>'
+DEFAULT_FROM_EMAIL = 'FG-TIDA Secretariat <tsbfgtida@itu.int>'
 UTILS_ON_BEHALF_EMAIL = 'noreply@' + IETF_DOMAIN
 UTILS_FROM_EMAIL_DOMAINS = [ 'ietf.org', 'iab.org', ]
 
@@ -156,7 +156,8 @@ USE_DEPRECATED_PYTZ = True  # supported until Django 5
 # template for formsets. This will become the default behavior in Django 5.0. This configuration
 # can be removed at that point.
 # See https://docs.djangoproject.com/en/4.2/releases/4.1/#forms
-FORM_RENDERER = "django.forms.renderers.DjangoDivFormRenderer"
+FORM_RENDERER = "django.forms.renderers.DjangoTemplates"
+FORMS_URLFIELD_ASSUME_HTTPS = True
 
 # Default primary key field type to use for models that don’t have a field with primary_key=True.
 # In the future (relative to 4.2), the default will become 'django.db.models.BigAutoField.'
@@ -402,6 +403,7 @@ TEMPLATES = [
                 'ietf.secr.context_processors.secr_revision_info',
                 'ietf.context_processors.rfcdiff_base_url',
                 'ietf.context_processors.timezone_now',
+                'ietf.fgtida.content.public_content',
             ],
             'loaders': [
                 ('django.template.loaders.cached.Loader', (
@@ -425,6 +427,9 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django_otp.middleware.OTPMiddleware",
+    "ietf.fgtida.mfa.MfaGateMiddleware",
+    "ietf.fgtida.security.PublicationBoundaryMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "ietf.middleware.is_authenticated_header_middleware",
     "django.middleware.http.ConditionalGetMiddleware",
@@ -450,12 +455,15 @@ if DEBUG:
 
 # Additional locations of static files (in addition to each app's static/ dir)
 STATICFILES_DIRS = (
+    os.path.join(BASE_DIR, "static"),  # FG-TIDA branding and project static assets
     os.path.join(BASE_DIR, "static/dist-neue"),  # for django_vite
     os.path.join(BASE_DIR, 'static/dist'),
     os.path.join(BASE_DIR, 'secr/static/dist'),
 )
 
 INSTALLED_APPS = [
+    'django_otp',
+    'django_otp.plugins.otp_totp',
     # Django apps
     'ietf.admin',  # replaces django.contrib.admin
     'django.contrib.admindocs',
@@ -490,6 +498,7 @@ INSTALLED_APPS = [
     'ietf.community',
     'ietf.dbtemplate',
     'ietf.doc',
+    'ietf.fgtida',
     'ietf.group',
     'ietf.idindex',
     'ietf.iesg',
@@ -771,6 +780,8 @@ STORAGES: dict[str, Any] = {
 
 # Storages for artifacts stored as blobs
 ARTIFACT_STORAGE_NAMES: list[str] = [
+    "tida",
+    "tida-template",
     "active-draft",
     "agenda",
     "bibxml-ids",
@@ -910,7 +921,7 @@ IPR_EMAIL_FROM = 'ietf-ipr@ietf.org'
 AUDIO_IMPORT_EMAIL = ['ietf@meetecho.com']
 SESSION_REQUEST_FROM_EMAIL = 'IETF Meeting Session Request Tool <session-request@ietf.org>' 
 
-SECRETARIAT_SUPPORT_EMAIL = "support@ietf.org"
+SECRETARIAT_SUPPORT_EMAIL = "tsbfgtida@itu.int"
 SECRETARIAT_ACTION_EMAIL = SECRETARIAT_SUPPORT_EMAIL
 SECRETARIAT_INFO_EMAIL = SECRETARIAT_SUPPORT_EMAIL
 
@@ -1298,7 +1309,6 @@ CHECKS_LIBRARY_PATCHES_TO_APPLY = [
     # Patch includes old cookie-delete-with-all-settings and a backport of the fix
     # to CVE-2026-35192 from Django 5.2. The patches conflict, so cannot be applied
     # separately.
-    'patch/django-cookie-delete-settings-and-CVE-2026-35192.patch',
     'patch/tastypie-django22-fielderror-response.patch',
 ]
 if DEBUG:
@@ -1372,7 +1382,10 @@ if SERVER_MODE != "production":
 
 # Put the production SECRET_KEY in settings_local.py, and also any other
 # sensitive or site-specific changes.  DO NOT commit settings_local.py to svn.
-from ietf.settings_local import *            # pyflakes:ignore pylint: disable=wildcard-import
+if SERVER_MODE == 'production':
+    from ietf.fgtida.production_settings import *
+else:
+    from ietf.settings_local import *            # pyflakes:ignore pylint: disable=wildcard-import
 
 for app in INSTALLED_APPS:
     if app.startswith('ietf'):
@@ -1539,11 +1552,13 @@ if SERVER_MODE != 'production':
     SESSION_ENGINE = "django.contrib.sessions.backends.db"
 
     if 'SECRET_KEY' not in locals():
-        SECRET_KEY = 'PDwXboUq!=hPjnrtG2=ge#N$Dwy+wn@uivrugwpic8mxyPfHka'
+        from ietf.fgtida.dev_secrets import django_key
+        SECRET_KEY = django_key()
     if 'NOMCOM_APP_SECRET' not in locals():
-        NOMCOM_APP_SECRET = b'\x9b\xdas1\xec\xd5\xa0SI~\xcb\xd4\xf5t\x99\xc4i\xd7\x9f\x0b\xa9\xe8\xfeY\x80$\x1e\x12tN:\x84'
+        import hashlib
+        NOMCOM_APP_SECRET = hashlib.sha256(('development-nomcom:' + SECRET_KEY).encode()).digest()
 
-    ALLOWED_HOSTS = ['*',]
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1', '[::1]', 'testserver', 'postgrestest.ietf.org']
 
     try:
         # see https://github.com/omarish/django-cprofile-middleware

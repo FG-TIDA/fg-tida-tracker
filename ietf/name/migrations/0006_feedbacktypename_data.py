@@ -13,7 +13,11 @@ def forward(apps, schema_editor):
         ('junk',    'J', 5),
         ('read',    'R', 6),
     ):
-        ft = FeedbackTypeName.objects.get(slug=slug)
+        # A new FG-TIDA installation has no imported IETF vocabulary dataset.
+        ft, _ = FeedbackTypeName.objects.get_or_create(slug=slug, defaults={'name': {
+            'comment': 'Comment', 'nomina': 'Nomination', 'questio': 'Questionnaire',
+            'obe': 'Overcome by events', 'junk': 'Junk', 'read': 'Read',
+        }[slug]})
         ft.legend = legend
         ft.order = order
         ft.save()

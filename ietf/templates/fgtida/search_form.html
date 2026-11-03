@@ -1,0 +1,17 @@
+<form action="{% url 'fgtida:documents' %}" method="get" class="mb-4">
+    <label for="doc-name" class="visually-hidden">Document name, title or abstract</label>
+    <div class="input-group mb-3"><input class="form-control" id="doc-name" name="name" value="{% if query %}{{ query }}{% endif %}" placeholder="Document name, title or abstract" type="search"><button class="btn btn-primary" type="submit">Search</button></div>
+    <details {% if selected_type or selected_group or selected_category or selected_state or author or recent %}open{% endif %} class="border rounded p-3">
+        <summary class="h5 mb-0">Additional search criteria</summary>
+        <div class="row g-3 mt-1">
+            <div class="col-md-6"><label class="form-label" for="doc-recent">Recent activity</label><select id="doc-recent" name="recent" class="form-select"><option value="">Any time</option><option value="new" {% if recent == 'new' %}selected{% endif %}>New in the last 14 days</option><option value="updated" {% if recent == 'updated' %}selected{% endif %}>New revision in the last 14 days</option></select></div>
+            <div class="col-md-6"><label class="form-label" for="doc-sort">Sort documents</label><select id="doc-sort" name="sort" class="form-select"><option value="-time">Recently updated first</option><option value="time" {% if sort == 'time' %}selected{% endif %}>Oldest update first</option><option value="name" {% if sort == 'name' %}selected{% endif %}>Identifier</option><option value="title" {% if sort == 'title' %}selected{% endif %}>Title</option></select></div>
+            <div class="col-md-6"><label class="form-label" for="doc-type">Document type</label><select class="form-select" id="doc-type" name="type"><option value="">All document types</option>{% for slug,label in types %}<option value="{{ slug }}" {% if selected_type == slug %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+            <div class="col-md-6"><label class="form-label" for="doc-group">Working group</label><select class="form-select" id="doc-group" name="group"><option value="">All FG-TIDA groups</option>{% for group in groups %}<option value="{{ group.acronym }}" {% if selected_group == group.acronym %}selected{% endif %}>{{ group.name }} ({{ group.acronym|upper }})</option>{% endfor %}</select></div>
+            <div class="col-md-6"><label class="form-label" for="doc-author">Author or affiliation</label><input class="form-control" id="doc-author" name="author" value="{% if author %}{{ author }}{% endif %}"></div>
+            <div class="col-md-6"><label class="form-label" for="doc-category">Work category</label><select class="form-select" id="doc-category" name="category"><option value="">All categories</option>{% for slug,label in categories %}<option value="{{ slug }}" {% if selected_category == slug %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+            {% if states %}<div class="col-md-6"><label class="form-label" for="doc-state">Document state</label><select class="form-select" id="doc-state" name="state"><option value="">All states</option>{% for state in states %}<option value="{{ state.slug }}" {% if selected_state == state.slug %}selected{% endif %}>{{ state.name }}</option>{% endfor %}</select></div>{% endif %}
+        </div>
+        <div class="mt-3"><button class="btn btn-primary" type="submit">Search</button> <a class="btn btn-outline-secondary" href="{% url 'fgtida:documents' %}">Clear</a></div>
+    </details>
+</form>

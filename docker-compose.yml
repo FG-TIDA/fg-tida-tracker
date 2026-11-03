@@ -22,6 +22,7 @@ services:
 
         environment:
             DISPLAY: host.docker.internal:0
+            FGTIDA_DEV_DB_PASSWORD: ${FGTIDA_DEV_DB_PASSWORD:?Set this in the ignored .env file}
             # USER: django
             # UID: 1001
             # GID: 1001
@@ -50,9 +51,9 @@ services:
         image: dpage/pgadmin4:latest
         restart: unless-stopped
         environment:
-            - PGADMIN_DEFAULT_EMAIL=dev@ietf.org
-            - PGADMIN_DEFAULT_PASSWORD=dev
-            - PGADMIN_CONFIG_LOGIN_BANNER="Login with dev@ietf.org / dev"
+            - PGADMIN_DEFAULT_EMAIL=${FGTIDA_DEV_PGADMIN_EMAIL:?Set this in the ignored .env file}
+            - PGADMIN_DEFAULT_PASSWORD=${FGTIDA_DEV_PGADMIN_PASSWORD:?Set this in the ignored .env file}
+            - PGADMIN_CONFIG_LOGIN_BANNER="FG-TIDA database administration"
             - PGADMIN_DISABLE_POSTFIX=True
             - PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED=False
             - SCRIPT_NAME=/pgadmin
@@ -73,6 +74,7 @@ services:
             dockerfile: docker/celery.Dockerfile
         init: true
         environment:
+            FGTIDA_DEV_DB_PASSWORD: ${FGTIDA_DEV_DB_PASSWORD:?Set this in the ignored .env file}
             CELERY_APP: ietf
             CELERY_ROLE: worker
             UPDATE_REQUIREMENTS_FROM: requirements.txt
@@ -96,6 +98,7 @@ services:
             dockerfile: docker/celery.Dockerfile
         init: true
         environment:
+            FGTIDA_DEV_DB_PASSWORD: ${FGTIDA_DEV_DB_PASSWORD:?Set this in the ignored .env file}
             CELERY_APP: ietf
             CELERY_ROLE: worker
             UPDATE_REQUIREMENTS_FROM: requirements.txt
@@ -128,7 +131,7 @@ services:
         environment:
             POSTGRES_DB: blob
             POSTGRES_USER: dt
-            POSTGRES_PASSWORD: abcd1234
+            POSTGRES_PASSWORD: ${FGTIDA_DEV_DB_PASSWORD:?Set this in the ignored .env file}
         volumes:
             - blobdb-data:/var/lib/postgresql/data
 
@@ -151,7 +154,8 @@ services:
 #        image: "${COMPOSE_PROJECT_NAME}-celery"
 #        init: true
 #        environment:
-#            CELERY_APP: ietf
+#            FGTIDA_DEV_DB_PASSWORD: ${FGTIDA_DEV_DB_PASSWORD:?Set this in the ignored .env file}
+            CELERY_APP: ietf
 #            CELERY_ROLE: beat
 #            UPDATE_REQUIREMENTS_FROM: requirements.txt
 #        command:

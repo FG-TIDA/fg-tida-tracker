@@ -71,6 +71,7 @@ class Meeting(models.Model):
     # number is either the number for IETF meetings, or some other
     # identifier for interim meetings/IESG retreats/liaison summits/...
     number = models.CharField(unique=True, max_length=64)
+    title = models.CharField(max_length=255, blank=True, help_text='Full public meeting name. Spaces and punctuation are allowed.')
     type = ForeignKey(MeetingTypeName)
     # Date is useful when generating a set of timeslot for this meeting, but
     # is not used to determine date for timeslot instances thereafter, as
@@ -124,10 +125,16 @@ class Meeting(models.Model):
         help_text='Types of scheduling conflict between groups to consider')
 
     def __str__(self):
+        if self.type_id == 'tida' and self.title:
+            return self.title
         if self.type_id == "ietf":
             return u"IETF-%s" % (self.number)
         else:
             return self.number
+
+    @property
+    def display_title(self):
+        return self.title or self.number
 
     def get_meeting_date (self,offset):
         return self.date + datetime.timedelta(days=offset)
@@ -605,7 +612,7 @@ class FloorPlan(models.Model):
     modified= models.DateTimeField(auto_now=True)
     meeting = ForeignKey(Meeting)
     order   = models.SmallIntegerField()
-    image   = models.ImageField(
+    image   = models.FileField(
         storage=BlobShadowFileSystemStorage(kind="floorplan"),
         upload_to=floorplan_path,
         blank=False,

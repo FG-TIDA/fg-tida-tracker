@@ -17,5 +17,5 @@ This link will expire in {{ expire }} days.
 Best regards,
 
 	The datatracker login manager service
-	(for the IETF Secretariat)
+	(for the FG-TIDA Secretariat)
 {% endautoescape %}

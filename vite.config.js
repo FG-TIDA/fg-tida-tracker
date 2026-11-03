@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => {
     base: '/static/',
     build: {
       outDir: 'ietf/static/dist-neue',
-      manifest: true,
+      manifest: 'manifest.json',
       rollupOptions: {
         input: {
           main: 'client/main.js',
@@ -28,12 +28,12 @@ export default defineConfig(({ mode }) => {
     ],
     publicDir: 'ietf/static/public',
     server: {
-      host: true,
+      host: '127.0.0.1',
       port: 3000,
       strictPort: true
     },
     preview: {
-      host: true,
+      host: '127.0.0.1',
       port: 3000,
       strictPort: true
     },

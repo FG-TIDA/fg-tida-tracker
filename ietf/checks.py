@@ -29,6 +29,8 @@ def already_ran():
 
 @checks.register('directories')
 def check_id_submission_directories(app_configs, **kwargs):
+    if getattr(settings, 'FGTIDA_ONLY', False):
+        return []  # Internet-Draft submission routes are disabled in FG-TIDA.
     #
     if already_ran():
         return []
@@ -49,6 +51,8 @@ def check_id_submission_directories(app_configs, **kwargs):
 
 @checks.register('files')
 def check_id_submission_files(app_configs, **kwargs):
+    if getattr(settings, 'FGTIDA_ONLY', False):
+        return []
     #
     if already_ran():
         return []
@@ -85,6 +89,8 @@ def check_id_submission_files(app_configs, **kwargs):
 
 @checks.register('directories')
 def check_yang_model_directories(app_configs, **kwargs):
+    if getattr(settings, 'FGTIDA_ONLY', False):
+        return []
     #
     if already_ran():
         return []
@@ -106,6 +112,8 @@ def check_yang_model_directories(app_configs, **kwargs):
 
 @checks.register('submission-checkers')
 def check_id_submission_checkers(app_configs, **kwargs):
+    if getattr(settings, 'FGTIDA_ONLY', False):
+        return []
     #
     if already_ran():
         return []

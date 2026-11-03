@@ -1,0 +1,3 @@
+<span class="d-inline-flex flex-wrap gap-1">
+{% for label,icon,url in format_links %}<a class="btn btn-sm btn-outline-primary" href="{{ url }}" title="{{ label }}"><i class="bi bi-{{ icon }}" aria-hidden="true"></i> {{ label }}</a>{% empty %}<span class="text-body-secondary small">No file uploaded</span>{% endfor %}
+</span>

@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}History: {{ doc.title }} | FG-TIDA{% endblock %}
+{% block content %}<h1>{{ doc.title }}</h1>
+{% if revisions %}<p><a href="{% url 'fgtida:compare' doc.name %}"><i class="bi bi-file-diff" aria-hidden="true"></i> Compare revisions</a></p>{% endif %}
+<ul class="nav nav-tabs mb-3"><li class="nav-item"><a class="nav-link" href="{% url 'fgtida:document' doc.name %}">Document</a></li><li class="nav-item"><a class="nav-link active" href="{% url 'fgtida:history' doc.name %}">History</a></li></ul>
+<table class="table table-striped"><thead><tr><th>Date</th><th>By</th><th>Revision</th><th>Change</th></tr></thead><tbody>{% for event in page %}<tr><td>{{ event.time|date:"Y-m-d H:i T" }}</td><td>{{ event.by.name }}</td><td>{{ event.rev|default:"—" }}</td><td>{{ event.desc|striptags }}</td></tr>{% empty %}<tr><td colspan="4">No history recorded.</td></tr>{% endfor %}</tbody></table>{% include 'fgtida/pagination.html' %}{% endblock %}

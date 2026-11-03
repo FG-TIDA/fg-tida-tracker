@@ -12,7 +12,7 @@
         <meta charset="utf-8">
         <meta http-equiv="X-UA-Compatible" content="IE=edge">
         <title>
-            {% block title %}No title{% endblock %}
+            {% block title %}FG-TIDA Datatracker{% endblock %}
         </title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="traceparent" content="{{ otel.traceparent }}">
@@ -20,6 +20,7 @@
         <link href="{{ settings.STATIC_IETF_ORG }}/fonts/noto-sans-mono/import.css" rel="stylesheet">
         <link rel="stylesheet" href="{% static 'ietf/css/ietf.css' %}">
         <link rel="stylesheet" href="{% static 'ietf/css/select2.css' %}">
+        <link rel="stylesheet" href="{% static 'css/fgtida.css' %}">
         {# load this in the head, to prevent flickering #}
         <script src="{% static 'ietf/js/theme.js' %}"></script>
         <style>
@@ -28,7 +29,7 @@
         {% vite_hmr_client %}
         {% block pagehead %}{% endblock %}
         {% vite_asset 'client/embedded.js' %}
-        {% include "base/icons.html" %}
+        <link rel="icon" href="{% static 'images/fg-tida-logo.png' %}">
         <script src="{% static 'ietf/js/ietf.js' %}"></script>
         {% analytical_head_bottom %}
     </head>
@@ -37,47 +38,40 @@
         {% analytical_body_top %}
         {% include "base/status.html" %}
         <a class="visually-hidden visually-hidden-focusable" href="#content">Skip to main content</a>
-        <nav class="navbar navbar-expand-lg fixed-top {% if server_mode and server_mode != "production" %}bg-danger-subtle{% else %}bg-secondary-subtle{% endif %}">
+        <nav class="navbar navbar-expand-lg fixed-top fg-tida-navbar" id="fg-tida-navbar">
             <div class="container-fluid">
                 <a class="navbar-brand" href="/">
-                    {% include "logo.html" with org="ietf" classes="me-2" nor=True only %}
-                    Datatracker
+                    <img src="{% static 'images/fg-tida-logo.png' %}" alt="FG-TIDA" width="40" height="40" class="me-2 bg-white rounded" style="object-fit:contain">
+                    <strong>Datatracker</strong>
                     {% if server_mode and server_mode != "production" %}
                         <span class="text-danger">&delta;</span>
                     {% endif %}
                 </a>
                 <div class="collapse navbar-collapse" id="navbar-collapse">
                     <ul class="nav navbar-nav flex-nowrap">
-                        {% include "base/menu.html" with flavor="top" %}
+                        {% include "base/fg_tida_menu.html" %}
                     </ul>
                 </div>
                 <div class="d-flex align-items-center">
-                    <a class="nav-link text-danger d-none d-xl-inline me-xl-4"
+                    <a class="nav-link fg-tida-bug-link d-none d-xl-inline me-xl-4"
                        target="_blank"
-                       href="https://github.com/ietf-tools/datatracker/issues/new/choose">
+                       href="{{ platform_content.bug_report_url }}">
                         Report a bug
                         <i class="bi bi-bug"></i>
                     </a>
 
                     {% if not user.is_authenticated %}
-                        <a class="btn me-1 {% if server_mode and server_mode == "production" %} btn-warning {% else %} btn-info {% endif %} d-none d-sm-block"
+                        <a class="btn btn-warning me-1 d-none d-sm-block"
                            rel="nofollow"
                            href="{% url 'ietf.ietfauth.views.login' %}?next={{ request.get_full_path|removeprefix:'/accounts/logout'|removeprefix:'/accounts/login/?next='|urlencode }}">
                             Sign in
                         </a>
                     {% endif %}
 
-                    <div class="d-none d-md-block dropdown" id="navbar-doc-search-wrapper">
-                        <input class="form-control"
-                               id="navbar-doc-search"
-                               type="text"
-                               placeholder="Document search"
-                               autocomplete="off"
-                               data-ajax-url="{% url 'ietf.doc.views_search.ajax_select2_search_docs' model_name='document' doc_type='all' %}"
-                               aria-label="Document search">
-                        <ul class="dropdown-menu" id="navbar-doc-search-results">
-                        </ul>
-                    </div>
+                    <form class="d-none d-md-flex" action="{% url 'fgtida:documents' %}" method="get" role="search">
+                        <input class="form-control" name="q" type="search" maxlength="200" placeholder="Document search" aria-label="Document search">
+                        <button class="visually-hidden" type="submit">Search</button>
+                    </form>
                 </div>
                 <button class="navbar-toggler"
                         type="button"
@@ -93,17 +87,11 @@
         {% block precontent %}{% endblock %}
         <main class="pt-3 container-fluid" id="main">
             <div class="row">
-                {% if request.COOKIES.left_menu == "on" and not hide_menu %}
-                    <div class="d-none d-md-block bg-light-subtle py-3 leftmenu small">
-                        <ul class="nav nav-pills flex-column">
-                            {% include "base/menu.html" with flavor="left" %}
-                        </ul>
-                    </div>
-                {% endif %}
+
                 <div class="col mx-lg-3 ietf-auto-nav" id="content">
                     <noscript data-nosnippet>
                         <div class="alert alert-danger alert-ignore my-3">
-                            <b>Javascript disabled?</b> Like other modern websites, the IETF Datatracker relies on Javascript.
+                            <b>Javascript disabled?</b> Like other modern websites, the FG-TIDA Datatracker relies on Javascript.
                             Please enable Javascript for full functionality.
                         </div>
                     </noscript>
@@ -122,53 +110,24 @@
             </div>
         </main>
         {% block footer %}
-            <footer class="col-md-12 col-sm-12 border-top mt-5 py-5 bg-light-subtle text-center position-sticky">
-                <a href="https://www.ietf.org/" class="p-3">IETF</a>
-                <a href="https://www.ietf.org/iesg/" class="p-3">IESG</a>
-                <a href="https://www.iab.org/" class="p-3">IAB</a>
-                <a href="https://www.irtf.org/" class="p-3">IRTF</a>
-                <a href="https://www.ietf.org/llc/" class="p-3 text-nowrap">IETF LLC</a>
-                <a href="https://trustee.ietf.org/" class="p-3 text-nowrap">IETF Trust</a>
-                <a href="https://www.rfc-editor.org/" class="p-3 text-nowrap">RFC Editor</a>
-                <a href="https://www.iana.org/" class="p-3">IANA</a>
-                <a href="https://www.ietf.org/privacy-statement/" class="p-3 text-nowrap">Privacy Statement</a>
-                <div class="small text-body-secondary py-3">
-                    {% if version_num %}
-                        <a class="mx-2" href="/release/about">About IETF Datatracker</a>
-                        <span class="mx-2">
-                            {% if server_mode and server_mode == "production" %}
-                                <a href="https://github.com/ietf-tools/datatracker/releases/tag/{{version_num}}">
-                            {% endif %}
-                            Version {{ version_num }}{% if patch %}{{patch}}{% endif %}
-                            {% if branch %}({{ branch }} - {{ git_hash|slice:":7" }}){% endif %}
-                            {% if server_mode and server_mode == "production" %}
-                                </a>
-                            {% endif %}
-                        </span>
-                    {% endif %}
-                    <a class="mx-2" href="https://status.ietf.org" target="_blank">System Status</a>
-                    <span class="mx-2 text-danger">
-                        <i class="bi bi-bug"></i>
-                        Report a bug:
-                        <a class="text-reset" target="_blank" href="https://github.com/ietf-tools/datatracker/issues/new/choose">GitHub</a>
-                        {% if bugreport_email %}
-                            <a class="text-reset" href="mailto:{{ bugreport_email }}">Email</a>
-                        {% endif %}
-                    </span>
-                    {% if server_mode and server_mode != "production" %}
-                        <br>
-                        {% if python_version %}Python {{ python_version }}{% endif %}
-                        {% if django_version %}Django {{ django_version }}{% endif %}
-                        <br>
-                        {% include "debug.html" %}
-                    {% endif %}
-                </div>
-            </footer>
+        <footer class="col-md-12 border-top mt-5 py-5 bg-light-subtle text-center">
+            <a class="p-3" href="{{ platform_content.official_url }}">FG-TIDA</a>
+            <a class="p-3" href="{% url 'fgtida:groups' %}">Working groups</a>
+            <a class="p-3" href="{% url 'fgtida:documents' %}">Documents</a>
+            <a class="p-3" href="{% url 'fgtida:upcoming' %}">Meetings</a>
+            <a class="p-3 text-nowrap" href="mailto:{{ platform_content.secretariat_email }}">FG-TIDA Secretariat</a>
+            <div class="small text-body-secondary py-3">
+                <span class="mx-2">FG-TIDA Datatracker</span>
+                {% if version_num %}<span class="mx-2">Version {{ version_num }}</span>{% endif %}
+                <a class="mx-2" href="{{ platform_content.bug_report_url }}"><i class="bi bi-bug" aria-hidden="true"></i> Report a bug</a>
+            </div>
+        </footer>
         {% endblock %}
         {% block js %}
         {% endblock %}
         <script src="{% static 'ietf/js/select2.js' %}"></script>
-        <script src="{% static 'ietf/js/navbar-doc-search.js' %}"></script>
+        <script src="{% static 'js/fgtida-layout.js' %}"></script>
+
       {% analytical_body_bottom %}
     </body>
 </html>

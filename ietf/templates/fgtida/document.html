@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% load fgtida %}
+{% block title %}{{ snapshot.title }} | FG-TIDA Datatracker{% endblock %}
+{% block content %}
+<h1>{{ snapshot.title }}</h1><p class="text-muted">{{ doc.name }}{% if snapshot.rev %}-{{ snapshot.rev }}{% endif %}</p>
+<ul class="nav nav-tabs mb-3"><li class="nav-item"><a class="nav-link active" href="{% url 'fgtida:document' doc.name %}">Document</a></li><li class="nav-item"><a class="nav-link" href="{% url 'fgtida:history' doc.name %}">History</a></li></ul>
+<table class="table"><tbody><tr><th>Type</th><td>{% document_type snapshot %}</td></tr><tr><th>Group</th><td><a href="{% url 'fgtida:group' doc.group.acronym %}">{{ doc.group.name }}</a></td></tr><tr><th>State</th><td>{% document_states snapshot %}</td></tr><tr><th>Authors</th><td>{% for author in authors %}{{ author.person.name }}{% if author.affiliation %} ({{ author.affiliation }}){% endif %}{% if not forloop.last %}, {% endif %}{% empty %}Not entered{% endfor %}</td></tr><tr><th>Last updated</th><td>{{ snapshot.time|date:"Y-m-d H:i T" }}</td></tr></tbody></table>
+{% if perms.doc.change_document %}<p><a class="btn btn-primary" href="{% url 'admin:doc_document_change' doc.pk %}">Edit document / upload revision</a></p>{% endif %}
+<h2 class="h5">Formats and resources</h2><div class="mb-3">{% document_formats snapshot %}</div>
+<p>{% document_categories snapshot %}</p><h2>Abstract</h2><div class="text-break">{{ snapshot.abstract|default:"No abstract entered."|rich_text }}</div>
+{% if relationships or incoming %}<h2 class="mt-4">Related documents</h2><ul>{% for relation in relationships %}<li>{{ relation.relationship.name }}: <a href="{% url 'fgtida:document' relation.target.name %}">{{ relation.target.title }}</a></li>{% endfor %}{% for relation in incoming %}<li><a href="{% url 'fgtida:document' relation.source.name %}">{{ relation.source.title }}</a> — {{ relation.relationship.name }} this document</li>{% endfor %}</ul>{% endif %}
+{% if sessions %}<h2 class="mt-4">Meeting materials</h2><ul>{% for session in sessions %}<li><a href="{% url 'fgtida:meeting' session.meeting.number %}">{{ session.name|default:session.meeting.display_title }}</a></li>{% endfor %}</ul>{% endif %}
+<h2 class="mt-4">Revisions</h2>{% if revisions %}<p><a href="{% url 'fgtida:compare' doc.name %}"><i class="bi bi-file-diff" aria-hidden="true"></i> Compare revisions</a></p>{% endif %}<ul>{% for revision in revisions %}<li><a href="{% url 'fgtida:revision' doc.name revision.rev %}">Revision {{ revision.rev }}</a> · {{ revision.time|date:"Y-m-d H:i" }}</li>{% empty %}<li>No file revisions have been uploaded.</li>{% endfor %}</ul>
+{% if text %}<details><summary>Document text</summary>{% if text_is_markdown %}<div class="text-break">{{ text|rich_text }}</div>{% else %}<pre style="white-space:pre-wrap;overflow-wrap:anywhere">{{ text }}</pre>{% endif %}</details>{% endif %}
+{% endblock %}

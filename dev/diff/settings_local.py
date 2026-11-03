@@ -1,3 +1,4 @@
+import os
 # Copyright The IETF Trust 2007-2019, All Rights Reserved
 # -*- coding: utf-8 -*-
 
@@ -12,7 +13,7 @@ DATABASES = {
         'NAME': 'datatracker',
         'ENGINE': 'django.db.backends.postgresql',
         'USER': 'django',
-        'PASSWORD': 'RkTkDPFnKpko',
+        'PASSWORD': os.environ['FGTIDA_DEV_DB_PASSWORD'],
     },
 }
 

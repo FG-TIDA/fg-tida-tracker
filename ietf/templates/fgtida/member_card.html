@@ -1,0 +1,5 @@
+<article class="card h-100"><div class="card-body text-center">
+{% if person.photo_thumb or person.photo %}<img src="{% url 'fgtida:photo' person.pk %}" alt="Photo of {{ person.name }}" width="128" height="128" class="rounded object-fit-cover mb-3" loading="lazy">{% else %}<div class="mb-3" style="font-size:4rem"><i class="bi bi-person-circle" aria-hidden="true"></i><span class="visually-hidden">Photo not supplied</span></div>{% endif %}
+<h3 class="h5"><a href="{% url 'fgtida:person' person.pk %}">{{ person.name }}</a></h3>
+{% for role in person.fg_roles %}<span class="badge text-bg-light">{{ role.name.name }}</span>{% endfor %}
+</div></article>

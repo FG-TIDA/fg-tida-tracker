@@ -1,0 +1,5 @@
+{% if page.has_other_pages %}<nav class="d-flex gap-3 my-3" aria-label="Results pages">
+{% if page.has_previous %}<a href="?{{ queryargs }}&amp;page={{ page.previous_page_number }}">Previous</a>{% endif %}
+<span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+{% if page.has_next %}<a href="?{{ queryargs }}&amp;page={{ page.next_page_number }}">Next</a>{% endif %}
+</nav>{% endif %}

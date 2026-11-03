@@ -34,6 +34,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ("meeting", "0012_registration_registrationticket"),
+        ("stats", "0001_initial"),
     ]
 
     operations = [
