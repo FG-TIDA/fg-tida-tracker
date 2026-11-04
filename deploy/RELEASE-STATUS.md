@@ -90,6 +90,16 @@ launch requirements below. See [Render redeployment instructions](RENDER.md).
   tar finding's applicability are documented in [native security](NATIVE-SECURITY.md).
   Findings were not globally suppressed and a zero-finding audit is not claimed.
 
+## MFA redirect repair — 4 November 2026
+
+Only published page navigations can now set the MFA return destination;
+background requests cannot replace it. Stale, unpublished or unsafe destinations
+fall back to the homepage. FG-TIDA's base template no longer requests the unused
+IETF status/menu endpoints. All 71 FG-TIDA regression tests pass, including
+password login followed by a real test authenticator code, intervening background
+requests and arrival at the admin dashboard. Existing accounts, enrollments and
+recovery codes are preserved.
+
 ## Remaining publication and operator requirements
 
 1. **OS-library monitoring:** the Expat and zlib fixes above address the three previously identified high-severity code flaws. Retain raw scanner results and review vendor-tracked findings; an unbounded stable-distribution advisory can continue flagging a project backport. Do not globally suppress packages or claim a zero-finding audit. Replace the temporary backports with official stable updates when available.

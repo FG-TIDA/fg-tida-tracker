@@ -33,10 +33,8 @@
         <script src="{% static 'ietf/js/ietf.js' %}"></script>
         {% analytical_head_bottom %}
     </head>
-    <body {% block bodyAttrs %}{% endblock %} class="navbar-offset position-relative"
-          data-group-menu-data-url="{% url 'ietf.group.views.group_menu_data' %}">
+    <body {% block bodyAttrs %}{% endblock %} class="navbar-offset position-relative">
         {% analytical_body_top %}
-        {% include "base/status.html" %}
         <a class="visually-hidden visually-hidden-focusable" href="#content">Skip to main content</a>
         <nav class="navbar navbar-expand-lg fixed-top fg-tida-navbar" id="fg-tida-navbar">
             <div class="container-fluid">

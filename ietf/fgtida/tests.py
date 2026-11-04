@@ -138,6 +138,50 @@ class NativeDatatrackerTests(TestCase):
         self.assertTrue(TOTPDevice.objects.filter(user=self.user, confirmed=True).exists())
 
     @override_settings(FGTIDA_REQUIRE_ADMIN_MFA=True)
+    def test_admin_mfa_code_returns_to_admin_despite_background_requests(self):
+        from django.test import Client
+        from django_otp.oath import totp
+        from django_otp.plugins.otp_totp.models import TOTPDevice
+        browser = Client()
+        device = TOTPDevice.objects.create(user=self.user, confirmed=True)
+        response = browser.post('/accounts/login/?next=/admin/',
+            {'username': self.user.username, 'password': 'test-password'})
+        self.assertRedirects(response, '/admin/', fetch_redirect_response=False)
+        self.assertRedirects(browser.get('/admin/', HTTP_SEC_FETCH_DEST='document'),
+            '/accounts/mfa/verify/', fetch_redirect_response=False)
+        verification = browser.get('/accounts/mfa/verify/')
+        self.assertNotContains(verification, 'data-component="Status"')
+        self.assertNotContains(verification, 'data-group-menu-data-url')
+        from django.urls import reverse
+        for path, headers in [(reverse('ietf.group.views.group_menu_data'), {'HTTP_X_REQUESTED_WITH': 'XMLHttpRequest'}),
+                              ('/status/latest.json', {'HTTP_SEC_FETCH_DEST': 'empty'}),
+                              ('/favicon.ico', {'HTTP_SEC_FETCH_DEST': 'image'}),
+                              ('/doc/', {'HTTP_SEC_FETCH_DEST': 'empty'}),
+                              ('/accounts/review/', {'HTTP_X_REQUESTED_WITH': 'XMLHttpRequest'}),
+                              ('/not-a-tracker-page/', {'HTTP_SEC_FETCH_DEST': 'document'})]:
+            browser.get(path, **headers)
+            self.assertEqual(browser.session['fgtida_mfa_next'], '/admin/')
+        response = browser.post('/accounts/mfa/verify/', {'token': str(totp(device.bin_key)).zfill(6)})
+        self.assertRedirects(response, '/admin/')
+        self.assertNotIn('fgtida_mfa_next', browser.session)
+
+    def test_mfa_stale_missing_hidden_and_unsafe_destinations_fall_back_home(self):
+        from django.test import RequestFactory
+        from .mfa import destination
+        request = RequestFactory().get('/accounts/mfa/verify/')
+        request.user = self.user
+        for target in ['/api/', '/accounts/apikey/', '/accounts/review/', '/admin/nomcom/',
+                       '/favicon.ico', '/not-a-tracker-page/', '/accounts/mfa/verify/',
+                       '/accounts/login/', 'admin/', 'https://untrusted.example.invalid/',
+                       '//untrusted.example.invalid/', None]:
+            request.session = {'fgtida_mfa_next': target}
+            self.assertEqual(destination(request), '/', target)
+            self.assertNotIn('fgtida_mfa_next', request.session)
+        for target in ['/admin/', '/doc/?q=tida', '/accounts/profile/']:
+            request.session = {'fgtida_mfa_next': target}
+            self.assertEqual(destination(request), target)
+
+    @override_settings(FGTIDA_REQUIRE_ADMIN_MFA=True)
     def test_regular_login_goes_home_and_mfa_is_optional(self):
         from django.test import Client
         user = get_user_model().objects.create_user(username='member-login-test', password='test-password')

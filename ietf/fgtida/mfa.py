@@ -1,13 +1,17 @@
 """Authenticator-app MFA using django-otp; no secrets in URLs or logs."""
 import base64
 import secrets
+from copy import copy
 from datetime import timedelta
+from urllib.parse import unquote, urlsplit
 from django import forms
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.shortcuts import redirect, render
 from django.http import HttpResponse
+from django.http import QueryDict
+from django.urls import resolve, Resolver404
 from django.utils import timezone
 from django.utils.crypto import salted_hmac
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -50,6 +54,50 @@ def required_for(user):
     return getattr(settings, 'FGTIDA_REQUIRE_ADMIN_MFA', True) and (user.is_staff or user.is_superuser)
 
 
+def available_destination(request, target):
+    """Accept local, published destinations without executing their views."""
+    if not isinstance(target, str) or not url_has_allowed_host_and_scheme(
+            target, {request.get_host()}, require_https=not settings.DEBUG):
+        return False
+    parsed = urlsplit(target)
+    path = unquote(parsed.path)
+    if not path.startswith('/') or path.startswith(('/accounts/mfa/', settings.STATIC_URL)):
+        return False
+    if path in {'/accounts/login/', '/accounts/logout/', '/admin/login/', '/admin/logout/'}:
+        return False
+    try:
+        match = resolve(path)
+    except Resolver404:
+        return False
+    if match.namespace not in {'fgtida', 'admin'} and match.func.__module__ != 'ietf.ietfauth.views':
+        return False
+    if match.namespace == 'admin' and match.url_name in {'autocomplete', 'jsi18n'}:
+        return False
+    # A registered upstream URL can still be intentionally unavailable here.
+    # Reuse the publication boundary instead of maintaining a second allowlist.
+    from .security import ADMIN_MODELS, PublicationBoundaryMiddleware
+    if match.namespace == 'admin' and match.url_name == 'app_list' and match.kwargs.get('app_label') not in ADMIN_MODELS:
+        return False
+    probe = copy(request)
+    probe.path_info = path
+    probe.path = parsed.path
+    probe.GET = QueryDict(parsed.query)
+    probe.resolver_match = match
+    return PublicationBoundaryMiddleware(lambda request: None).process_view(
+        probe, match.func, match.args, match.kwargs) is None
+
+
+def page_navigation(request):
+    """Background fetches, scripts and icons must not replace the login target."""
+    if request.method != 'GET' or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return False
+    destination = request.headers.get('Sec-Fetch-Dest')
+    if destination is not None:
+        return destination == 'document'
+    accept = request.headers.get('Accept')
+    return accept is None or 'text/html' in accept or 'application/xhtml+xml' in accept
+
+
 class MfaGateMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
@@ -70,7 +118,7 @@ class MfaGateMiddleware:
                 device = TOTPDevice.objects.filter(user=request.user, confirmed=True).first()
                 if device or required_for(request.user):
                     if not request.user.is_verified():
-                        if request.method == 'GET' and not request.path.startswith('/accounts/mfa/'):
+                        if page_navigation(request) and available_destination(request, request.get_full_path()):
                             request.session['fgtida_mfa_next'] = request.get_full_path()
                         return redirect('fgtida:mfa-verify' if device else 'fgtida:mfa-setup')
         return self.get_response(request)
@@ -94,7 +142,7 @@ def page(request, **context):
 
 def destination(request):
     target = request.session.pop('fgtida_mfa_next', '/')
-    if not url_has_allowed_host_and_scheme(target, {request.get_host()}, require_https=not settings.DEBUG):
+    if not available_destination(request, target):
         return '/'
     return target
 

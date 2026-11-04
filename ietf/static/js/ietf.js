@@ -142,10 +142,11 @@ function ensureDropdownOnscreen(elm) {
 
 $(document)
     .ready(function () {
-        // load data for the menu
+        // FG-TIDA renders its menu on the server and exposes no IETF menu API.
+        const menuDataUrl = $(document.body).data("group-menu-data-url");
+        if (!menuDataUrl) return;
         $.ajax({
-            url: $(document.body)
-                .data("group-menu-data-url"),
+            url: menuDataUrl,
             type: "GET",
             dataType: "json",
             success: function (data) {
