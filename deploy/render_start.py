@@ -8,6 +8,21 @@ import sys
 import time
 
 
+def prepare_data_directories(data):
+    data = Path(data)
+    if not data.is_dir() or not os.access(data, os.W_OK):
+        raise RuntimeError('The persistent /data mount must be writable by the tracker user.')
+    root = data.resolve()
+    # A mounted Render disk hides the empty directories in the image. Exports
+    # contain files, so a directory with no uploads may not exist after restore.
+    for relative in ('media/photo', 'proceedings', 'documents', 'charters',
+                     'internet-drafts', 'rfc', 'static'):
+        target = data / relative
+        if not target.resolve().is_relative_to(root):
+            raise RuntimeError('An application data directory points outside the persistent disk.')
+        target.mkdir(mode=0o750, parents=True, exist_ok=True)
+
+
 def main():
     if os.environ.get('FGTIDA_ENV') != 'production':
         raise RuntimeError('The Render service must use FGTIDA_ENV=production.')
@@ -18,8 +33,7 @@ def main():
     if not 1024 <= port <= 65535:
         raise RuntimeError('PORT must be an unprivileged TCP port.')
     data = Path(os.environ.get('FGTIDA_DATA_DIR', '/data'))
-    if not data.is_dir() or not os.access(data, os.W_OK):
-        raise RuntimeError('The persistent /data mount must be writable by the tracker user.')
+    prepare_data_directories(data)
     children = []
 
     def stop(signum, frame):

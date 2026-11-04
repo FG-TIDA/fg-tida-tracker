@@ -320,7 +320,7 @@ class NativeDatatrackerTests(TestCase):
         from .security import ADMIN_MODELS
         request = RequestFactory().get('/admin/')
         request.user = self.user
-        Email.objects.get_or_create(address=self.user.email, defaults={'person': core.actor_for(self.user)})
+        Email.objects.get_or_create(address=self.user.email, defaults={'person': core.actor_for(self.user), 'origin': 'test fixture'})
         for app, names in ADMIN_MODELS.items():
             for name in sorted(names):
                 with self.subTest(model=f'{app}.{name}'):
@@ -433,7 +433,11 @@ class NativeDatatrackerTests(TestCase):
         self.client.force_login(created)
         self.assertContains(self.client.get('/'), 'Public profile page')
         self.assertEqual(self.client.get(f'/people/{created.person.pk}/').status_code, 200)
-        self.assertEqual(self.client.get('/accounts/apikey/').status_code, 200)
+        self.assertNotContains(self.client.get('/'), 'API keys')
+        for path in ('/accounts/apikey/', '/accounts/apikey/add/', '/accounts/apikey/del/',
+                     '/api/', '/api/schema/', '/api/red/doc/'):
+            self.assertEqual(self.client.get(path).status_code, 404)
+            self.assertEqual(self.client.post(path, {}).status_code, 404)
         self.assertEqual(self.client.post('/accounts/logout/').status_code, 200)
         self.assertNotIn('_auth_user_id', self.client.session)
 
@@ -464,8 +468,8 @@ class NativeDatatrackerTests(TestCase):
 
     def test_publication_boundary_blocks_inherited_interfaces(self):
         self.client.logout()
-        for path in ['/api/v1/doc/document/?limit=1', '/feed/', '/iesg/',
-                     '/accounts/apikey/add/', '/admin/meeting/schedulingevent/',
+        for path in ['/api/v1/doc/document/?limit=1', '/api/schema/', '/feed/', '/iesg/',
+                     '/accounts/apikey/', '/accounts/apikey/add/', '/accounts/apikey/del/', '/admin/meeting/schedulingevent/',
                      '/doc/rfc9110/history/', '/person/1/']:
             with self.subTest(path=path):
                 self.assertEqual(self.client.get(path).status_code, 404)
@@ -679,9 +683,27 @@ class NativeDatatrackerTests(TestCase):
         self.assertNotContains(page, '<td>templates<div>', html=False)
 
     def test_email_identity_remains_case_insensitive(self):
-        email = Email.objects.create(address='Mixed.Case@example.test', person=core.actor_for(self.user))
+        email = Email.objects.create(address='Mixed.Case@example.test', person=core.actor_for(self.user), origin='test fixture')
         self.assertEqual(Email.objects.get(address='mixed.case@EXAMPLE.test').pk, email.pk)
         self.assertTrue(Email.objects.filter(address__icontains='mixed.case').exists())
+        self.assertTrue(email.history.filter(address='mixed.case@EXAMPLE.test').exists())
+        from django.db import IntegrityError, transaction
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Email.objects.create(address='mixed.case@EXAMPLE.test', person=email.person, origin='test fixture')
+
+    def test_email_identity_columns_and_foreign_keys_use_citext(self):
+        from django.db import connection
+        if connection.vendor != 'postgresql':
+            self.skipTest('PostgreSQL identity storage check.')
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT format_type(atttypid, atttypmod) FROM pg_attribute WHERE attrelid='person_email'::regclass AND attname='address'")
+            self.assertEqual(cursor.fetchone()[0], 'citext')
+            cursor.execute("SELECT format_type(atttypid, atttypmod) FROM pg_attribute WHERE attrelid='person_historicalemail'::regclass AND attname='address'")
+            self.assertEqual(cursor.fetchone()[0], 'citext')
+            cursor.execute("SELECT format_type(a.atttypid, a.atttypmod) FROM pg_constraint c CROSS JOIN LATERAL unnest(c.conkey) AS k(attnum) JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.attnum WHERE c.contype='f' AND c.confrelid='person_email'::regclass")
+            types = [row[0] for row in cursor.fetchall()]
+            self.assertTrue(types)
+            self.assertEqual(set(types), {'citext'})
 
     def test_admin_upload_creates_native_document_and_history(self):
         doc = self.create_doc()
@@ -757,7 +779,7 @@ class NativeDatatrackerTests(TestCase):
         person = Person.objects.create(name='Member Example', ascii='Member Example')
         photo_bytes = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j9HkAAAAASUVORK5CYII=')
         person.photo.save('member.png', ContentFile(photo_bytes))
-        email = Email.objects.create(address='member@example.test', person=person)
+        email = Email.objects.create(address='member@example.test', person=person, origin='test fixture')
         response = self.client.post('/admin/group/role/add/', {'group': self.root.pk, 'name': 'member', 'person': person.pk, 'email': email.pk, '_save': 'Save'})
         self.assertEqual(response.status_code, 302)
         self.assertTrue(self.root.groupevent_set.exists())

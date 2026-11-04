@@ -6,6 +6,11 @@ from django.core.exceptions import ImproperlyConfigured
 
 
 def apply_render_settings(config):
+    # Preloading is a separate, durable browser-list policy, not a deployment
+    # prerequisite. Current https://hstspreload.org/ guidance discourages it.
+    # Keep ordinary HSTS enabled and retain all other security checks, including
+    # W005 until the owner explicitly opts into HTTPS for all web subdomains.
+    config['SILENCED_SYSTEM_CHECKS'] = [*config.get('SILENCED_SYSTEM_CHECKS', []), 'security.W021']
     hostname = os.environ.get('RENDER_EXTERNAL_HOSTNAME', '').strip().lower()
     if hostname and not re.fullmatch(r'[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.onrender\.com', hostname):
         raise ImproperlyConfigured('RENDER_EXTERNAL_HOSTNAME must be the service onrender.com hostname.')

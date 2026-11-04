@@ -25,8 +25,7 @@ EDITOR_MODELS.discard('fgtida.securityquestion')
 EDITOR_MODELS.discard('fgtida.contributionrecipient')
 ACCOUNT_VIEWS = {'index', 'confirm_new_email', 'create_account', 'confirm_account',
                  'change_password', 'profile', 'edit_person_externalresources',
-                 'password_reset', 'confirm_password_reset', 'change_username', 'AnyEmailLoginView',
-                 'apikey_index', 'apikey_disable'}
+                 'password_reset', 'confirm_password_reset', 'change_username', 'AnyEmailLoginView'}
 
 
 class PublicationBoundaryMiddleware(MiddlewareMixin):

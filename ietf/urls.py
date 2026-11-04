@@ -47,7 +47,6 @@ urlpatterns = [
     url(r'^admin/', admin.site.urls),
     url(r'^admin/docs/', include('django.contrib.admindocs.urls')),
     url(r'^ann/', include('ietf.nomcom.redirect_ann_urls')),
-    url(r'^api/', include('ietf.api.urls')),
     url(r'^community/', include('ietf.community.urls')),
     url(r'^accounts/settings/', include('ietf.cookies.urls')),
     url(r'^doc/', include('ietf.doc.urls')),

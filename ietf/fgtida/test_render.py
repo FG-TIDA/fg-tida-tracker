@@ -22,6 +22,26 @@ from .render_http import RenderEdgeMiddleware
 @override_settings(ALLOWED_HOSTS=['tracker.example.test', 'tracker.onrender.com'],
                    FGTIDA_PUBLIC_DOMAIN='tracker.example.test', SITE_URL='https://tracker.example.test')
 class RenderProfileTests(SimpleTestCase):
+    def test_empty_disk_directories_are_created_without_replacing_uploads(self):
+        prepare = runpy.run_path('deploy/render_start.py')['prepare_data_directories']
+        with tempfile.TemporaryDirectory() as folder:
+            prepare(folder)
+            photo = Path(folder) / 'media/photo/existing.jpg'
+            photo.write_bytes(b'preserve existing upload')
+            prepare(folder)
+            self.assertEqual(photo.read_bytes(), b'preserve existing upload')
+            for relative in ('media/photo', 'proceedings', 'documents', 'charters',
+                             'internet-drafts', 'rfc', 'static'):
+                self.assertTrue((Path(folder) / relative).is_dir())
+
+    def test_disk_directory_symlink_cannot_escape_mount(self):
+        prepare = runpy.run_path('deploy/render_start.py')['prepare_data_directories']
+        with tempfile.TemporaryDirectory() as folder, tempfile.TemporaryDirectory() as outside:
+            (Path(folder) / 'media').symlink_to(outside, target_is_directory=True)
+            with self.assertRaisesMessage(RuntimeError, 'outside the persistent disk'):
+                prepare(folder)
+            self.assertFalse((Path(outside) / 'photo').exists())
+
     def test_bootstrap_exposes_no_files_or_application(self):
         application = runpy.run_path('deploy/render_bootstrap.py')['application']
         for path, expected in [('/health/', '200 OK'), ('/', '503 Service Unavailable'),
@@ -73,9 +93,24 @@ class RenderProfileTests(SimpleTestCase):
                 self.assertIn('tracker.onrender.com', config['ALLOWED_HOSTS'])
                 self.assertEqual(config['CSRF_TRUSTED_ORIGINS'], ['https://tracker.example.test'])
                 self.assertEqual(config['CACHES']['default']['LOCATION'], '127.0.0.1:11211')
+                self.assertFalse(config['SECURE_HSTS_INCLUDE_SUBDOMAINS'])
+                self.assertFalse(config['SECURE_HSTS_PRELOAD'])
+                self.assertIn('security.W021', config['SILENCED_SYSTEM_CHECKS'])
+                self.assertNotIn('security.W005', config['SILENCED_SYSTEM_CHECKS'])
+                os.environ['FGTIDA_HSTS_INCLUDE_SUBDOMAINS'] = 'true'
+                opted_in = runpy.run_path(str(Path(__file__).with_name('production_settings.py')))
+                self.assertTrue(opted_in['SECURE_HSTS_INCLUDE_SUBDOMAINS'])
                 os.environ['RENDER_EXTERNAL_HOSTNAME'] = '*.onrender.com'
                 with self.assertRaises(ImproperlyConfigured):
                     apply_render_settings(config)
+
+    @override_settings(SECURE_HSTS_SECONDS=31536000, SECURE_HSTS_INCLUDE_SUBDOMAINS=True,
+                       SECURE_HSTS_PRELOAD=False)
+    def test_https_policy_covers_subdomains_without_browser_preload(self):
+        from django.middleware.security import SecurityMiddleware
+        response = SecurityMiddleware(lambda request: HttpResponse('OK'))(
+            RequestFactory().get('/', secure=True, HTTP_HOST='tracker.example.test'))
+        self.assertEqual(response['Strict-Transport-Security'], 'max-age=31536000; includeSubDomains')
 
     def test_celery_cannot_silently_publish(self):
         from ietf.celeryapp import app, debug_task
@@ -84,6 +119,16 @@ class RenderProfileTests(SimpleTestCase):
                 app.send_task('example.unconfigured')
             with self.assertRaisesMessage(RuntimeError, 'Celery publishing is disabled'):
                 debug_task.delay()
+
+    def test_removed_api_is_absent_from_routes_and_generated_schema(self):
+        from django.urls import resolve, Resolver404
+        from drf_spectacular.generators import SchemaGenerator
+        for path in ('/api/', '/api/schema/', '/api/red/doc/', '/accounts/apikey/',
+                     '/accounts/apikey/add/', '/accounts/apikey/del/'):
+            with self.assertRaises(Resolver404):
+                resolve(path)
+        schema = SchemaGenerator().get_schema(request=None, public=True)
+        self.assertFalse(any(path.startswith('/api/') for path in schema['paths']))
 
 
 class ArtifactRestoreTests(SimpleTestCase):

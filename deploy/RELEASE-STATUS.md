@@ -35,6 +35,31 @@ synthetic test credentials and local audit files are not part of the commit.
 These checks do not clear the OS advisories or complete the live Render/ITU
 configuration. Deploy `bootstrap` first, not the full public website.
 
+## Redeployment fixes — 4 November 2026
+
+- Removed the unused API router, personal API-key routes and their menu entries.
+  Direct GET/POST requests remain unavailable to anonymous and signed-in users.
+  This also removes the inherited RFC API schema warnings from deployment checks.
+- Startup initializes empty persistent upload directories without replacing files.
+- Added explicit `FGTIDA_HSTS_INCLUDE_SUBDOMAINS` opt-in. Browser preloading stays
+  off in accordance with current hstspreload.org guidance; only optional W021 is
+  documented as an intentional Render policy exception. Other security checks
+  remain enabled.
+- Added an atomic email-column repair for fresh Django 5 schemas. It preserves
+  case-insensitive identity, related foreign keys and account/MFA data, and refuses
+  case-colliding addresses without deleting or merging identities. Existing
+  application code already expects citext. Run migrations in Render's pre-deploy
+  command after taking a database backup; do not re-import the release fixture.
+- All 67 FG-TIDA/Render regression tests passed. The final image built, model-state
+  checking found no missing migrations, and a populated PostgreSQL 18 upgrade
+  preserved users, password hashes, MFA and email values. Collision rejection,
+  citext foreign-key types, directory setup, HTTPS headers, removed APIs and both
+  deployment/publication checks passed. The full production deployment check
+  reports no issues with two documented silenced checks.
+
+These fixes do not close the separate OS-library, SMTP or live backup-validation
+launch requirements below. See [Render redeployment instructions](RENDER.md).
+
 ## Launch blockers
 
 1. **OS-library advisories:** the container scan flags high-severity Expat findings [CVE-2026-117610](https://security-tracker.debian.org/tracker/CVE-2026-117610) and [CVE-2026-118370](https://security-tracker.debian.org/tracker/CVE-2026-118370), and zlib [CVE-2026-85091](https://security-tracker.debian.org/tracker/CVE-2026-85091). The vendor currently lists the stable Debian 13 package versions as vulnerable; fixes are listed in unstable. Do not mix unstable packages into the production image as an automatic workaround. Rebuild with vendor-supported patched packages or have the selected hosting/security team validate a patched supported runtime. Additional vendor-tracked medium/low findings remain in the private scan report; they were not blanket-suppressed.

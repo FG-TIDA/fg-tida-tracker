@@ -44,7 +44,6 @@
         <li><form method="post" action="{% url 'django.contrib.auth.views.logout' %}">{% csrf_token %}<button class="dropdown-item" type="submit">Sign out</button></form></li>
         <li><a class="dropdown-item" href="{% url 'ietf.ietfauth.views.profile' %}">Account info</a></li>
         {% if account_profile %}<li><a class="dropdown-item" href="{% url 'fgtida:person' account_profile.pk %}">Public profile page</a></li>{% endif %}
-        <li><a class="dropdown-item" href="{% url 'ietf.ietfauth.views.apikey_index' %}">API keys</a></li>
         <li><a class="dropdown-item" href="{% url 'ietf.ietfauth.views.change_password' %}">Change password</a></li>
         <li><a class="dropdown-item" href="{% url 'fgtida:security' %}">Recovery questions</a></li>
         <li><a class="dropdown-item" href="{% url 'fgtida:mfa-settings' %}">Two-factor authentication</a></li>
