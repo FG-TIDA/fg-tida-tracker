@@ -60,11 +60,41 @@ configuration. Deploy `bootstrap` first, not the full public website.
 These fixes do not close the separate OS-library, SMTP or live backup-validation
 launch requirements below. See [Render redeployment instructions](RENDER.md).
 
-## Launch blockers
+## Browser and native-library security update — 4 November 2026
 
-1. **OS-library advisories:** the container scan flags high-severity Expat findings [CVE-2026-117610](https://security-tracker.debian.org/tracker/CVE-2026-117610) and [CVE-2026-118370](https://security-tracker.debian.org/tracker/CVE-2026-118370), and zlib [CVE-2026-85091](https://security-tracker.debian.org/tracker/CVE-2026-85091). The vendor currently lists the stable Debian 13 package versions as vulnerable; fixes are listed in unstable. Do not mix unstable packages into the production image as an automatic workaround. Rebuild with vendor-supported patched packages or have the selected hosting/security team validate a patched supported runtime. Additional vendor-tracked medium/low findings remain in the private scan report; they were not blanket-suppressed.
-2. **Hosting:** the owner must provide the host, HTTPS domain, database connection and trusted-proxy details. Configure network access, encryption, backups, restore testing, monitoring and host-account MFA. Shared storage must be integrated and tested before using multiple app instances.
-3. **Administrator access:** enroll the real administrator's authenticator and save recovery codes before public launch. Use a production password distinct from development and confirm the recovery email is a mailbox under the owner's control. Re-export if enrollment or records change after this snapshot.
+- Added an enforced HTML Content Security Policy: same-origin scripts, no inline
+  script handlers or eval, restricted form targets, and no embedding. Permissions
+  Policy disables camera, microphone and location APIs unused by this website.
+  PDF and media streams retain their native response handling.
+- Built patched Expat 2.10.0 and zlib 1.3.2 (Debian source revision -4, including
+  the overflow fix) against the stable Debian base. Python's separately bundled
+  Expat extension is rebuilt against the fixed shared library too. No unstable
+  binary repository is added to the runtime. The [backport recipe](NATIVE-SECURITY.md)
+  is temporary maintenance until official stable images contain these fixes.
+- All 69 FG-TIDA regression tests passed. Upstream Expat tests and 418 CPython
+  XML/compression tests passed (seven upstream tests skipped). The final image
+  passed deployment/deferred-SMTP gates, PDF rendering, XML/DOCX extraction and
+  malicious external-entity rejection. Private HTTPS browser checks passed for
+  account forms, authenticated admin add forms and agenda expansion; the browser
+  rejected a deliberately injected inline script.
+- A full PostgreSQL 18 dump restored into a separate disposable database with
+  290 tables matching, including account/password/MFA data and authenticator
+  decryption. This proves the local recovery procedure, not the current live
+  Render backup. The [operator recovery checklist](BACKUP-RESTORE.md) requires
+  verification of an actual production export and the corresponding disk copy.
+- The publication source passed redacted secret scanning. Private exports,
+  authentication records, credentials and test sessions remain excluded.
+- The fresh image scan retains 44 raw vendor findings (three high, one medium,
+  40 low). The three high rules still match every version on Debian 13, including
+  the fixed backports installed here. Exact versions, patch/test evidence and the
+  tar finding's applicability are documented in [native security](NATIVE-SECURITY.md).
+  Findings were not globally suppressed and a zero-finding audit is not claimed.
+
+## Remaining publication and operator requirements
+
+1. **OS-library monitoring:** the Expat and zlib fixes above address the three previously identified high-severity code flaws. Retain raw scanner results and review vendor-tracked findings; an unbounded stable-distribution advisory can continue flagging a project backport. Do not globally suppress packages or claim a zero-finding audit. Replace the temporary backports with official stable updates when available.
+2. **Render operations:** verify live database and disk backups, recovery, monitoring, external database access restrictions and hosting-account MFA. Shared storage must be integrated and tested before using multiple app instances. ITU/Cisco must review the separate domain block; code and certificate changes cannot authorize network access.
+3. **Administrator access:** preserve the existing account and MFA enrollment. Verify recovery codes are stored securely, the production password differs from development and the recovery mailbox belongs to the owner. A code redeployment must not recreate accounts or re-import the initial fixture.
 4. **ITU SMTP:** delivery is intentionally disabled. Welcome/reset/contribution mail cannot be delivered until ITU authorizes SMTP. Configure recipients and the scheduled outbox job, test real delivery, then run the final publication gate.
 
 Use [the launch checklist](LAUNCH-CHECKLIST.md) for the operator steps. Source publication does not deploy the website or transfer its database to GitHub.

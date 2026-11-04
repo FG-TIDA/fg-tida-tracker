@@ -17,6 +17,27 @@ from django.test import SimpleTestCase, RequestFactory, override_settings
 
 from .render_settings import apply_render_settings
 from .render_http import RenderEdgeMiddleware
+from .browser_security import BrowserSecurityMiddleware
+
+
+class BrowserSecurityTests(SimpleTestCase):
+    def test_html_blocks_inline_scripts_embedding_and_off_origin_forms(self):
+        response = BrowserSecurityMiddleware(lambda request: HttpResponse('<html></html>'))(
+            RequestFactory().get('/'))
+        policy = response['Content-Security-Policy']
+        self.assertIn("script-src 'self';", policy)
+        self.assertIn("script-src-attr 'none'", policy)
+        self.assertIn("form-action 'self'", policy)
+        self.assertIn("frame-ancestors 'none'", policy)
+        self.assertNotIn('unsafe-eval', policy)
+        self.assertNotIn("script-src 'self' 'unsafe-inline'", policy)
+        self.assertEqual(response['Permissions-Policy'], 'camera=(), microphone=(), geolocation=()')
+
+    def test_pdf_and_recording_responses_are_not_given_html_policy(self):
+        for mime in ('application/pdf', 'video/mp4', 'audio/mpeg', 'text/plain'):
+            response = BrowserSecurityMiddleware(lambda request: HttpResponse(b'file', content_type=mime))(
+                RequestFactory().get('/file/'))
+            self.assertNotIn('Content-Security-Policy', response)
 
 
 @override_settings(ALLOWED_HOSTS=['tracker.example.test', 'tracker.onrender.com'],

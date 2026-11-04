@@ -197,6 +197,42 @@ above; do not disable other security checks to obtain a clean result.
 
 ## Publication and ongoing operation
 
+### Deploying the browser and native-library security update
+
+Take a current full PostgreSQL backup and preserve the matching `/data` backup
+before deployment. See [backup and restore verification](BACKUP-RESTORE.md).
+Keep the current database, persistent disk, signing key and enrolled admin
+account. This security update introduces no new database migration; keep the
+existing pre-deploy migration command and do not import the release fixture.
+
+Use **Manual Deploy → Deploy latest commit** after reviewing the security
+commit. The first build compiles authenticated Debian security sources on the
+stable base and runs the upstream/CPython tests, so allow extra build time.
+The runtime does not install Debian unstable binaries. See the temporary
+[native-library backport recipe](NATIVE-SECURITY.md).
+
+Keep `FGTIDA_RENDER_MODE=staged` and `FGTIDA_MAIL_ENABLED=false` while ITU SMTP
+approval is pending. After deployment, run in a new Render service Shell:
+
+```sh
+python ietf/manage.py check --deploy
+python ietf/manage.py check_fgtida_publication --allow-deferred-smtp --skip-checks
+python -c "import pyexpat,zlib; print('Expat:',pyexpat.EXPAT_VERSION); print('zlib:',zlib.ZLIB_RUNTIME_VERSION)"
+```
+
+Expect Expat 2.10.0 and zlib 1.3.2 with the Debian overflow patch. Check the
+canonical homepage response for `Content-Security-Policy`, `Permissions-Policy`
+and existing HSTS/nosniff headers. The HTML policy forbids inline/eval scripts,
+off-origin form submissions and embedding. Existing Bootstrap inline styles
+and the explicit font host remain allowed. PDF/media responses deliberately
+keep their native viewer/stream handling rather than receiving the HTML policy.
+Verify login/MFA, admin add/edit/upload forms, agenda controls and downloads.
+
+The ITU/Cisco Umbrella block requires review by ITU's network team/Cisco. A valid
+certificate or a CSP update does not remove a DNS/security-reputation block.
+Use the block page's incorrect-block review process; do not disable certificate
+verification or network protection to bypass it.
+
 Run a fresh image/dependency/secret scan before public launch. The previous
 release's recorded OS advisories are not cleared merely by adding this adapter.
 Validate backup restoration of both PostgreSQL and `/data`. PostgreSQL 18

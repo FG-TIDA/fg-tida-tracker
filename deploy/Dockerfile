@@ -10,9 +10,20 @@ COPY ietf/static ./ietf/static
 COPY ietf/secr/static ./ietf/secr/static
 RUN npm run build && npm run legacy:build
 
+FROM python:3.12-slim-trixie@sha256:b18b261e1b4974b4f321451ad5251ded85abb22c2b8b262da527dda1d031ab30 AS native-security
+COPY deploy/native-security.sh deploy/rebuild_pyexpat.py /build/
+RUN sh /build/native-security.sh
+RUN make -C /sources/expat-2.10.0/build check
+RUN dpkg -i /out/packages/zlib1g_*.deb \
+    && PYTHONPATH=/out:/sources/Python-${PYTHON_VERSION}/Lib python -m unittest \
+       test.test_pyexpat test.test_xml_etree test.test_zlib test.test_gzip
+
 FROM python:3.12-slim-trixie@sha256:b18b261e1b4974b4f321451ad5251ded85abb22c2b8b262da527dda1d031ab30
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DJANGO_SETTINGS_MODULE=ietf.settings FGTIDA_RELEASE_VERSION=1.0.0-fgtida
 WORKDIR /app
+COPY --from=native-security /out/packages/ /tmp/security-packages/
+RUN dpkg -i /tmp/security-packages/*.deb && ldconfig && rm -rf /tmp/security-packages
+COPY --from=native-security /out/pyexpat*.so /usr/local/lib/python3.12/lib-dynload/
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential libpq-dev libmagic1 libpango-1.0-0 libpangoft2-1.0-0 libcairo2 \
     libgdk-pixbuf-2.0-0 libffi-dev shared-mime-info patch ca-certificates memcached \

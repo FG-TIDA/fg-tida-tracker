@@ -20,6 +20,7 @@ def apply_render_settings(config):
     config['MIDDLEWARE'] = [
         'ietf.fgtida.render_http.RenderEdgeMiddleware',
         security,
+        'ietf.fgtida.browser_security.BrowserSecurityMiddleware',
         'whitenoise.middleware.WhiteNoiseMiddleware',
         *[item for item in config['MIDDLEWARE'] if item != security],
     ]
