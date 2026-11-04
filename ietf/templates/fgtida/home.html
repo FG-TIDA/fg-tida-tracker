@@ -7,7 +7,7 @@
         <img src="{% static 'images/fg-tida-logo.png' %}" alt="FG-TIDA logo" width="96" height="96" class="bg-white rounded mb-3">
         <h1>{{ platform_content.home_title }}</h1>
         <div>{{ platform_content.home_intro|rich_text }}</div>
-        <p>Official information is available on the <a href="{{ platform_content.official_url }}">ITU FG-TIDA website</a>. <a href="{% url 'fgtida:registration' %}">Meeting registration</a>.</p>
+        <p>Official information is available on <a href="{{ platform_content.official_url }}" class="link-primary">www.itu.int/en/ITU-T/focusgroups/tida</a>.</p>
     </div>
     <div class="px-2 px-md-5 pb-4">
         <h2>FG-TIDA Document Search</h2>
