@@ -20,6 +20,9 @@
 **/*.dump
 **/*.backup
 **/*.key
+**/*.pem
+**/*.p8
+**/*.ppk
 /ietf/static/dist
 /ietf/static/dist-neue
 /ietf/secr/static/dist

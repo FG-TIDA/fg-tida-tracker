@@ -18,6 +18,8 @@ from . import core
 from . import workflow
 from .files import extract_text, MAX_BYTES
 from .models import Contribution, ContributionRecipient, SessionResource, OutgoingMail, AdministratorApproval, SecurityQuestion
+from .models import (EmailVerification, GitHubAccount, WorkingGroupConfiguration, GitHubRepository,
+    GitHubSource, WorkItem, WorkItemRelease, GitHubJob)
 from .resource_files import SessionResourceForm
 from django.contrib.auth.models import User
 from ietf.ietfauth.admin import CustomUserAdmin
@@ -130,14 +132,44 @@ class SessionResourceInline(admin.TabularInline):
         return 'No file attached'
 
 
+class ContributionReviewForm(forms.ModelForm):
+    decision = forms.ChoiceField(required=False, choices=[('','Save review note'),('adopt','Adopt into a working group'),('reject','Reject proposal')])
+    adopt_into = forms.ModelChoiceField(queryset=Group.objects.filter(parent__acronym='tida',type_id='wg').exclude(state_id='conclude'),required=False,
+        help_text='For Incubation, create the new WG and its numbered GitHub configuration first, then select it here.')
+
+    class Meta:
+        model=Contribution
+        fields=['review_note']
+
+    def clean(self):
+        values=super().clean()
+        if values.get('decision')=='adopt' and self.instance.group.acronym=='incubation' and not values.get('adopt_into'):
+            self.add_error('adopt_into','Select the working group formed to adopt this proposal.')
+        if values.get('decision') and self.instance.status!='pending':
+            self.add_error('decision','This proposal already has a review decision. Use its document lifecycle for further changes.')
+        return values
+
+
 class ContributionAdmin(admin.ModelAdmin):
+    form=ContributionReviewForm
     list_display = ['title', 'submitter', 'group', 'created', 'status', 'notifications_queued']
     list_filter = ['status', 'group']
     search_fields = ['title', 'submitter__username']
     fields = ['title', 'submitter', 'group', 'abstract', 'submitted_file', 'created',
-              'status', 'review_note', 'reviewed_by', 'reviewed_at', 'document', 'notifications_queued']
-    readonly_fields = [field for field in fields if field != 'review_note']
+              'status', 'review_note', 'decision', 'adopt_into', 'draft_repository_url', 'reviewed_by', 'reviewed_at', 'document', 'notifications_queued']
+    readonly_fields = [field for field in fields if field not in {'review_note','decision','adopt_into'}]
     actions = ['accept_contributions', 'reject_contributions']
+
+    def save_model(self,request,obj,form,change):
+        super().save_model(request,obj,form,change)
+        from .contributions import accept,reject
+        if form.cleaned_data.get('decision')=='adopt':
+            if not request.user.has_perm('doc.add_document'):
+                from django.core.exceptions import PermissionDenied
+                raise PermissionDenied
+            accept(obj.pk,request.user,form.cleaned_data.get('adopt_into'))
+        elif form.cleaned_data.get('decision')=='reject':
+            reject(obj.pk,request.user)
 
     def get_queryset(self, request):
         return super().get_queryset(request).defer('content').select_related('submitter', 'group')
@@ -158,13 +190,17 @@ class ContributionAdmin(admin.ModelAdmin):
             from django.core.exceptions import PermissionDenied
             raise PermissionDenied
         for item in queryset.filter(status='pending'):
-            accept(item.pk, request.user)
-        self.message_user(request, 'Pending contributions published. No announcement emails were sent.')
+            try:
+                accept(item.pk, request.user)
+            except ValidationError as error:
+                self.message_user(request,'; '.join(error.messages),level='error')
+        self.message_user(request, 'Eligible proposals adopted as Draft. Repository creation remains queued until GitHub is configured.')
 
     @admin.action(description='Reject selected pending contributions', permissions=['change'])
     def reject_contributions(self, request, queryset):
-        from django.utils import timezone
-        queryset.filter(status='pending').update(status='rejected', reviewed_by=request.user, reviewed_at=timezone.now())
+        from .contributions import reject
+        for item in queryset.filter(status='pending'):
+            reject(item.pk,request.user)
 
 
 class SessionResourceAdmin(admin.ModelAdmin):
@@ -309,6 +345,15 @@ class DocumentForm(forms.ModelForm):
                 self.add_error('name', 'Document identifiers are permanent; create a new document instead.')
             if values.get('type') and values['type'].pk != original.type_id:
                 self.add_error('type', 'Keep the document type to preserve revision history and file paths.')
+            item=WorkItem.objects.filter(document=original).first()
+            selected=values.get('lifecycle_state')
+            if item and selected:
+                from .work_items import state_of,TRANSITIONS
+                current=state_of(original)
+                if selected.slug!=current and selected.slug not in TRANSITIONS.get(current,set()):
+                    self.add_error('lifecycle_state',f'Cannot move this work item from {current} to {selected.slug}.')
+                if selected.slug=='published' and item.repository_id and not item.releases.exists():
+                    self.add_error('lifecycle_state','Archive a release before marking the work item Published.')
         session = values.get('meeting_session')
         kind = values.get('type')
         if kind and kind.pk == 'recording':
@@ -340,11 +385,17 @@ class FgDocumentAdmin(DocumentAdmin):
         return super().get_queryset(request).filter(group__in=core.groups())
 
     def save_model(self, request, obj, form, change):
+        from .github_catalog import preserve_manual_document
         upload = form.cleaned_data.get('upload')
         state = form.cleaned_data.get('lifecycle_state') or State.objects.filter(type=obj.type, used=True).order_by('order').first()
         core.save_document(obj, core.actor_for(request.user), form.cleaned_data['comment_about_changes'],
             data=upload.read(MAX_BYTES + 1) if upload else None, filename=upload.name if upload else None, state=state,
             session=form.cleaned_data.get('meeting_session'))
+        if change and set(form.changed_data)&{'title','group','abstract','upload','external_url','tags','catalogued'}:
+            preserve_manual_document(obj)
+        if change and hasattr(obj,'tida_work_item'):
+            from .models import GitHubJob
+            GitHubJob.objects.get_or_create(kind='state',work_item=obj.tida_work_item,key=f'editor-state:{obj.pk}:{obj.docevent_set.latest("time").pk}')
         session = form.cleaned_data.get('meeting_session')
         if session:
             SessionPresentation.objects.get_or_create(session=session, document=obj)
@@ -410,9 +461,131 @@ class ContributionRecipientInline(admin.TabularInline):
         return request.user.is_superuser
 
 
+class WorkingGroupConfigurationInline(admin.StackedInline):
+    model=WorkingGroupConfiguration
+    extra=0
+    max_num=1
+    fields=['number','topic_acronym','github_account']
+
+
+class IntegrationAdmin(admin.ModelAdmin):
+    def has_module_permission(self,request):
+        return request.user.is_superuser
+
+    def has_view_permission(self,request,obj=None):
+        return request.user.is_superuser
+
+    has_add_permission=has_view_permission
+    has_change_permission=has_view_permission
+    has_delete_permission=has_view_permission
+
+    def formfield_for_foreignkey(self,db_field,request,**kwargs):
+        if db_field.remote_field.model is Document:
+            kwargs['queryset']=core.documents(include_uncatalogued=True)
+        elif db_field.remote_field.model is Group:
+            kwargs['queryset']=core.groups()
+        return super().formfield_for_foreignkey(db_field,request,**kwargs)
+
+
+class GitHubAccountAdmin(IntegrationAdmin):
+    list_display=['organization','installation_id','enabled']
+    search_fields=['organization']
+
+
+class WorkingGroupConfigurationAdmin(IntegrationAdmin):
+    list_display=['number','group','topic_acronym','github_account']
+    search_fields=['group__name','group__acronym']
+
+
+class GitHubRepositoryAdmin(IntegrationAdmin):
+    list_display=['name','account','group','mode','enabled','last_sync','last_error']
+    search_fields=['name','account__organization','group__name']
+    list_filter=['account','mode','enabled']
+    readonly_fields=['last_sync','last_error']
+    actions=['queue_sync']
+
+    @admin.action(description='Queue synchronization for selected repositories')
+    def queue_sync(self,request,queryset):
+        import uuid
+        for repo in queryset.filter(enabled=True):
+            GitHubJob.objects.create(kind='catalog',repository=repo,key='admin-sync:'+str(uuid.uuid4()))
+        self.message_user(request,'Synchronization queued. The GitHub job command or scheduled job processes it.')
+
+
+class GitHubSourceAdmin(IntegrationAdmin):
+    list_display=['source_key','repository','document','sync_mode','last_sync']
+    search_fields=['source_key','repository__name','document__name','document__title']
+    list_filter=['sync_mode','repository']
+    readonly_fields=['sha','checksum','last_sync','source_url']
+
+    def save_model(self,request,obj,form,change):
+        if 'sync_mode' in form.changed_data and obj.sync_mode=='automatic':
+            obj.checksum=''
+        super().save_model(request,obj,form,change)
+
+
+class WorkItemAdmin(IntegrationAdmin):
+    list_display=['document','repository','sync_mode','working_updated']
+    search_fields=['document__title','document__name','repository__name']
+    readonly_fields=['working_sha','working_checksum','working_updated','working_manifest']
+    fields=['document','repository','short_name','sync_mode','working_sha','working_checksum','working_updated','working_manifest']
+    actions=['prepare_repository']
+
+    @admin.action(description='Queue repository creation / metadata pull request')
+    def prepare_repository(self,request,queryset):
+        import uuid
+        for item in queryset:
+            GitHubJob.objects.create(kind='provision',work_item=item,key='admin-provision:'+str(uuid.uuid4()))
+        self.message_user(request,'Repository setup queued; nothing is pushed directly to main.')
+
+
+class WorkItemReleaseAdmin(IntegrationAdmin):
+    list_display=['work_item','revision','tag','commit_sha','created']
+    search_fields=['work_item__document__name','tag']
+    fields=['work_item','revision','tag','version','commit_sha','checksum','manifest','created']
+    readonly_fields=fields
+
+    def get_queryset(self,request):
+        return super().get_queryset(request).defer('source_archive')
+
+    def has_add_permission(self,request):
+        return False
+
+    def has_delete_permission(self,request,obj=None):
+        return False
+
+
+class GitHubJobAdmin(IntegrationAdmin):
+    list_display=['kind','work_item','repository','created','completed','attempts','last_error']
+    readonly_fields=['kind','work_item','repository','key','created','completed','attempts','last_error','available_at']
+    actions=['retry_jobs']
+
+    def has_add_permission(self,request):
+        return False
+
+    @admin.action(description='Retry selected incomplete jobs')
+    def retry_jobs(self,request,queryset):
+        from django.utils import timezone
+        queryset.filter(completed__isnull=True).update(attempts=0,available_at=timezone.now(),last_error='')
+        self.message_user(request,'Incomplete jobs are available for retry.')
+
+
+class EmailVerificationAdmin(IntegrationAdmin):
+    list_display=['user','email','created','verified']
+    fields=['user','email','created','verified']
+    readonly_fields=fields
+    search_fields=['email','user__username']
+
+    def has_add_permission(self,request):
+        return False
+
+    def has_delete_permission(self,request,obj=None):
+        return False
+
+
 class FgGroupAdmin(GroupAdmin):
     form = FgGroupForm
-    inlines = [MemberRoleInline, GroupURLInline, ContributionRecipientInline]
+    inlines = [MemberRoleInline, GroupURLInline, ContributionRecipientInline,WorkingGroupConfigurationInline]
     fields = ['acronym', 'name', 'type', 'state', 'parent', 'description', 'charter',
               'list_email', 'list_subscribe', 'list_archive']
     raw_id_fields = ['charter']
@@ -719,7 +892,10 @@ class ScopedNativeAdmin:
 def configure_admin():
     if not admin.site.is_registered(SecurityQuestion):
         admin.site.register(SecurityQuestion, SecurityQuestionAdmin)
-    for model, cls in [(User, FgUserAdmin), (Person, FgPersonAdmin), (Contribution, ContributionAdmin), (ContributionRecipient, ContributionRecipientAdmin), (SessionResource, SessionResourceAdmin), (OutgoingMail, OutgoingMailAdmin)]:
+    for model, cls in [(User, FgUserAdmin), (Person, FgPersonAdmin), (Contribution, ContributionAdmin), (ContributionRecipient, ContributionRecipientAdmin), (SessionResource, SessionResourceAdmin), (OutgoingMail, OutgoingMailAdmin),
+        (GitHubAccount,GitHubAccountAdmin),(WorkingGroupConfiguration,WorkingGroupConfigurationAdmin),
+        (GitHubRepository,GitHubRepositoryAdmin),(GitHubSource,GitHubSourceAdmin),(WorkItem,WorkItemAdmin),
+        (WorkItemRelease,WorkItemReleaseAdmin),(GitHubJob,GitHubJobAdmin),(EmailVerification,EmailVerificationAdmin)]:
         if model in admin.site._registry:
             admin.site.unregister(model)
         admin.site.register(model, cls)

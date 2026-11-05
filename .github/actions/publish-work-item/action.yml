@@ -1,0 +1,21 @@
+name: Publish FG-TIDA working copy or release
+description: Send an existing PDF build to the tracker using a short-lived Actions OIDC identity.
+inputs:
+  pdf:
+    description: Path to the generated PDF inside the repository workspace.
+    required: true
+  source:
+    description: Source directory inside the repository workspace.
+    default: src/doc
+  tracker-url:
+    description: HTTPS origin of the FG-TIDA tracker.
+    default: https://tida-datatracker.org
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        FGTIDA_PDF: ${{ inputs.pdf }}
+        FGTIDA_SOURCE: ${{ inputs.source }}
+        FGTIDA_TRACKER_ORIGIN: ${{ inputs.tracker-url }}
+      run: python "${{ github.action_path }}/publish.py"

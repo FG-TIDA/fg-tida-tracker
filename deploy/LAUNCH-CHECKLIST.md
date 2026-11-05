@@ -28,7 +28,7 @@ Open the tracker, sign in, and use **User → Two-factor authentication**. Choos
 
 ## SMTP configuration
 
-Preparation does not require an SMTP hostname, account or password. Leave `FGTIDA_MAIL_ENABLED=false`. Mail stays in the database outbox; no real delivery occurs. Registration is available, but welcome messages, contribution notifications and password-reset mail cannot be delivered. Expired reset links must be requested again after activation.
+Preparation does not require an SMTP hostname, account or password. Leave `FGTIDA_MAIL_ENABLED=false`. Mail stays in the database outbox; no real delivery occurs. New registrations remain pending email confirmation and cannot sign in until confirmed; existing accounts retain access. Confirmation, contribution and password-reset messages cannot be delivered yet. Expired links must be requested again after delivery is enabled. Test authorized ITU delivery before announcing public registration.
 
 `check_fgtida_publication --allow-deferred-smtp` checks a private preparation environment; it is not final launch approval. The container's normal startup gate still requires mail delivery and administrator MFA. Do not bypass that gate to expose an untested release publicly.
 

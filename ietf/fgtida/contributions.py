@@ -9,7 +9,7 @@ from django.utils import timezone
 from ietf.doc.models import Document, DocumentAuthor, State
 from . import core
 from .files import extract_text, MAX_BYTES
-from .models import Contribution
+from .models import Contribution, WorkItem, GitHubJob
 
 
 class ContributionForm(forms.ModelForm):
@@ -17,14 +17,26 @@ class ContributionForm(forms.ModelForm):
 
     class Meta:
         model = Contribution
-        fields = ['title', 'group', 'abstract']
+        fields = ['title', 'group', 'abstract', 'work_item_acronym', 'draft_repository_url']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         from django.db.models import Q
-        self.fields['group'].queryset = core.groups().filter(Q(type_id='wg') | Q(acronym='incubation')).order_by('acronym')
+        self.fields['group'].queryset = core.groups().filter(Q(type_id='wg') | Q(acronym='incubation')).order_by('tida_configuration__number','name')
+        self.fields['group'].label_from_instance=lambda group: group.name+(f' (WG{group.tida_configuration.number})' if getattr(group,'tida_configuration',None) else '')
+        self.fields['group'].queryset = self.fields['group'].queryset.exclude(state_id='conclude')
         self.fields['group'].label = 'Working group or Incubation'
         self.fields['group'].help_text = 'Choose the relevant WG, or Incubation if your proposal requires a new working group.'
+        self.fields['draft_repository_url'].help_text = 'Optional public GitHub draft repository. On adoption, editors create the official WG repository.'
+        self.fields['work_item_acronym'].help_text = 'Optional short identifier for the work item repository.'
+        self.fields['upload'].help_text += ' Submitting creates a public work-item record and archives this file as revision 00.'
+
+    def clean_draft_repository_url(self):
+        value = self.cleaned_data.get('draft_repository_url')
+        if value:
+            from .github_client import repository_name
+            return 'https://github.com/'+repository_name(value)
+        return ''
 
     def clean_upload(self):
         upload = self.cleaned_data['upload']
@@ -50,7 +62,21 @@ def submit(request):
                 item.notifications_queued = False
                 item.filename = Path(form.cleaned_data['upload'].name).name
                 item.save()
+                doc = Document(name=f'fg-tida-contribution-{item.pk}', title=item.title,
+                    abstract=item.abstract, type_id='tida', group=item.group)
+                core.save_document(doc, core.actor_for(request.user), 'Work item submitted for a group decision.',
+                    data=bytes(item.content),filename=item.filename,state=State.objects.get(type_id='tida',slug='submitted'))
+                DocumentAuthor.objects.create(document=doc, person=core.actor_for(request.user), order=1)
+                item.document=doc
+                item.save(update_fields=['document'])
+                from django.utils.text import slugify
+                WorkItem.objects.create(document=doc,short_name=item.work_item_acronym or slugify(item.title)[:48] or f'item-{item.pk}')
                 queue_notifications(item.pk)
+                from .email_templates import contribution
+                from .mail import enqueue
+                if request.user.email:
+                    subject, body=contribution(item,acknowledgement=True)
+                    enqueue(request.user.email,subject,body,contribution=item,purpose='submitter')
                 return redirect('fgtida:contribution', pk=item.pk)
     page = Paginator(Contribution.objects.filter(submitter=request.user).defer('content'), 25).get_page(request.GET.get('page'))
     return render(request, 'fgtida/submit.html', {'form': form, 'submissions': page, 'page': page, 'queryargs': ''})
@@ -67,10 +93,9 @@ def queue_notifications(pk):
     if not recipients:
         return
     for email in sorted(set(address.lower() for address in recipients)):
-        enqueue(email, f'FG-TIDA contribution #{item.pk}: {item.title}',
-            f'A new contribution has been submitted to {item.group.name}.\n'
-            f'Title: {item.title}\n{item.abstract}\n'
-            'The original submitted document is attached. It is awaiting editorial review.', contribution=item)
+        from .email_templates import contribution
+        subject,body=contribution(item)
+        enqueue(email,subject,body,contribution=item)
     item.notifications_queued = True
     item.save(update_fields=['notifications_queued'])
 
@@ -92,18 +117,59 @@ def detail(request, pk, download=False):
 
 
 @transaction.atomic
-def accept(pk, user):
+def accept(pk, user, target_group=None):
     item = Contribution.objects.select_for_update().get(pk=pk)
     if item.status != 'pending':
         return
-    doc = Document(name=f'fg-tida-contribution-{item.pk}', title=item.title,
-                   abstract=item.abstract, type_id='tida', group=item.group)
-    core.save_document(doc, core.actor_for(user), f'Contribution {item.pk} accepted after review.',
-                       data=bytes(item.content), filename=item.filename,
-                       state=State.objects.filter(type_id='tida', slug='submitted').first())
-    DocumentAuthor.objects.create(document=doc, person=core.actor_for(item.submitter), order=1)
+    from django.core.exceptions import ValidationError
+    from django.utils.text import slugify
+    incubation=item.group.acronym=='incubation'
+    group=target_group or item.group
+    if group.type_id!='wg' or not core.groups().filter(pk=group.pk).exclude(state_id='conclude').exists():
+        raise ValidationError('Select the working group adopting this item. Incubation must form or select a WG before adoption.')
+    doc=item.document
+    if not doc:
+        doc=Document(name=f'fg-tida-contribution-{item.pk}',title=item.title,abstract=item.abstract,type_id='tida',group=group)
+        core.save_document(doc,core.actor_for(user),'Original submitted file archived.',data=bytes(item.content),filename=item.filename,
+            state=State.objects.get(type_id='tida',slug='submitted'))
+        DocumentAuthor.objects.create(document=doc,person=core.actor_for(item.submitter),order=1)
+    if doc.group_id!=group.pk:
+        doc.group=group
+        core.save_document(doc,core.actor_for(user),f'Assigned to adopting group: {group.name}.')
+    from .work_items import transition
+    transition(doc,'draft',core.actor_for(user),f'Contribution {item.pk} adopted by {group.name}.')
+    work,_=WorkItem.objects.get_or_create(document=doc,defaults={'short_name':item.work_item_acronym or slugify(item.title)[:48] or f'item-{item.pk}'})
+    # An adopted item is now edited in its official repository. The original
+    # issue remains provenance and cannot overwrite the adopted document.
+    from .models import GitHubSource
+    GitHubSource.objects.filter(document=doc).update(sync_mode='manual')
+    GitHubJob.objects.get_or_create(kind='provision',work_item=work,key=f'provision:{work.pk}')
+    if incubation and not group.charter_id:
+        charter=Document(name=f'fg-tida-{group.acronym}-charter',title=f'{group.name} — charter',type_id='charter',group=group)
+        core.save_document(charter,core.actor_for(user),'Draft charter required after Incubation adoption.',
+            state=State.objects.get(type_id='charter',slug='draft'))
+        charter_work=WorkItem.objects.create(document=charter,short_name='charter')
+        GitHubJob.objects.create(kind='provision',work_item=charter_work,key=f'provision:{charter_work.pk}')
+        group.charter=charter
+        group.save(update_fields=['charter'])
+    # Keep the original submission target for notification routing and review
+    # history. The public document now belongs to the adopting working group.
     item.document = doc
     item.status = 'accepted'
     item.reviewed_by = user
     item.reviewed_at = timezone.now()
     item.save()
+
+
+@transaction.atomic
+def reject(pk,user):
+    item=Contribution.objects.select_for_update().get(pk=pk)
+    if item.status!='pending':
+        return
+    if item.document_id:
+        from .work_items import transition
+        transition(item.document,'rejected',core.actor_for(user),'Proposal rejected after group review.')
+    item.status='rejected'
+    item.reviewed_by=user
+    item.reviewed_at=timezone.now()
+    item.save(update_fields=['status','reviewed_by','reviewed_at'])

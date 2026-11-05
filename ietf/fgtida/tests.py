@@ -438,7 +438,7 @@ class NativeDatatrackerTests(TestCase):
         self.assertEqual(response.status_code, 302, getattr(response, 'context', None) and response.context['adminform'].form.errors)
         return Document.objects.get(name='fg-tida-native-test')
 
-    def test_contribution_is_private_until_editor_accepts(self):
+    def test_contribution_has_public_submitted_record_before_adoption(self):
         from .models import Contribution
         from .contributions import accept
         member = get_user_model().objects.create_user('contributor', password='test-password')
@@ -447,7 +447,9 @@ class NativeDatatrackerTests(TestCase):
             'abstract': 'Proposal summary', 'upload': SimpleUploadedFile('proposal.txt', b'Contribution content')})
         self.assertEqual(response.status_code, 302)
         item = Contribution.objects.get()
-        self.assertFalse(Document.objects.filter(title=item.title).exists())
+        self.assertTrue(Document.objects.filter(title=item.title).exists())
+        self.assertEqual(item.document.rev, '00')
+        self.assertEqual(item.document.states.get(type_id='tida').slug, 'submitted')
         stranger = get_user_model().objects.create_user('stranger', password='test-password')
         self.client.force_login(stranger)
         self.assertEqual(self.client.get(f'/submit/{item.pk}/download/').status_code, 404)
@@ -543,9 +545,17 @@ class NativeDatatrackerTests(TestCase):
                    'answer_2': 'private place answer', 'question_3': 'phrase', 'answer_3': 'private phrase answer'}
         with self.captureOnCommitCallbacks(execute=True):
             response = self.client.post(path, {**answers, 'name': 'New Member', 'password': password, 'password_confirmation': password})
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual([item.subject for item in mail.outbox], ['Welcome to FG-TIDA'])
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([item.subject for item in mail.outbox], ['FG-TIDA Datatracker — confirm your email address'])
         user = get_user_model().objects.get(username='newmember@example.test')
+        self.assertFalse(user.is_active)
+        confirmation_path = urlsplit(re.search(r'https?://\S+', mail.outbox[-1].body).group()).path
+        self.assertEqual(self.client.get(confirmation_path).status_code, 200)
+        user.refresh_from_db()
+        self.assertFalse(user.is_active)  # Link scanners cannot activate accounts.
+        self.assertEqual(self.client.post(confirmation_path).status_code, 200)
+        user.refresh_from_db()
+        self.assertTrue(user.is_active)
         recovery = RecoveryQuestions.objects.get(user=user)
         self.assertNotIn('private book answer', str(recovery.answer_hashes))
         self.assertFalse(user.is_staff)
@@ -664,8 +674,8 @@ class NativeDatatrackerTests(TestCase):
         member = get_user_model().objects.create_user('proposal-member', password='test-password')
         self.client.force_login(member)
         self.assertEqual(set(ContributionForm().fields['group'].queryset.values_list('acronym', flat=True)),
-                         {'tidawg1', 'tidawg2', 'tidawg3', 'incubation'})
-        for acronym in ('tidawg1', 'tidawg2', 'tidawg3', 'incubation'):
+                         {'tidawg0', 'tidawg1', 'tidawg2', 'incubation'})
+        for acronym in ('tidawg0', 'tidawg1', 'tidawg2', 'incubation'):
             group = Group.objects.get(acronym=acronym)
             address = acronym + '@example.test'
             self.client.post('/submit/', {'title': acronym + ' proposal', 'group': group.pk,

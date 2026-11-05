@@ -6,9 +6,17 @@ from . import account_changes
 from . import resource_files
 from . import session_materials
 from . import mfa
+from . import github_views
 
 app_name = 'fgtida'
 urlpatterns = [
+    path('integrations/github/build/', github_views.build, name='github-build'),
+    path('integrations/github/webhook/', github_views.webhook, name='github-webhook'),
+    path('work-items/<int:pk>/state.svg', github_views.state_badge, name='work-item-state'),
+    path('work-items/<int:pk>/working.pdf', github_views.working_pdf, name='work-item-working'),
+    path('work-items/<int:pk>/releases/<str:revision>/<str:kind>/', github_views.release_artifact, name='work-item-release'),
+    path('accounts/confirm-email/<str:auth>/', accounts.email_confirm, name='email-confirm'),
+    path('accounts/resend-confirmation/', accounts.resend_confirmation, name='resend-confirmation'),
     path('accounts/mfa/', mfa.manage, name='mfa-settings'),
     path('accounts/mfa/setup/', mfa.setup, name='mfa-setup'),
     path('accounts/mfa/verify/', mfa.verify, name='mfa-verify'),

@@ -37,7 +37,7 @@ COPY debug.py ./
 RUN python -c "import pathlib, django; from ietf.utils import patch; root=pathlib.Path(django.__file__).parent.parent; names=['change-oidc-provider-field-sizes-228.patch','fix-oidc-access-token-post.patch','fix-jwkest-jwt-logging.patch','tastypie-django22-fielderror-response.patch']; assert all(patch.fromfile(pathlib.Path('patch')/name).apply(root=bytes(root)) for name in names)"
 COPY deploy/gunicorn.conf.py ./deploy/gunicorn.conf.py
 COPY deploy/entrypoint.sh ./deploy/entrypoint.sh
-COPY deploy/render_start.py deploy/render_bootstrap.py ./deploy/
+COPY deploy/render_start.py deploy/render_bootstrap.py deploy/maintenance.py ./deploy/
 RUN chmod 755 deploy/entrypoint.sh
 COPY --from=frontend /build/ietf/static/dist ./ietf/static/dist
 COPY --from=frontend /build/ietf/static/dist-neue ./ietf/static/dist-neue

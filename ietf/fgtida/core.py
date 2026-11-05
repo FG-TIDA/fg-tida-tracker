@@ -2,6 +2,7 @@
 from pathlib import Path
 from django.core.exceptions import ValidationError
 from django.utils import timezone
+from django.db import transaction
 
 from ietf.doc.models import Document, DocEvent, NewRevisionDocEvent, StateDocEvent
 from ietf.group.models import Group
@@ -24,7 +25,7 @@ def groups():
     while frontier:
         frontier = set(Group.objects.filter(parent_id__in=frontier).values_list('pk', flat=True)) - identifiers
         identifiers.update(frontier)
-    return Group.objects.filter(pk__in=identifiers)
+    return Group.objects.filter(pk__in=identifiers).select_related('tida_configuration')
 
 
 def documents(include_uncatalogued=False):
@@ -45,11 +46,14 @@ def actor_for(user=None):
     return person
 
 
+@transaction.atomic
 def save_document(doc, actor, note, data=None, filename=None, state=None, session=None):
     """Use native DocEvent/DocHistory and the native document artifact paths."""
     if data is not None:
         from .files import extract_text
         text = extract_text(data, filename)
+        if doc.pk:
+            doc.rev = Document.objects.select_for_update().get(pk=doc.pk).rev
         revision = int(doc.rev or '-1') + 1
         doc.rev = f'{revision:02d}'
         doc.uploaded_filename = f'{doc.name}-{doc.rev}{Path(filename).suffix.lower()}'

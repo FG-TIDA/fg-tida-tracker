@@ -5,8 +5,9 @@ from django.utils import timezone
 from .models import OutgoingMail
 
 
-def enqueue(recipient, subject, body, expires=None, contribution=None):
-    item = OutgoingMail.objects.create(recipient=recipient, subject=subject, body=body, expires=expires, contribution=contribution)
+def enqueue(recipient, subject, body, expires=None, contribution=None, purpose=None):
+    item = OutgoingMail.objects.create(recipient=recipient, subject=subject, body=body, expires=expires,
+        contribution=contribution, purpose=purpose or ('group' if contribution else 'general'))
     if getattr(settings, 'FGTIDA_MAIL_IMMEDIATE', True):
         transaction.on_commit(lambda: deliver(item.pk))
     return item
@@ -19,10 +20,15 @@ def deliver(pk):
     item = OutgoingMail.objects.select_for_update().get(pk=pk)
     if item.sent or (item.expires and item.expires <= timezone.now()):
         return False
-    if item.contribution_id and not item.contribution.group.contribution_recipients.filter(
+    if item.contribution_id and item.purpose != 'submitter' and not item.contribution.group.contribution_recipients.filter(
             active=True, email__iexact=item.recipient).exists():
         item.expires = timezone.now()
         item.last_error = 'Recipient is no longer configured; notification cancelled.'
+        item.save(update_fields=['expires', 'last_error'])
+        return False
+    if item.contribution_id and item.purpose == 'submitter' and item.recipient.casefold() != item.contribution.submitter.email.casefold():
+        item.expires = timezone.now()
+        item.last_error = 'Submitter email changed; notification cancelled.'
         item.save(update_fields=['expires', 'last_error'])
         return False
     item.attempts += 1

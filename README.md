@@ -3,8 +3,10 @@
 The document, contribution and meeting tracker for the ITU-T Focus Group on Trust and Identity for Humans and Agentic AI, customized from the IETF Datatracker.
 
 - Documents, revisions, working groups, members, meetings, agendas, session resources and important dates are managed through the admin portal.
-- Signed-in members can submit contributions to WG1, WG2, WG3 or Incubation. Private recipient lists and a persistent email outbox support review notifications with attachments.
+- Signed-in members can submit contributions to the topic-based WG0, WG1, WG2 or Incubation. Administrators can add future numbered groups. Private recipient lists and a persistent email outbox support review notifications with attachments.
+- Optional GitHub App/Actions integration connects adopted work items, working-copy builds and immutable IETF-style revisions (`00`, `01`, `02`). Admin edits and deletion exclusions are preserved during catalog sync. See [GitHub integration setup](deploy/GITHUB-INTEGRATION.md).
 - Production requires HTTPS, private credentials, a restricted PostgreSQL role and administrator MFA. Member MFA is optional. SMTP is deferred until coordinated with ITU.
+- New self-registered accounts require email confirmation. With delivery disabled, they remain pending; existing accounts retain access. Test the authorized ITU mail transport before announcing public registration.
 - The production database and user uploads are private release artifacts, never repository files. Import only the approved FG-TIDA export, not the upstream IETF development database.
 
 Start with [Render deployment](deploy/RENDER.md), [generic production deployment](deploy/README.md), [the launch checklist](deploy/LAUNCH-CHECKLIST.md), [security guidance](SECURITY.md) and [FG-TIDA workflows](ietf/fgtida/WORKFLOW.md).

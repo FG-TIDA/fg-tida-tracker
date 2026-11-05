@@ -96,7 +96,61 @@ def rich_text(value):
     # Imported prose can contain visually blank lines made of non-breaking
     # spaces. Markdown treats those as paragraph text, swallowing following tables.
     text = re.sub(r'(?m)^[^\S\r\n]+$', '', str(value or ''))
+    # GitHub issues often place a table directly after a paragraph. Normalize
+    # only actual table delimiters, leaving fenced examples untouched.
+    lines=text.splitlines()
+    normalized=[]
+    fenced=False
+    for index,line in enumerate(lines):
+        if line.lstrip().startswith(('```','~~~')):
+            fenced=not fenced
+        if (not fenced and index+1<len(lines) and '|' in line
+                and re.fullmatch(r'\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)+\|?\s*',lines[index+1])
+                and normalized and normalized[-1].strip()):
+            normalized.append('')
+        normalized.append(line)
+    text='\n'.join(normalized)
     return format_html('<div class="fg-tida-rich-text">{}</div>', markdown(text))
+
+
+@register.filter
+def rich_rst(value):
+    import hashlib
+    import subprocess
+    import sys
+    from django.core.cache import cache
+    from ietf.utils.html import clean_html
+    from django.utils.safestring import mark_safe
+    text=str(value or '')
+    if len(text.encode())>500000:
+        return format_html('<pre>{}</pre>',text)
+    key='fgtida:rst:'+hashlib.sha256(text.encode()).hexdigest()
+    rendered=cache.get(key)
+    if rendered is None:
+        try:
+            result=subprocess.run([sys.executable,'-m','ietf.fgtida.rst_worker'],input=text.encode(),
+                capture_output=True,check=True,timeout=15)
+            rendered=clean_html(result.stdout.decode())
+            if len(rendered.encode())<500000:
+                cache.set(key,rendered,3600)
+        except (subprocess.SubprocessError,UnicodeError):
+            return format_html('<pre>{}</pre>',text)
+    return format_html('<div class="fg-tida-rich-text">{}</div>',mark_safe(rendered))
+
+
+@register.simple_tag
+def group_number(group):
+    from django.core.exceptions import ObjectDoesNotExist
+    try:
+        return f'WG{group.tida_configuration.number}'
+    except ObjectDoesNotExist:
+        return ''
+
+
+@register.filter
+def group_label(group):
+    number=group_number(group)
+    return group.name+(f' ({number})' if number else '')
 
 
 @register.inclusion_tag('fgtida/formats.html')

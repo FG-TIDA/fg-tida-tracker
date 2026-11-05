@@ -8,7 +8,8 @@ from django.utils.deprecation import MiddlewareMixin
 # Native URLs remain registered for reverse() in upstream templates, but only
 # reviewed workflows are reachable. Never use a menu as an authorization boundary.
 ADMIN_MODELS = {
-    'fgtida': {'contribution', 'contributionrecipient', 'sessionresource', 'outgoingmail', 'securityquestion'},
+    'fgtida': {'contribution', 'contributionrecipient', 'sessionresource', 'outgoingmail', 'securityquestion',
+        'emailverification','githubaccount','workinggroupconfiguration','githubrepository','githubsource','workitem','workitemrelease','githubjob'},
     'auth': {'user', 'group'},
     'person': {'person', 'email', 'alias'},
     'name': {'importantdatename'},
@@ -23,6 +24,8 @@ EDITOR_MODELS |= {'doc.documentauthor', 'doc.relateddocument', 'doc.documenturl'
 EDITOR_MODELS.discard('fgtida.outgoingmail')
 EDITOR_MODELS.discard('fgtida.securityquestion')
 EDITOR_MODELS.discard('fgtida.contributionrecipient')
+EDITOR_MODELS -= {'fgtida.'+name for name in ('emailverification','githubaccount','workinggroupconfiguration',
+    'githubrepository','githubsource','workitem','workitemrelease','githubjob')}
 ACCOUNT_VIEWS = {'index', 'confirm_new_email', 'create_account', 'confirm_account',
                  'change_password', 'profile', 'edit_person_externalresources',
                  'password_reset', 'confirm_password_reset', 'change_username', 'AnyEmailLoginView'}

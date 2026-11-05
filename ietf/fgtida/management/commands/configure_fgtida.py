@@ -40,16 +40,18 @@ class Command(BaseCommand):
         root, _ = Group.objects.get_or_create(acronym='tida', defaults={
             'name': 'Trust and Identity for Humans and Agentic AI', 'type_id': 'fg', 'state_id': 'active',
             'description': 'ITU-T Focus Group on Trust and Identity for Humans and Agentic AI.'})
-        for acronym, name in [('tidawg1', 'WG1'), ('tidawg2', 'WG2'),
-                              ('tidawg3', 'WG3'), ('incubation', 'Incubation')]:
+        for acronym, name in [('tidawg0', 'Use Cases and Terminology'),
+                              ('tidawg1', 'Continuous and Dynamic Remote Attestation for Agentic AI'),
+                              ('tidawg2', 'Identity, Behaviour and Enforcement for AI Agents'), ('incubation', 'Incubation')]:
             Group.objects.get_or_create(acronym=acronym, defaults={'name': name,
                 'parent': root, 'type_id': 'team' if acronym == 'incubation' else 'wg',
                 'state_id': 'active'})
         for slug, label in TYPE_LABELS:
             DocTypeName.objects.update_or_create(slug=slug, defaults={'name': label})
             kind, _ = StateType.objects.get_or_create(slug=slug, defaults={'label': 'Document state'})
-            states = [('submitted', 'Submitted'), ('draft', 'Draft'), ('review', 'Under review'),
-                      ('approved', 'Approved'), ('published', 'Published'), ('withdrawn', 'Withdrawn')] if slug == 'tida' else [('active', 'Active'), ('deleted', 'Deleted')]
+            states = ([('active', 'Active'), ('deleted', 'Deleted')] if slug != 'tida' else []) + [
+                ('submitted', 'Submitted'), ('draft', 'Draft'), ('review', 'Under review'),
+                ('approved', 'Approved'), ('published', 'Published'), ('withdrawn', 'Withdrawn'), ('rejected', 'Rejected')]
             for order, (code, label) in enumerate(states):
                 State.objects.get_or_create(type=kind, slug=code, defaults={'name': label, 'order': order})
         for slug, label in CATEGORIES:

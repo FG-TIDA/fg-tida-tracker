@@ -20,7 +20,7 @@
 <input type="hidden" id="agenda-zone" value="{{ zone_mode }}">
 <label for="agenda-meeting" class="form-label">Meeting</label><select id="agenda-meeting" name="meeting" class="form-select mb-3">{% for option in meeting_choices %}<option value="{{ option.number }}" {% if option.pk == meeting.pk %}selected{% endif %}>{{ option.display_title }} — {{ option.date|date:"j F Y" }}{% if option.city %} · {{ option.city }}{% endif %}</option>{% endfor %}</select>
 <details id="agenda-filter-panel" {% if query or selected_group %}open{% endif %}><summary>Filter sessions</summary><div class="row g-3 align-items-end mt-1">
-<div class="col-md-3"><label class="form-label" for="agenda-group">Working group</label><select id="agenda-group" name="group" class="form-select"><option value="">All groups</option>{% for group in groups %}<option value="{{ group.acronym }}" {% if selected_group == group.acronym %}selected{% endif %}>{{ group.name }}</option>{% endfor %}</select></div>
+<div class="col-md-3"><label class="form-label" for="agenda-group">Working group</label><select id="agenda-group" name="group" class="form-select"><option value="">All groups</option>{% for group in groups %}<option value="{{ group.acronym }}" {% if selected_group == group.acronym %}selected{% endif %}>{{ group|group_label }}</option>{% endfor %}</select></div>
 <div class="col-md-4"><label class="form-label" for="agenda-search">Search sessions</label><input class="form-control" id="agenda-search" name="q" value="{{ query }}" type="search"></div>
 <div class="col-md-2"><button class="btn btn-primary" type="submit" name="tz" value="{{ zone_mode }}">Apply</button> <a href="{% url 'fgtida:meeting' meeting.number %}">Reset</a></div>
 </div></details></form>

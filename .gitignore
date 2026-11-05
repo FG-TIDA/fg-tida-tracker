@@ -47,6 +47,9 @@ datatracker.sublime-workspace
 *.p12
 *.pfx
 *.key
+*.pem
+*.p8
+*.ppk
 /security-reports/
 /dev/retired-tida-catalog/data.json
 *.swp

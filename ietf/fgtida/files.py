@@ -7,7 +7,7 @@ from defusedxml import ElementTree
 from django.core.exceptions import ValidationError
 
 MAX_BYTES = 10 * 1024 * 1024
-EXTENSIONS = {'.txt', '.md', '.xml', '.pdf', '.docx', '.pptx'}
+EXTENSIONS = {'.txt', '.md', '.rst', '.xml', '.pdf', '.docx', '.pptx'}
 
 
 def extract_text(data, filename):
@@ -31,7 +31,7 @@ def _extract_text(data, filename):
         raise ValidationError('Use a PDF, DOCX, PPTX, TXT, Markdown or XML file up to 10 MB.')
     extension = os.path.splitext(filename)[1].lower()
     try:
-        if extension in {'.txt', '.md'}:
+        if extension in {'.txt', '.md', '.rst'}:
             text = data.decode('utf-8-sig')
         elif extension == '.xml':
             text = ' '.join(ElementTree.fromstring(data).itertext())

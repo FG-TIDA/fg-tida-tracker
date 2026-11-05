@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.core.validators import URLValidator
 from django.db import models
+from django.utils import timezone
 
 
 class RecoveryQuestions(models.Model):
@@ -47,6 +48,7 @@ class AdministratorApproval(models.Model):
 
 
 class OutgoingMail(models.Model):
+    purpose = models.CharField(max_length=16, default='general')
     contribution = models.ForeignKey('Contribution', null=True, blank=True, on_delete=models.PROTECT)
     recipient = models.EmailField()
     subject = models.CharField(max_length=255)
@@ -59,12 +61,14 @@ class OutgoingMail(models.Model):
 
 
 class Contribution(models.Model):
-    """Private review queue; only accepted submissions become native Documents."""
+    """Private review metadata linked to a public submitted document."""
     submitter = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     notifications_queued = models.BooleanField(default=True, editable=False)
     group = models.ForeignKey('group.Group', on_delete=models.PROTECT)
     title = models.CharField(max_length=255)
     abstract = models.TextField(blank=True)
+    draft_repository_url = models.URLField(blank=True, max_length=300)
+    work_item_acronym = models.SlugField(max_length=48, blank=True)
     filename = models.CharField(max_length=255)
     content = models.BinaryField(editable=False)
     created = models.DateTimeField(auto_now_add=True, db_index=True)
@@ -74,7 +78,7 @@ class Contribution(models.Model):
     reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
         on_delete=models.SET_NULL, related_name='reviewed_contributions')
     reviewed_at = models.DateTimeField(null=True, blank=True)
-    document = models.ForeignKey('doc.Document', null=True, blank=True, on_delete=models.PROTECT)
+    document = models.ForeignKey('doc.Document', null=True, blank=True, on_delete=models.SET_NULL)
 
     class Meta:
         ordering = ['-created']
@@ -142,3 +146,130 @@ class SessionResourceChunk(models.Model):
     class Meta:
         ordering = ['position']
         constraints = [models.UniqueConstraint(fields=['resource', 'position'], name='fgtida_resource_chunk_position')]
+
+
+class EmailVerification(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    email = models.EmailField()
+    created = models.DateTimeField(auto_now_add=True)
+    verified = models.DateTimeField(null=True, blank=True)
+
+
+class GitHubAccount(models.Model):
+    organization = models.SlugField(max_length=100, unique=True)
+    installation_id = models.PositiveBigIntegerField(null=True, blank=True,
+        help_text='GitHub App installation ID; no tokens or private keys belong in this form.')
+    enabled = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.organization
+
+
+class WorkingGroupConfiguration(models.Model):
+    group = models.OneToOneField('group.Group', on_delete=models.CASCADE, related_name='tida_configuration')
+    number = models.PositiveIntegerField(unique=True)
+    topic_acronym = models.SlugField(max_length=32)
+    github_account = models.ForeignKey(GitHubAccount, null=True, blank=True, on_delete=models.SET_NULL)
+
+    def __str__(self):
+        return f'WG{self.number}: {self.group.name}'
+
+
+class GitHubRepository(models.Model):
+    account = models.ForeignKey(GitHubAccount, on_delete=models.PROTECT)
+    name = models.SlugField(max_length=100)
+    github_id = models.PositiveBigIntegerField(null=True, blank=True, unique=True)
+    group = models.ForeignKey('group.Group', on_delete=models.PROTECT)
+    branch = models.SlugField(default='main', max_length=100)
+    publish_workflow = models.CharField(default='.github/workflows/docs.yml', max_length=200)
+    mode = models.CharField(max_length=16, default='workitem', choices=[
+        ('workitem', 'Versioned work item'), ('files', 'Document files'), ('issues', 'Theme / use-case issues')])
+    category = models.CharField(max_length=32, default='deliverables')
+    document_type = models.CharField(max_length=24, default='tida')
+    paths = models.JSONField(default=list, blank=True, help_text='Explicit document paths; support/code files are never automatically documents.')
+    enabled = models.BooleanField(default=True)
+    last_sync = models.DateTimeField(null=True, blank=True)
+    last_error = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['account', 'name'], name='fgtida_github_repository_unique')]
+
+    @property
+    def full_name(self):
+        return f'{self.account.organization}/{self.name}'
+
+    @property
+    def url(self):
+        return 'https://github.com/' + self.full_name
+
+    def __str__(self):
+        return self.full_name
+
+
+class GitHubSource(models.Model):
+    repository = models.ForeignKey(GitHubRepository, on_delete=models.PROTECT)
+    source_key = models.CharField(max_length=500)
+    document = models.ForeignKey('doc.Document', null=True, blank=True, on_delete=models.SET_NULL, related_name='github_sources')
+    sync_mode = models.CharField(max_length=16, default='automatic', choices=[
+        ('automatic', 'Sync from GitHub'), ('manual', 'Keep manual edits'), ('excluded', 'Excluded / deleted by administrator')])
+    sha = models.CharField(max_length=64, blank=True)
+    checksum = models.CharField(max_length=64, blank=True)
+    source_url = models.URLField(max_length=2000, blank=True)
+    last_sync = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['repository', 'source_key'], name='fgtida_github_source_unique')]
+
+    def __str__(self):
+        return f'{self.repository}: {self.source_key}'
+
+
+class WorkItem(models.Model):
+    document = models.OneToOneField('doc.Document', null=True, blank=True, on_delete=models.SET_NULL, related_name='tida_work_item')
+    repository = models.OneToOneField(GitHubRepository, null=True, blank=True, on_delete=models.SET_NULL, related_name='work_item')
+    short_name = models.SlugField(max_length=48)
+    sync_mode = models.CharField(max_length=16, default='automatic', choices=GitHubSource._meta.get_field('sync_mode').choices)
+    working_sha = models.CharField(max_length=40, blank=True)
+    working_pdf = models.BinaryField(blank=True, default=bytes, editable=False)
+    working_manifest = models.JSONField(default=dict, blank=True)
+    working_checksum = models.CharField(max_length=64, blank=True)
+    working_updated = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return self.document.title if self.document else f'Retired work item {self.pk}'
+
+
+class WorkItemRelease(models.Model):
+    work_item = models.ForeignKey(WorkItem, on_delete=models.PROTECT, related_name='releases')
+    tag = models.CharField(max_length=48)
+    version = models.JSONField()
+    revision = models.CharField(max_length=16)
+    commit_sha = models.CharField(max_length=40)
+    checksum = models.CharField(max_length=64)
+    manifest = models.JSONField()
+    source_archive = models.BinaryField(editable=False)
+    created = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['work_item', 'tag'], name='fgtida_release_tag_unique'),
+            models.UniqueConstraint(fields=['work_item', 'revision'], name='fgtida_release_revision_unique')]
+        ordering = ['-created']
+
+
+class GitHubJob(models.Model):
+    available_at = models.DateTimeField(default=timezone.now, db_index=True)
+    kind = models.CharField(max_length=16, choices=[('provision', 'Create WG repository'), ('state', 'Publish lifecycle state'), ('catalog', 'Synchronize catalog')])
+    work_item = models.ForeignKey(WorkItem, null=True, blank=True, on_delete=models.PROTECT)
+    repository = models.ForeignKey(GitHubRepository, null=True, blank=True, on_delete=models.PROTECT)
+    key = models.CharField(max_length=200, unique=True)
+    created = models.DateTimeField(auto_now_add=True)
+    completed = models.DateTimeField(null=True, blank=True)
+    attempts = models.PositiveIntegerField(default=0)
+    last_error = models.CharField(max_length=200, blank=True)
+
+
+class GitHubDelivery(models.Model):
+    delivery_id = models.UUIDField(primary_key=True)
+    received = models.DateTimeField(auto_now_add=True)
+    repository = models.ForeignKey(GitHubRepository, null=True, on_delete=models.SET_NULL)
+    event = models.CharField(max_length=32)

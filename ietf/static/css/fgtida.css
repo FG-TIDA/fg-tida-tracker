@@ -45,6 +45,12 @@ html { scroll-padding-top: calc(var(--fg-tida-header-height) + 24px); }
 }
 .fg-tida-rich-text th { background: var(--bs-tertiary-bg); font-weight: 600; }
 .fg-tida-rich-text pre { white-space: pre-wrap; }
+.fg-tida-rich-text table { min-width: 28rem; table-layout: auto; font-size: .95rem; }
+.fg-tida-rich-text tbody tr:nth-child(even) { background-color: var(--bs-tertiary-bg); }
+.fg-tida-rich-text th { text-align: start; white-space: normal; }
+.fg-tida-rich-text td { line-height: 1.55; }
+.fg-tida-rich-text td p:last-child { margin-bottom: 0; }
+.fg-tida-rich-text td a { overflow-wrap: anywhere; }
 .fgtida-agenda-table thead th { background: linear-gradient(#66717a, #343b41); color: #fff; }
 .fgtida-agenda-table td:first-child { font-weight: 700; }
 .fgtida-agenda-event summary { font-size: 1.15rem; cursor: pointer; padding: .25rem 0; }

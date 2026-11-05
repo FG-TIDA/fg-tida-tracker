@@ -97,11 +97,18 @@ def document(request, name, rev=None):
     unique = {}
     for item in revisions:
         unique.setdefault(item.rev, item)
+    from .models import WorkItem
+    work_item=WorkItem.objects.select_related('repository').defer('working_pdf').filter(document=doc).first()
+    releases={item.revision:item for item in work_item.releases.defer('source_archive')} if work_item else {}
+    for item in unique.values():
+        item.github_release=releases.get(item.rev)
     file_available = bool(snapshot.uploaded_filename) and Path(snapshot.get_file_name()).is_file()
     return render(request, 'fgtida/document.html', {'doc': doc, 'snapshot': snapshot,
         'revisions': list(unique.values()), 'file_available': file_available,
         'text': snapshot.text() if file_available else None,
         'text_is_markdown': Path(snapshot.uploaded_filename or '').suffix.lower() in ('.md', '.markdown'),
+        'text_is_rst': Path(snapshot.uploaded_filename or '').suffix.lower()=='.rst',
+        'work_item':work_item,'old_revision':bool(rev and rev!=doc.rev),'show_working':not rev,
         'events': doc.docevent_set.select_related('by')[:100],
         'authors': doc.documentauthor_set.select_related('person', 'email').order_by('order'),
         'sessions': doc.session_set.select_related('meeting'),
@@ -131,7 +138,7 @@ def download(request, name, rev):
 
 
 def groups(request):
-    records = core.groups().select_related('type', 'state', 'parent').order_by('acronym')
+    records = core.groups().select_related('type', 'state', 'parent','tida_configuration').order_by('tida_configuration__number','name')
     state = request.GET.get('state', '')
     if state in ('active', 'proposed', 'conclude'):
         records = records.filter(state_id=state)

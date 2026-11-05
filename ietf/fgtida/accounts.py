@@ -17,10 +17,11 @@ from django.views.decorators.cache import never_cache
 from django.shortcuts import render, redirect
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.crypto import salted_hmac, constant_time_compare
 from django.views.decorators.debug import sensitive_post_parameters
 from ietf.person.models import Email
 from . import core
-from .models import RecoveryQuestions, OutgoingMail, SecurityQuestion
+from .models import RecoveryQuestions, OutgoingMail, SecurityQuestion, EmailVerification
 from .mail import enqueue
 
 QUESTIONS = [('book', 'What was the title of a memorable childhood book?'),
@@ -75,6 +76,7 @@ class QuestionsForm(forms.Form):
 
 class SignupForm(QuestionsForm):
     name = forms.CharField(max_length=100)
+    first_name = forms.CharField(required=False, max_length=100, label='Given name', help_text='Optional name used to address you in account emails.')
     biography = forms.CharField(required=False, max_length=5000, widget=forms.Textarea, help_text='Optional public biography.')
     password = forms.CharField(widget=forms.PasswordInput)
     password_confirmation = forms.CharField(widget=forms.PasswordInput)
@@ -123,7 +125,7 @@ def create(request):
             token = signing.dumps(address, salt='fgtida-signup')
             request.session['fgtida_signup'] = token
             return redirect('fgtida:signup-confirm', auth=token)
-    return page(request, 'Create an account', form, 'Enter your email to continue to your profile, password and three security questions. No confirmation email is required.')
+    return page(request, 'Create an account', form, 'Enter your email, complete your profile and confirm your email address to activate your account.')
 
 
 @sensitive_post_parameters()
@@ -145,6 +147,8 @@ def confirm(request, auth):
             if not created:
                 return redirect('ietf.ietfauth.views.login')
             user.set_password(form.cleaned_data['password'])
+            user.is_active = False
+            user.first_name = form.cleaned_data.get('first_name', '').strip()
             user.save()
             person = existing_email.person if existing_email and existing_email.person_id else core.actor_for(user)
             person.user = user
@@ -157,13 +161,69 @@ def confirm(request, auth):
             if email.person_id and email.person_id != person.pk:
                 raise forms.ValidationError('Email is already assigned; contact the secretariat.')
             email.person = person
-            email.active = True
+            email.active = False
             email.save()
             form.save(user)
-            enqueue(address, 'Welcome to FG-TIDA', 'Welcome to the FG-TIDA Datatracker. Your account is ready. You can sign in and submit contributions. Contact tsbfgtida@itu.int for assistance.')
+            verification = EmailVerification.objects.create(user=user, email=address)
+            queue_confirmation(request, verification)
             request.session.pop('fgtida_signup', None)
-        return redirect('ietf.ietfauth.views.login')
+        return page(request, 'Confirm your email address', message=(
+            'Your account has been created. Use the confirmation link sent to your email to activate it.'
+            if getattr(settings, 'FGTIDA_MAIL_ENABLED', False) else
+            'Your account has been created and is awaiting email confirmation. Email delivery is not enabled yet; contact tsbfgtida@itu.int for assistance.'))
     return page(request, 'Finish creating your account', form, 'Use answers that others cannot easily guess. Answers are stored as hashes.', 'Create account')
+
+
+def email_proof(user, address):
+    return salted_hmac('fgtida-email-confirmation', f'{user.pk}:{address}:{user.password}', algorithm='sha256').hexdigest()
+
+
+def queue_confirmation(request, verification):
+    user = verification.user
+    token = signing.dumps([user.pk, verification.email, email_proof(user, verification.email)], salt='fgtida-email-confirmation')
+    link = mail_origin(request) + reverse('fgtida:email-confirm', args=[token])
+    from .email_templates import confirmation
+    subject, body = confirmation(user, link)
+    enqueue(verification.email, subject, body, timezone.now()+timedelta(hours=24), purpose='verification')
+
+
+@never_cache
+def email_confirm(request, auth):
+    try:
+        pk, address, token = signing.loads(auth, salt='fgtida-email-confirmation', max_age=86400)
+        verification = EmailVerification.objects.select_related('user').get(user_id=pk, email=address)
+    except (signing.BadSignature, EmailVerification.DoesNotExist, ValueError, TypeError):
+        raise Http404('Invalid or expired confirmation link')
+    if verification.verified:
+        return page(request, 'Email already confirmed', message='Your email address is already confirmed. You can sign in.')
+    if not constant_time_compare(email_proof(verification.user, address), token) or verification.user.email.casefold() != address.casefold():
+        raise Http404('Invalid or expired confirmation link')
+    if request.method == 'POST':
+        with transaction.atomic():
+            verification = EmailVerification.objects.select_for_update().select_related('user').get(pk=verification.pk)
+            user = get_user_model().objects.select_for_update().get(pk=pk)
+            if not verification.verified:
+                if not constant_time_compare(email_proof(user, address), token) or user.email.casefold() != address.casefold():
+                    raise Http404('Invalid or expired confirmation link')
+                user.is_active = True
+                user.save(update_fields=['is_active'])
+                Email.objects.filter(person__user=user, address__iexact=address).update(active=True)
+                verification.verified = timezone.now()
+                verification.save(update_fields=['verified'])
+        return page(request, 'Email confirmed', message='Your account is active. You can now sign in.')
+    return page(request, 'Confirm your email address', forms.Form(), 'Confirm this email address to activate your FG-TIDA Datatracker account.', 'Confirm email')
+
+
+@never_cache
+def resend_confirmation(request):
+    form = EmailForm(request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        address = form.cleaned_data['email'].lower()
+        verification = EmailVerification.objects.filter(email__iexact=address, verified__isnull=True).select_related('user').first()
+        if verification and allowed_request(address):
+            queue_confirmation(request, verification)
+        return page(request, 'Email confirmation', message='If this account is awaiting confirmation, a new link will be emailed. Delivery remains deferred until the ITU email service is configured.' if not getattr(settings, 'FGTIDA_MAIL_ENABLED', False) else 'If this account is awaiting confirmation, a new link will be emailed.')
+    return page(request, 'Resend email confirmation', form)
 
 
 @login_required
@@ -200,7 +260,9 @@ def reset(request):
             auth = signing.dumps([user.pk, token], salt='fgtida-reset')
             link = mail_origin(request) + reverse('fgtida:reset-confirm', args=[auth])
             recipient = Email.objects.filter(person__user=user, address__iexact=address, active=True).values_list('address', flat=True).first() or user.email
-            enqueue(recipient, 'Reset your FG-TIDA password', f'Open this link within one hour, answer your three recovery questions, and choose a new password:\n{link}\nIgnore this message if you did not request a reset.', timezone.now()+timedelta(hours=1))
+            from .email_templates import password_reset
+            subject, body = password_reset(user, link)
+            enqueue(recipient, subject, body, timezone.now()+timedelta(hours=1), purpose='reset')
         return page(request, 'Password reset', message='If the address matches an active account, reset instructions will be emailed. Email delivery is pending SMTP setup.' if not getattr(settings, 'FGTIDA_MAIL_ENABLED', False) else 'If the address matches an active account, reset instructions will be emailed.')
     return page(request, 'Password reset', form)
 

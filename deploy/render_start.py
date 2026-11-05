@@ -70,6 +70,10 @@ def main():
             subprocess.run([sys.executable, 'ietf/manage.py', 'collectstatic', '--noinput', '--skip-checks'], check=True)
             command = ['gunicorn', '--config', 'deploy/gunicorn.conf.py', 'ietf.wsgi:application']
         children.append(subprocess.Popen(command))
+        if mode!='bootstrap' and os.environ.get('FGTIDA_GITHUB_SCHEDULE_ENABLED','').lower()=='true':
+            # Runs beside Gunicorn with the same persistent disk; no separate
+            # Cron container can safely write this disk-backed document catalog.
+            children.append(subprocess.Popen([sys.executable,'deploy/maintenance.py']))
         while all(child.poll() is None for child in children):
             time.sleep(0.5)
         return next((child.returncode or 1 for child in children if child.poll() is not None), 1)

@@ -1,4 +1,4 @@
-<h1>{{ group_obj.name }} <span class="text-body-secondary">({{ group_obj.acronym }})</span></h1>
+{% load fgtida %}{% group_number group_obj as number %}<h1>{{ group_obj.name }} <span class="text-body-secondary">({{ number|default:group_obj.acronym }})</span></h1>
 <nav aria-label="Group sections" class="mb-4"><ul class="nav nav-tabs flex-wrap">
 <li class="nav-item"><a class="nav-link {% if section == 'about' %}active{% endif %}" href="{% url 'fgtida:group' group_obj.acronym %}">About</a></li>
 <li class="nav-item"><a class="nav-link {% if section == 'documents' %}active{% endif %}" href="{% url 'fgtida:group-documents' group_obj.acronym %}">Documents</a></li>

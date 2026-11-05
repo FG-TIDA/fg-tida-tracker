@@ -251,3 +251,7 @@ References: [Docker secrets](https://render.com/docs/docker-secrets),
 [persistent disks](https://render.com/docs/disks),
 [SSH](https://render.com/docs/ssh),
 [WhiteNoise](https://whitenoise.readthedocs.io/en/stable/django.html).
+
+For the optional GitHub App, Actions publishing, numbered work-item revisions and
+same-disk maintenance scheduler, follow [GITHUB-INTEGRATION.md](GITHUB-INTEGRATION.md).
+Do not enable public registration until the ITU confirmation-email transport is tested.

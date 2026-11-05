@@ -61,7 +61,7 @@ def available_destination(request, target):
         return False
     parsed = urlsplit(target)
     path = unquote(parsed.path)
-    if not path.startswith('/') or path.startswith(('/accounts/mfa/', settings.STATIC_URL)):
+    if not path.startswith('/') or path.startswith(('/accounts/mfa/', '/integrations/', settings.STATIC_URL)):
         return False
     if path in {'/accounts/login/', '/accounts/logout/', '/admin/login/', '/admin/logout/'}:
         return False

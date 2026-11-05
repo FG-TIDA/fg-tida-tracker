@@ -20,7 +20,7 @@ SESSION_STATES = {
 CANCELLED = {'canceled', 'canceledpa'}
 DOCUMENT_COLORS = {'submitted': 'info', 'draft': 'secondary', 'review': 'warning',
     'approved': 'success', 'published': 'success', 'withdrawn': 'danger',
-    'active': 'info', 'deleted': 'secondary'}
+    'active': 'info', 'deleted': 'secondary', 'rejected':'danger'}
 RECENT_DAYS = 14
 
 
