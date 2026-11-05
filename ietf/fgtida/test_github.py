@@ -68,8 +68,8 @@ class SourceValidationTests(SimpleTestCase):
 
     def test_semantic_release_order(self):
         self.assertLess(version_tuple('v1.9'),version_tuple('v1.10'))
-        self.assertEqual(version_tuple('v1.0'),version_tuple('v1.0.0'))
-        for tag in ['main','v01.0','v1','v1.0-beta','../v1.0']:
+        self.assertEqual(version_tuple('v1.0'),(1,0,0))
+        for tag in ['main','v01.0','v1','v1.0.1','v1.0-beta','../v1.0']:
             with self.assertRaises(ValidationError):
                 version_tuple(tag)
 
@@ -139,6 +139,42 @@ class GitHubWorkflowTests(TestCase):
         self.assertEqual(receive_build(self.repo,manifest,pdf),('unchanged','00'))
         self.assertFalse(WorkItemRelease.objects.exists())
 
+    def test_xy_versions_timeline_dates_aliases_and_manual_major_upload(self):
+        from .models import DocumentVersion
+        from .versioning import public_version
+        document,item=self.document()
+        self.assertEqual(public_version(document),'0.0')
+        first=DocumentVersion.objects.get(document=document,revision='00').recorded
+        core.save_document(document,core.actor_for(),'Major revision',data=b'Major revision',filename='major.txt',version='1.0')
+        core.save_document(document,core.actor_for(),'Minor revision',data=b'Minor revision',filename='minor.txt')
+        self.assertEqual(public_version(document),'1.1')
+        self.assertEqual(DocumentVersion.objects.get(document=document,revision='00').recorded,first)
+        response=self.client.get('/doc/'+document.name+'/revision/1.0/')
+        self.assertContains(response,'fg-version-amber')
+        self.assertContains(response,'fg-version-cyan')
+        self.assertContains(response,'aria-current="page"')
+        self.assertContains(response,'FG-TIDA workflow')
+        self.assertNotContains(response,'No value found')
+        self.assertEqual(response.context['snapshot'].rev,'01')
+        self.assertEqual(self.client.get('/doc/'+document.name+'/revision/00/').status_code,200)
+        self.assertEqual(self.client.get('/doc/'+document.name+'/download/1.0/').status_code,200)
+        with self.assertRaises(ValidationError):
+            core.save_document(document,core.actor_for(),'Replace forbidden',data=b'No',filename='no.txt',version='1.0')
+
+    def test_release_label_matches_tag_and_rejects_reused_initial_label(self):
+        from .versioning import public_version
+        document,item=self.document()
+        manifest,pdf,source=self.artifacts('v0.0')
+        with self.assertRaises(ValidationError):
+            receive_build(self.repo,manifest,pdf,source)
+        receive_build(self.repo,{**manifest,'tag':'v0.1'},pdf,source)
+        document.refresh_from_db()
+        self.assertEqual(public_version(document),'0.1')
+        receive_build(self.repo,{**manifest,'tag':'v1.0'},pdf,source)
+        document.refresh_from_db()
+        document.__dict__.pop('_version_labels',None)
+        self.assertEqual(public_version(document),'1.0')
+
     def test_release_immutable_idempotent_and_increasing(self):
         document,item=self.document()
         manifest,pdf,source=self.artifacts('v1.0')
@@ -176,6 +212,17 @@ class GitHubWorkflowTests(TestCase):
         store_source(*args)
         self.assertEqual(store_source(*args),'unchanged')
         self.assertEqual(Document.objects.get(title='Original').rev,'00')
+
+    def test_webhook_imports_reject_private_or_replaced_repositories(self):
+        from unittest.mock import Mock
+        from .github_catalog import sync_repository
+        self.repo.mode='issues'
+        client=Mock()
+        for metadata in [{'id':123,'private':True},{'id':999,'private':False}]:
+            client.request.return_value=metadata
+            with self.assertRaises(ValidationError):
+                sync_repository(self.repo,client=client)
+        client.pages.assert_not_called()
 
     def test_build_authentication_precedes_upload_parsing(self):
         self.document()

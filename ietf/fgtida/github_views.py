@@ -56,7 +56,8 @@ def build(request):
             raise ValidationError('Source archive exceeds 25 MB.')
         data=archive.read(25*1024*1024+1) if archive else None
         result,revision=receive_build(repository,manifest,pdf,data)
-        return JsonResponse({'result':result,'revision':revision})
+        from .versioning import public_version
+        return JsonResponse({'result':result,'revision':public_version(repository.work_item.document,revision)})
     except (ValidationError,ValueError,KeyError,TypeError,WorkItem.DoesNotExist) as error:
         # Do not log/return the bearer token, signed claims or upload contents.
         message='; '.join(error.messages) if isinstance(error,ValidationError) else 'Invalid build request.'
@@ -145,4 +146,5 @@ def release_artifact(request,pk,revision,kind):
     else:
         from django.http import Http404
         raise Http404
-    return FileResponse(io.BytesIO(data),as_attachment=True,filename=item.document.name+'-'+revision+extension,content_type=mime,headers={'X-Content-Type-Options':'nosniff'})
+    from .versioning import public_version
+    return FileResponse(io.BytesIO(data),as_attachment=True,filename=item.document.name+'-'+public_version(item.document,revision)+extension,content_type=mime,headers={'X-Content-Type-Options':'nosniff'})

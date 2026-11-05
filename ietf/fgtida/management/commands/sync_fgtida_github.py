@@ -41,7 +41,8 @@ class Command(BaseCommand):
                     self.stdout.write('Discovered '+repo['full_name'])
                     if options['apply']:
                         GitHubRepository.objects.create(account=group.github_account,name=repo['name'],github_id=repo['id'],
-                            group=group.group,branch=repo['default_branch'],mode='workitem',paths=['src/doc/index.rst'])
+                            group=group.group,branch=repo['default_branch'],mode='workitem',paths=['src/doc/index.rst'],
+                            document_type='charter' if repo['name'].endswith('-charter') else 'tida')
         records = GitHubRepository.objects.filter(enabled=True, account__enabled=True).select_related('account','group')
         if options['repository']:
             owner, name = options['repository'].split('/',1)
@@ -57,7 +58,7 @@ class Command(BaseCommand):
                 if options['apply'] and not repository.github_id:
                     repository.github_id = metadata['id']
                     repository.save(update_fields=['github_id'])
-                result = Counter(sync_repository(repository, dry_run=not options['apply'], client=client))
+                result = Counter(sync_repository(repository, dry_run=not options['apply'], client=client,metadata=metadata))
                 self.stdout.write(f'{repository}: {dict(result)}')
             except Exception as error:
                 # Never print tokens, request bodies or upstream response contents.

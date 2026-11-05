@@ -92,3 +92,15 @@ html { scroll-padding-top: calc(var(--fg-tida-header-height) + 24px); }
 .fgtida-schedule [hidden] { display: none !important; }
 .fgtida-agenda-sidebar .nav-link { font-weight: 600; }
 @media (max-width: 991.98px) { .fgtida-agenda-sidebar { position: static; max-height: none; } }
+.fg-version-timeline { overflow-x:auto; padding:1rem .35rem .5rem 4rem; }
+.fg-document-title { font-size:clamp(1.35rem,2vw,2rem); }
+.revision-list .page-link { width:auto; min-width:3.5rem; white-space:nowrap; word-break:normal; }
+.fg-version-track { display:flex; min-width:100%; padding-bottom:4.5rem; }
+.fg-version-period { flex-basis:0; min-width:4rem; position:relative; }
+.fg-version-bar { display:block; color:#111; text-decoration:none; padding:.15rem .3rem; font-size:.8rem; border-bottom:1px solid #555; }
+.fg-version-amber { background:#ffc107; }
+.fg-version-cyan { background:#0dcaf0; }
+.fg-version-selected { outline:2px solid #0d6efd; outline-offset:2px; position:relative; z-index:1; }
+.fg-version-bar:focus-visible { outline:3px solid #111; outline-offset:2px; }
+.fg-version-period time { position:absolute; top:2.1rem; left:0; font-size:.7rem; white-space:nowrap; transform:rotate(-55deg) translateX(-85%); transform-origin:top left; }
+.fg-document-metadata th { white-space:nowrap; width:1%; }

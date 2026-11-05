@@ -15,7 +15,7 @@
             {% block title %}FG-TIDA Datatracker{% endblock %}
         </title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta name="traceparent" content="{{ otel.traceparent }}">
+        {% if otel.traceparent %}<meta name="traceparent" content="{{ otel.traceparent }}">{% endif %}
         <link href="{{ settings.STATIC_IETF_ORG }}/fonts/inter/import.css" rel="stylesheet">
         <link href="{{ settings.STATIC_IETF_ORG }}/fonts/noto-sans-mono/import.css" rel="stylesheet">
         <link rel="stylesheet" href="{% static 'ietf/css/ietf.css' %}">

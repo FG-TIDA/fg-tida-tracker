@@ -43,7 +43,7 @@ def database_access(request):
 
 def search(request, acronym=None):
     query = (request.GET.get('name') or request.GET.get('q') or '').strip()[:200]
-    docs = core.documents().select_related('group', 'type').prefetch_related('states', 'tags').annotate(
+    docs = core.documents().select_related('group', 'type').prefetch_related('states', 'tags', 'tida_versions').annotate(
         first_activity=Min('docevent__time'), latest_revision=Max('docevent__time', filter=Q(docevent__type='new_revision')))
     if query:
         docs = docs.filter(Q(name__icontains=query) | Q(title__icontains=query) | Q(abstract__icontains=query))
@@ -88,6 +88,8 @@ def search(request, acronym=None):
 
 def document(request, name, rev=None):
     doc = get_object_or_404(core.documents().select_related('group', 'type').prefetch_related('states', 'tags'), name=name)
+    from .versioning import archive_revision, labels
+    rev=archive_revision(doc,rev)
     snapshot = doc
     if rev and rev != doc.rev:
         snapshot = doc.history_set.filter(rev=rev).order_by('-time', '-id').first()
@@ -102,9 +104,28 @@ def document(request, name, rev=None):
     releases={item.revision:item for item in work_item.releases.defer('source_archive')} if work_item else {}
     for item in unique.values():
         item.github_release=releases.get(item.rev)
+    version_rows={row.revision:row for row in doc.tida_versions.all()}
+    ordered=sorted(unique.values(),key=lambda row:int(row.rev))
+    for item in ordered:
+        record=version_rows.get(item.rev)
+        item.public_version=record.version if record else item.rev
+        item.recorded=record.recorded if record else item.time
+    from datetime import timedelta
+    end=max(timezone.now(),ordered[-1].recorded+timedelta(days=1)) if ordered else timezone.now()
+    for index,item in enumerate(ordered):
+        until=ordered[index+1].recorded if index+1<len(ordered) else end
+        item.timeline_days=max(1,(until-item.recorded).total_seconds()/86400)
+    snapshot._version_labels=labels(doc)
+    abstract=snapshot.abstract
+    if abstract.lstrip().startswith('# ') and doc.github_sources.filter(sync_mode='automatic').exists():
+        # Legacy imports used a truncated source prefix, not an actual abstract.
+        # Keep the archived source intact and let editors supply a real abstract.
+        abstract=''
     file_available = bool(snapshot.uploaded_filename) and Path(snapshot.get_file_name()).is_file()
     return render(request, 'fgtida/document.html', {'doc': doc, 'snapshot': snapshot,
-        'revisions': list(unique.values()), 'file_available': file_available,
+        'revisions': ordered, 'file_available': file_available,'display_abstract':abstract,
+        'version_records':version_rows,'selected_version':version_rows.get(snapshot.rev),'selected_release':releases.get(snapshot.rev),
+        'last_change':doc.docevent_set.order_by('-time','-pk').first(),
         'text': snapshot.text() if file_available else None,
         'text_is_markdown': Path(snapshot.uploaded_filename or '').suffix.lower() in ('.md', '.markdown'),
         'text_is_rst': Path(snapshot.uploaded_filename or '').suffix.lower()=='.rst',
@@ -126,13 +147,15 @@ def history(request, name):
 
 def download(request, name, rev):
     doc = get_object_or_404(core.documents(), name=name)
+    from .versioning import archive_revision,public_version
+    rev=archive_revision(doc,rev)
     snapshot = doc if doc.rev == rev else doc.history_set.filter(rev=rev).order_by('-time', '-id').first()
     if snapshot is None or not snapshot.uploaded_filename:
         raise Http404
     file = Path(snapshot.get_file_name())
     if not file.is_file():
         raise Http404
-    response = FileResponse(file.open('rb'), as_attachment=True, filename=snapshot.uploaded_filename)
+    response = FileResponse(file.open('rb'), as_attachment=True, filename=f'{doc.name}-{public_version(doc,rev)}{file.suffix}')
     response['X-Content-Type-Options'] = 'nosniff'
     return response
 
@@ -319,6 +342,8 @@ def meeting(request, num, section='agenda'):
 
 def snapshot_for(name, rev):
     doc = get_object_or_404(core.documents(), name=name)
+    from .versioning import archive_revision
+    rev=archive_revision(doc,rev)
     snapshot = doc if doc.rev == rev else doc.history_set.filter(rev=rev).order_by('-time', '-pk').first()
     if snapshot is None:
         raise Http404
@@ -337,9 +362,10 @@ def document_text(request, name, rev):
 
 def compare(request, name):
     doc = get_object_or_404(core.documents(), name=name)
+    from .versioning import archive_revision,public_version
     revisions = list(doc.history_set.exclude(rev='').values_list('rev', flat=True).order_by('rev').distinct())
-    before = request.GET.get('from', revisions[-2] if len(revisions) > 1 else doc.rev)
-    after = request.GET.get('to', doc.rev)
+    before = archive_revision(doc,request.GET.get('from', revisions[-2] if len(revisions) > 1 else doc.rev))
+    after = archive_revision(doc,request.GET.get('to', doc.rev))
     texts = []
     for rev in (before, after):
         snapshot = snapshot_for(name, rev)
@@ -348,7 +374,7 @@ def compare(request, name):
     diff = None
     # Bound the synchronous comparison to keep large files from monopolizing a worker.
     if all(text is not None and len(text) <= 100000 and len(text.splitlines()) <= 3000 for text in texts):
-        diff = ''.join(unified_diff(texts[0].splitlines(True), texts[1].splitlines(True), fromfile=before, tofile=after))
+        diff = ''.join(unified_diff(texts[0].splitlines(True), texts[1].splitlines(True), fromfile=public_version(doc,before), tofile=public_version(doc,after)))
     return render(request, 'fgtida/compare.html', {'doc': doc, 'revisions': revisions, 'before': before, 'after': after, 'diff': diff})
 
 

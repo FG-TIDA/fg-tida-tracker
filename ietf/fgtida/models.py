@@ -273,3 +273,15 @@ class GitHubDelivery(models.Model):
     received = models.DateTimeField(auto_now_add=True)
     repository = models.ForeignKey(GitHubRepository, null=True, on_delete=models.SET_NULL)
     event = models.CharField(max_length=32)
+
+
+class DocumentVersion(models.Model):
+    """Public X.Y version, independent of immutable native archive identifiers."""
+    document = models.ForeignKey('doc.Document', on_delete=models.CASCADE, related_name='tida_versions')
+    revision = models.CharField(max_length=16)
+    version = models.CharField(max_length=32)
+    recorded = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['document','revision'],name='fgtida_version_revision_unique'),
+            models.UniqueConstraint(fields=['document','version'],name='fgtida_version_label_unique')]

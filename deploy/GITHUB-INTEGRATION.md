@@ -1,5 +1,9 @@
 # FG-TIDA GitHub workflow deployment
 
+For the ordered click-by-click procedure and current X.Y version policy, start
+with [MANUAL-SETUP.md](MANUAL-SETUP.md). It supersedes earlier numeric revision
+examples. Native archive identifiers remain unchanged internally.
+
 This feature needs a deployment and administrator setup before live synchronization
 starts. No GitHub credential is included in the repository. ITU email delivery remains
 disabled until ITU supplies its authorized transport. Existing accounts and MFA devices
@@ -11,7 +15,7 @@ cannot sign in until confirmed. Do not announce public registration before ITU m
 
 1. A signed-in participant submits a file, title, abstract and WG or Incubation target.
    The original file and contribution are stored in PostgreSQL, and a public native
-   document record is created with status **Submitted**, revision **00**. The form
+   document record is created with status **Submitted**, revision **0.0**. The form
    explicitly tells participants the submission is public. Private review feedback
    and recovery answers are never copied to GitHub.
 2. An editor adopts or rejects it in **Admin → Contributions**. For Incubation,
@@ -25,10 +29,9 @@ cannot sign in until confirmed. Do not announce public registration before ITU m
    existing work items can use **Admin → Work items → Queue repository creation /
    metadata pull request** to connect their existing repository.
 4. Subsequent changes go through pull requests. Main-branch PDF builds update the
-   **working copy**, preserving the archived revision. Release tags such as `v1.0`
-   archive PDF, source TAR.GZ and manifest under the next native revision **01**,
-   **02**, etc. An initial GitHub import is revision **00**. Tags are provenance,
-   not the public revision number. Replayed identical releases are idempotent;
+   **working copy**, preserving archived versions. A tag **v0.1** archives version
+   **0.1**, and **v1.0** archives **1.0**, with PDF, source TAR.GZ and manifest.
+   Initial imports/submissions are **0.0**. Replayed identical releases are idempotent;
    replacement tags and non-increasing versions are rejected. Protect release tags
    against deletion/moving. Make the PDF build reproducible, including its timestamps.
 5. Editors set **Under review**, **Published**, or **Withdrawn** in the tracker.
@@ -74,7 +77,7 @@ server-to-server integration. Configure:
   it in your secret manager. Do not send it through chat or put it in GitHub files.
 - Repository permissions: **Contents: read/write**, **Pull requests: read/write**,
   **Issues: read/write**, and default **Metadata: read**.
-- Organization permission: **Repository creation: write**, where available.
+- Repository permission: **Repository creation: write**, where available.
   Do not grant Administration/Workflows write just to bypass a setup failure.
 - Subscribe to **Push** and **Issues** webhook events.
 - Permit installation in the central FG-TIDA organization and the WG organizations.
@@ -83,11 +86,10 @@ Install the App in **FG-TIDA** for the canonical templates and the configured
 content repositories (themes, use-cases, meetings, marketing, wg1-ra-aai).
 The tracker code repository does not need installation just to import documents.
 Install it in the dedicated **fg-tida-wg0**, **fg-tida-wg1**, **fg-tida-wg2**
-organizations; access to **all repositories in those dedicated WG organizations**
-allows it to manage newly created WG repositories. If policy requires selected
-repositories instead, an owner must grant access after each repository creation.
-Confirm organization policies allow the App to create from the FG-TIDA templates.
-Future WGs need their own admin-configured organization/installation mapping.
+organizations too. Select the existing official repositories. The new creation
+permission grants the creating App access to newly created repositories; verify
+this in the acceptance test. Future WGs need their own administrator-configured
+organization and installation mapping. See MANUAL-SETUP.md for the current steps.
 
 Generate the App's private PEM key in GitHub. In **Render → Web Service →
 Environment → Secret Files**, upload it as `github-app.pem`; add a second secret
@@ -169,7 +171,7 @@ steps:
     if: github.event_name != 'pull_request'
     uses: FG-TIDA/fg-tida-tracker/.github/actions/publish-work-item@REVIEWED_COMMIT_SHA
     with:
-      pdf: src/doc/_build/latex/ACTUAL_OUTPUT_NAME.pdf
+      pdf: target/latex/specification.pdf
       source: src/doc
       tracker-url: https://tida-datatracker.org
 ```
@@ -186,7 +188,7 @@ Protect `main` with required PR review and required successful builds; protect
 
 After reviewing the metadata PR and build workflow, set
 `FGTIDA_GITHUB_INGEST_ENABLED=true`, redeploy, and test a main build and a first
-release. Verify the tracker working copy and `00 → 01` archive behavior. Then
+release. Verify the tracker working copy and `0.0 → 0.1` archive behavior. Then
 enable `FGTIDA_GITHUB_WRITE_ENABLED=true` when ready to process adoption/state jobs.
 
 ## Schedule and monitor

@@ -41,10 +41,10 @@ def transition(document, state, actor, note):
 
 
 def version_tuple(tag):
-    match = re.fullmatch(r'v(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})(?:\.(0|[1-9][0-9]{0,5}))?', tag or '')
-    if not match:
-        raise ValidationError('Use a release tag such as v1.0 or v1.0.1.')
-    return tuple(int(value or 0) for value in match.groups())
+    from .versioning import parts
+    if not (tag or '').startswith('v'):
+        raise ValidationError('Use a release tag such as v0.1 or v1.0.')
+    return (*parts(tag[1:]),0)
 
 
 @transaction.atomic
@@ -96,7 +96,7 @@ def receive_build(repository, manifest, pdf, source_archive=None):
         raise ValidationError('A released tag cannot be replaced.')
     if any(tuple(release.version) >= version for release in item.releases.only('version')):
         raise ValidationError('Release tags must increase; duplicate or out-of-order tags are rejected.')
-    core.save_document(document, core.actor_for(), f'GitHub release {tag}, commit {sha}.', data=pdf, filename='release.pdf')
+    core.save_document(document, core.actor_for(), f'GitHub release {tag}, commit {sha}.', data=pdf, filename='release.pdf',version=tag.removeprefix('v'))
     WorkItemRelease.objects.create(work_item=item, tag=tag, version=list(version), revision=document.rev,
         commit_sha=sha, checksum=checksum, manifest=manifest, source_archive=source_archive)
     return 'released', document.rev

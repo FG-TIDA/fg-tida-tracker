@@ -29,11 +29,11 @@ external/manual processes; the tracker records their confirmed state.
 ## Optional GitHub work-item integration
 
 See [deployment and administrator instructions](../../deploy/GITHUB-INTEGRATION.md).
-Submission immediately creates a public Submitted document and revision 00; review
+Submission immediately creates a public Submitted document and version 0.0; review
 feedback remains private. Adoption queues an official WG repository and a metadata
 pull request. Incubation adoption requires a WG and a charter. Main-branch builds
 update the working PDF without incrementing the archived revision. Release tags
-archive PDF/source/manifest as 01, 02, etc., retaining the GitHub tag as provenance.
+archive PDF/source/manifest as 0.1, 0.2, etc., retaining the GitHub tag as provenance.
 The revision selector uses the upstream pagination classes and selected-version
 color. Numbered WG topics and sync policies are administrator-managed.
 

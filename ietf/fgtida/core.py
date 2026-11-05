@@ -47,13 +47,15 @@ def actor_for(user=None):
 
 
 @transaction.atomic
-def save_document(doc, actor, note, data=None, filename=None, state=None, session=None):
+def save_document(doc, actor, note, data=None, filename=None, state=None, session=None, version=None):
     """Use native DocEvent/DocHistory and the native document artifact paths."""
     if data is not None:
         from .files import extract_text
         text = extract_text(data, filename)
         if doc.pk:
             doc.rev = Document.objects.select_for_update().get(pk=doc.pk).rev
+        from .versioning import next_version
+        public_version = next_version(doc,version)
         revision = int(doc.rev or '-1') + 1
         doc.rev = f'{revision:02d}'
         doc.uploaded_filename = f'{doc.name}-{doc.rev}{Path(filename).suffix.lower()}'
@@ -93,4 +95,8 @@ def save_document(doc, actor, note, data=None, filename=None, state=None, sessio
             doc.store_str(artifact.with_suffix('.txt').name, text)
         doc.words = len(text.split())
     doc.save_with_history([event])
+    if data is not None:
+        from .models import DocumentVersion
+        DocumentVersion.objects.create(document=doc,revision=doc.rev,version=public_version,recorded=event.time)
+        doc.__dict__.pop('_version_labels',None)
     return doc

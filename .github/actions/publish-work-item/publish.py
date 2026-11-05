@@ -58,7 +58,7 @@ def main():
         'commit':commit,'pdf_sha256':hashlib.sha256(pdf).hexdigest()}
     archive=None
     if tag:
-        if not re.fullmatch(r'v[0-9]+\.[0-9]+(?:\.[0-9]+)?',tag):
+        if not re.fullmatch(r'v[0-9]+\.[0-9]+',tag):
             raise ValueError('Unsupported release tag.')
         manifest['tag']=tag
         source=inside(workspace,os.environ['FGTIDA_SOURCE'])

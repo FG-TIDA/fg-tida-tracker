@@ -295,6 +295,7 @@ class FgGroupForm(GroupForm):
 
 
 class DocumentForm(forms.ModelForm):
+    version = forms.CharField(required=False,max_length=32,label='New file version',help_text='Optional X.Y version, e.g. 0.1 or 1.0. Without a value the minor version increases. Archived versions are immutable.')
     catalogued = forms.BooleanField(required=False, initial=True, label='Show in public catalog', help_text='Leave unchecked for repository support files or records awaiting classification. This is catalog inclusion, not confidential storage.')
     upload = forms.FileField(required=False, help_text='Upload a new revision: PDF, DOCX, PPTX, TXT, Markdown or XML (up to 10 MB).')
     lifecycle_state = forms.ModelChoiceField(queryset=State.objects.none(), required=False, label='Document state')
@@ -339,6 +340,15 @@ class DocumentForm(forms.ModelForm):
 
     def clean(self):
         values = super().clean()
+        if values.get('version'):
+            from .versioning import next_version
+            if not values.get('upload'):
+                self.add_error('version','A version is assigned only when uploading a new file.')
+            else:
+                try:
+                    next_version(self.instance,values['version'])
+                except ValidationError as error:
+                    self.add_error('version',error)
         if self.instance.pk:
             original = Document.objects.get(pk=self.instance.pk)
             if values.get('name') != original.name:
@@ -373,8 +383,8 @@ class DocumentForm(forms.ModelForm):
 class FgDocumentAdmin(DocumentAdmin):
     form = DocumentForm
     fields = ['name', 'title', 'type', 'group', 'abstract', 'catalogued', 'tags', 'lifecycle_state',
-              'upload', 'meeting_session', 'external_url', 'comment_about_changes']
-    list_display = ['name', 'title', 'type', 'group', 'rev', 'time']
+              'upload', 'version', 'meeting_session', 'external_url', 'comment_about_changes']
+    list_display = ['name', 'title', 'type', 'group', 'public_version', 'time']
     search_fields = ['name', 'title', 'abstract']
     list_filter = ['type', 'group', 'tags']
     raw_id_fields = []
@@ -382,7 +392,12 @@ class FgDocumentAdmin(DocumentAdmin):
     actions = []
 
     def get_queryset(self, request):
-        return super().get_queryset(request).filter(group__in=core.groups())
+        return super().get_queryset(request).filter(group__in=core.groups()).prefetch_related('tida_versions')
+
+    @admin.display(description='Version')
+    def public_version(self,obj):
+        from .versioning import public_version
+        return public_version(obj)
 
     def save_model(self, request, obj, form, change):
         from .github_catalog import preserve_manual_document
@@ -390,7 +405,7 @@ class FgDocumentAdmin(DocumentAdmin):
         state = form.cleaned_data.get('lifecycle_state') or State.objects.filter(type=obj.type, used=True).order_by('order').first()
         core.save_document(obj, core.actor_for(request.user), form.cleaned_data['comment_about_changes'],
             data=upload.read(MAX_BYTES + 1) if upload else None, filename=upload.name if upload else None, state=state,
-            session=form.cleaned_data.get('meeting_session'))
+            session=form.cleaned_data.get('meeting_session'),version=form.cleaned_data.get('version') or None)
         if change and set(form.changed_data)&{'title','group','abstract','upload','external_url','tags','catalogued'}:
             preserve_manual_document(obj)
         if change and hasattr(obj,'tida_work_item'):
@@ -540,10 +555,14 @@ class WorkItemAdmin(IntegrationAdmin):
 
 
 class WorkItemReleaseAdmin(IntegrationAdmin):
-    list_display=['work_item','revision','tag','commit_sha','created']
+    list_display=['work_item','release_version','tag','commit_sha','created']
     search_fields=['work_item__document__name','tag']
-    fields=['work_item','revision','tag','version','commit_sha','checksum','manifest','created']
+    fields=['work_item','release_version','tag','commit_sha','checksum','manifest','created']
     readonly_fields=fields
+
+    @admin.display(description='Version')
+    def release_version(self,obj):
+        return obj.tag.removeprefix('v')
 
     def get_queryset(self,request):
         return super().get_queryset(request).defer('source_archive')

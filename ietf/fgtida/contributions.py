@@ -29,7 +29,7 @@ class ContributionForm(forms.ModelForm):
         self.fields['group'].help_text = 'Choose the relevant WG, or Incubation if your proposal requires a new working group.'
         self.fields['draft_repository_url'].help_text = 'Optional public GitHub draft repository. On adoption, editors create the official WG repository.'
         self.fields['work_item_acronym'].help_text = 'Optional short identifier for the work item repository.'
-        self.fields['upload'].help_text += ' Submitting creates a public work-item record and archives this file as revision 00.'
+        self.fields['upload'].help_text += ' Submitting creates a public work-item record and archives this file as version 0.0.'
 
     def clean_draft_repository_url(self):
         value = self.cleaned_data.get('draft_repository_url')

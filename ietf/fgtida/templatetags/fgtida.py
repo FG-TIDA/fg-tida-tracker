@@ -11,6 +11,18 @@ from django.utils.html import format_html_join
 register = template.Library()
 
 
+@register.simple_tag(name='public_version')
+def version_tag(document,revision):
+    from ietf.fgtida.versioning import public_version
+    return public_version(document,revision)
+
+
+@register.filter
+def document_version(document):
+    from ietf.fgtida.versioning import public_version
+    return public_version(document)
+
+
 @register.inclusion_tag('fgtida/session_actions.html')
 def session_actions(session):
     groups = {key: [] for key in ('notes', 'recording', 'pdf', 'pptx', 'other')}
@@ -161,9 +173,10 @@ def document_formats(doc):
         extension = Path(doc.uploaded_filename).suffix.lower().lstrip('.')
         icon = {'pdf': 'file-pdf', 'txt': 'file-text', 'md': 'file-text', 'xml': 'file-code',
                 'docx': 'file-word', 'pptx': 'file-slides'}.get(extension, 'file-earmark')
-        links.append((extension.upper(), icon, reverse('fgtida:download', args=[name, doc.rev])))
+        from ietf.fgtida.versioning import public_version
+        links.append((extension.upper(), icon, reverse('fgtida:download', args=[name, public_version(doc)])))
         if extension != 'txt' and Path(doc.get_file_name()).with_suffix('.txt').is_file():
-            links.append(('Text', 'file-text', reverse('fgtida:text', args=[name, doc.rev])))
+            links.append(('Text', 'file-text', reverse('fgtida:text', args=[name, public_version(doc)])))
     if doc.external_url and urlsplit(doc.external_url).scheme in ('http', 'https'):
         label, icon = ('Recording', 'camera-video') if doc.type_id == 'recording' else ('Template package', 'folder') if doc.type_id == 'tida-template' else ('External reference', 'box-arrow-up-right')
         links.append((label, icon, doc.external_url))

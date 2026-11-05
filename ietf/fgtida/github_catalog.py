@@ -102,11 +102,21 @@ def store_source(repository, key, data, filename, title, source_url, sha, catego
     return 'updated' if doc.rev != '00' else 'created'
 
 
-def sync_repository(repository, dry_run=False, client=None):
+def sync_repository(repository, dry_run=False, client=None, metadata=None):
     client = client or GitHubClient(repository.account)
     results = []
     if not repository.enabled or not repository.account.enabled:
         return ['disabled']
+    # Enforce the public-source boundary for webhook jobs as well as CLI imports.
+    from django.core.exceptions import ValidationError
+    metadata=metadata if metadata is not None else client.request('GET','/repos/'+repository.full_name)
+    if not metadata or metadata.get('private') or metadata.get('visibility','public')!='public':
+        raise ValidationError('Only public repositories may feed the public tracker catalog.')
+    if repository.github_id and metadata.get('id')!=repository.github_id:
+        raise ValidationError('Repository identity changed; administrator review is required.')
+    if not dry_run and not repository.github_id:
+        repository.github_id=metadata['id']
+        repository.save(update_fields=['github_id'])
     if repository.mode == 'issues':
         for issue in client.pages(f'/repos/{repository.full_name}/issues?state=all'):
             if 'pull_request' in issue:
