@@ -13,8 +13,8 @@ register = template.Library()
 
 @register.simple_tag(name='public_version')
 def version_tag(document,revision):
-    from ietf.fgtida.versioning import public_version
-    return public_version(document,revision)
+    from ietf.fgtida.versioning import labels
+    return labels(document).get(revision,'—')
 
 
 @register.filter

@@ -180,6 +180,42 @@ in chat, screenshots, tickets or repository workflow files.
 
 ## 7. Review and import the public sources
 
+After deploying the latest code, capture a non-secret, read-only baseline in
+Render Shell:
+
+```sh
+python ietf/manage.py audit_fgtida_content --skip-checks
+```
+
+It reports the deployed commit, required migrations, archive/version gaps,
+imported-repository counts and charter links. Run it again after the import.
+No user accounts, recipient email addresses or credentials are printed. A missing
+version label on an existing file is different from a document that has never
+had an archived file. Do not fix either by replacing the entire production database.
+
+Deployment/migrations and `configure_fgtida_github` do not download documents.
+They create schema and editable source mappings. The local import is not copied
+to Render. Run the one-time import below in **Render Shell** to populate the
+production database and its own persistent disk. This inbound pull from public
+repositories does not require enabling automatic sync or granting GitHub writes.
+Keep write, ingest and scheduler flags false during the review. Anonymous GitHub
+API calls are rate-limited; a configured App improves reliability but is not
+required for a small public-source pull. Do not enable writes merely to import.
+
+To check just the known charters first:
+
+```sh
+python ietf/manage.py sync_fgtida_github --repository fg-tida-wg1/wg1-cdra-charter --skip-checks
+python ietf/manage.py sync_fgtida_github --repository fg-tida-wg2/wg2-ibea-charter --skip-checks
+# After reviewing each plan, repeat it with --apply to import that charter.
+```
+
+If the summary says `manual/excluded`, the record is deliberately protected.
+Review **GitHub sources** in admin before resuming it; never reset every source
+to automatic merely to force an import. If imported file metadata exists but the
+actual file is missing, check the persistent disk and restore its backup rather
+than assuming a schema migration transferred the file.
+
 1. In tracker admin open **GitHub repositories**. Review owning group, document
    type, mode, workflow path and allowed paths. Support files remain excluded.
 2. In Render Shell run the read-only plan, review the counts, then apply:

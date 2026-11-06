@@ -95,7 +95,7 @@ def document(request, name, rev=None):
         snapshot = doc.history_set.filter(rev=rev).order_by('-time', '-id').first()
         if snapshot is None:
             raise Http404
-    revisions = doc.history_set.exclude(rev='').order_by('-time', '-id')
+    revisions = doc.history_set.exclude(rev='').exclude(uploaded_filename='').exclude(uploaded_filename__isnull=True).order_by('-time', '-id')
     unique = {}
     for item in revisions:
         unique.setdefault(item.rev, item)
@@ -142,7 +142,7 @@ def history(request, name):
     doc = get_object_or_404(core.documents(), name=name)
     return render(request, 'fgtida/history.html', {'doc': doc,
         'page': Paginator(doc.docevent_set.select_related('by').order_by('-time', '-pk'), 50).get_page(request.GET.get('page')),
-        'revisions': doc.history_set.exclude(rev='').values_list('rev', flat=True).order_by('rev').distinct()})
+        'revisions': doc.history_set.exclude(rev='').exclude(uploaded_filename='').exclude(uploaded_filename__isnull=True).values_list('rev', flat=True).order_by('rev').distinct()})
 
 
 def download(request, name, rev):
@@ -363,7 +363,7 @@ def document_text(request, name, rev):
 def compare(request, name):
     doc = get_object_or_404(core.documents(), name=name)
     from .versioning import archive_revision,public_version
-    revisions = list(doc.history_set.exclude(rev='').values_list('rev', flat=True).order_by('rev').distinct())
+    revisions = list(doc.history_set.exclude(rev='').exclude(uploaded_filename='').exclude(uploaded_filename__isnull=True).values_list('rev', flat=True).order_by('rev').distinct())
     before = archive_revision(doc,request.GET.get('from', revisions[-2] if len(revisions) > 1 else doc.rev))
     after = archive_revision(doc,request.GET.get('to', doc.rev))
     texts = []

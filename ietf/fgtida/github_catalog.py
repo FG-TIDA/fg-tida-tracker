@@ -41,7 +41,7 @@ def store_source(repository, key, data, filename, title, source_url, sha, catego
     digest = hashlib.sha256(data).hexdigest()
     if source and (source.sync_mode != 'automatic' or (not source.document_id and source.sha)):
         return 'manual/excluded'
-    if source and source.checksum == digest:
+    if source and source.checksum == digest and source.document_id and source.document.uploaded_filename:
         return 'unchanged'
     urls=[source_url]
     if key=='file:src/doc/index.rst' and (repository.mode=='workitem' or repository.document_type in {'tida-template','charter'}):
@@ -62,11 +62,11 @@ def store_source(repository, key, data, filename, title, source_url, sha, catego
     source=GitHubSource.objects.select_for_update().get(pk=source.pk)
     if source.sync_mode!='automatic':
         return 'manual/excluded'
-    if source.checksum==digest:
+    if source.checksum==digest and source.document_id and source.document.uploaded_filename:
         return 'unchanged'
     if source.document_id and not doc:
         doc=Document.objects.select_for_update().get(pk=source.document_id)
-    if doc and repository.mode=='workitem':
+    if doc and doc.uploaded_filename and repository.mode=='workitem':
         # Main-branch source changes never manufacture an archived revision.
         # The authenticated PDF callback updates the working copy; tags archive it.
         source.sha,source.checksum,source.last_sync=sha,digest,timezone.now()

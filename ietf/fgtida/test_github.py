@@ -213,6 +213,54 @@ class GitHubWorkflowTests(TestCase):
         self.assertEqual(store_source(*args),'unchanged')
         self.assertEqual(Document.objects.get(title='Original').rev,'00')
 
+    def test_legacy_work_item_without_file_gets_initial_archive(self):
+        document=Document(name='fg-tida-link-only',title='Old link',rev='00',group=self.root,type_id='tida',external_url=self.repo.url+'/blob/main/doc.md')
+        core.save_document(document,core.actor_for(),'Legacy external reference only')
+        response=self.client.get('/doc/'+document.name+'/')
+        self.assertContains(response,'No archived version')
+        self.assertNotContains(response,'aria-label="Document versions"')
+        args=(self.repo,'file:doc.md',b'# Full proposal\n\nComplete proposal body.','doc.md','Full proposal',document.external_url,'a'*40)
+        store_source(*args)
+        document.refresh_from_db()
+        self.assertEqual(document.rev,'01')
+        self.assertTrue(document.uploaded_filename)
+        response=self.client.get('/doc/'+document.name+'/')
+        self.assertContains(response,'Complete proposal body.')
+        self.assertContains(response,'aria-label="Document content"')
+        self.assertEqual(len(response.context['revisions']),1)
+        self.assertEqual(response.context['revisions'][0].public_version,'0.0')
+        self.assertNotContains(response,'No document content has been imported')
+        store_source(self.repo,'file:doc.md',b'# New working draft','doc.md','New working draft',document.external_url,'b'*40)
+        document.refresh_from_db()
+        self.assertEqual(document.rev,'01')  # Main changes still cannot replace an archive.
+
+    def test_imported_charter_is_linked_and_full_content_is_visible(self):
+        from ietf.group.models import Group
+        self.repo.mode='files'
+        self.repo.document_type='charter'
+        self.repo.group=Group.objects.get(acronym='tidawg1')
+        self.repo.save()
+        store_source(self.repo,'file:charter.md',b'# WG charter\n\nFull charter text.','charter.md','WG charter',self.repo.url+'/blob/main/charter.md','a'*40)
+        self.repo.group.refresh_from_db()
+        doc=self.repo.group.charter
+        self.assertIsNotNone(doc)
+        self.assertContains(self.client.get('/group/tidawg1/about/'),'Charter')
+        response=self.client.get('/doc/'+doc.name+'/')
+        self.assertContains(response,'Full charter text.')
+        self.assertContains(response,'aria-label="Document content"')
+
+    def test_content_audit_distinguishes_missing_files_from_missing_imports(self):
+        document,item=self.document()
+        output=io.StringIO()
+        call_command('audit_fgtida_content',skip_checks=True,stdout=output)
+        self.assertIn('"missing_current_version_label": 0',output.getvalue())
+        self.assertIn('"missing_current_file_on_disk": 0',output.getvalue())
+        self.assertNotIn(self.user.email,output.getvalue())
+        Path(document.get_file_name()).unlink()
+        output=io.StringIO()
+        call_command('audit_fgtida_content',skip_checks=True,stdout=output)
+        self.assertIn('"missing_current_file_on_disk": 1',output.getvalue())
+
     def test_webhook_imports_reject_private_or_replaced_repositories(self):
         from unittest.mock import Mock
         from .github_catalog import sync_repository
