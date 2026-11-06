@@ -29,7 +29,7 @@ def groups():
 
 
 def documents(include_uncatalogued=False):
-    records = Document.objects.filter(group__in=groups())
+    records = Document.objects.filter(group__in=groups()).prefetch_related('tida_formats')
     return records if include_uncatalogued else records.exclude(tags__slug='tida-uncatalogued')
 
 

@@ -41,7 +41,11 @@ def database_access(request):
     return HttpResponse(status=204 if request.user.is_active and request.user.is_superuser else 403)
 
 
-def search(request, acronym=None):
+def incubation(request):
+    return search(request, acronym='incubation', incubation=True)
+
+
+def search(request, acronym=None, incubation=False):
     query = (request.GET.get('name') or request.GET.get('q') or '').strip()[:200]
     docs = core.documents().select_related('group', 'group__tida_configuration', 'type', 'tida_listing', 'tida_listing__meeting').prefetch_related('states', 'tags', 'tida_versions').annotate(
         first_activity=Min('docevent__time'), latest_revision=Max('docevent__time', filter=Q(docevent__type='new_revision')))
@@ -56,7 +60,10 @@ def search(request, acronym=None):
         docs = docs.filter(tida_listing__direction=collection)
     author = request.GET.get('author', '').strip()[:200]
     state = request.GET.get('state', '')
-    if group:
+    if incubation:
+        from .models import Contribution
+        docs = docs.filter(Q(group__acronym='incubation') | Q(pk__in=Contribution.objects.filter(group__acronym='incubation').values('document_id')))
+    elif group:
         docs = docs.filter(group__acronym=group)
     if kind:
         docs = docs.filter(type_id=kind)
@@ -87,7 +94,8 @@ def search(request, acronym=None):
         'types': core.TYPE_LABELS,
         'states': State.objects.filter(type_id__in=core.DOCUMENT_TYPES).values('slug', 'name').distinct().order_by('name'),
         'categories': core.CATEGORIES, 'queryargs': params.urlencode(),
-        'group_obj': get_object_or_404(core.groups(), acronym=acronym) if acronym else None,
+        'incubation': incubation,
+        'group_obj': get_object_or_404(core.groups(), acronym=acronym) if acronym and not incubation else None,
         'section': 'documents',
     })
 

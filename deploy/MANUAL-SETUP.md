@@ -241,6 +241,37 @@ An admin-edited document remains paused, and a deleted source is not recreated.
 
 ## 8. Install build publishing using a pull request
 
+### Add Word and PDF alternatives to any document revision
+
+Deploy migration `fgtida.0014_documentformat` using the existing pre-deploy
+migration command. No database replacement or new storage service is required.
+
+1. Open **Administration → Documents → select a document**.
+2. Keep its source archive (Markdown, RST, Word, PDF, etc.) in the main **Upload**
+   field. Uploading a source there creates a new archived revision as before.
+3. Scroll to **Word / PDF alternatives** and click **Add another**. Select
+   **PDF** or **Word**, then attach a matching `.pdf` or `.docx` file, up to 10 MB.
+   Add a second row to provide both formats. Save with a history note.
+4. New alternative rows belong to the source revision being saved. If you also
+   upload a new source revision above, the new rows belong to that new revision.
+   Existing rows retain their original revision and remain on its history page.
+5. The public document's **Formats** section and document results show download
+   links. Input/output lists also show alternative download links beneath the
+   document name. Alternatives are stored in PostgreSQL and included in database
+   backups and the FG-TIDA release export.
+6. Replace an alternative by uploading a matching file in its existing row, or
+   use its **Delete** checkbox to remove it. These editorial alternatives do not
+   overwrite the immutable source archive. Supply matching alternatives for each
+   new revision; older conversions are never presented as newer content.
+
+Incubation appears under **Work → New work**, outside the working-group list.
+It opens the public `/work/incubation/` catalogue without requiring sign-in.
+The listing shows catalogued document metadata and retains contributions that
+were originally submitted to Incubation and later adopted. Private review notes,
+notification recipients and uncatalogued documents are excluded. The separate
+**Submit a contribution** link requires sign-in, preselects Incubation and
+continues to notify the administrator-configured management recipients.
+
 ### File-based templates, charters and deliverables
 
 These document types use the same archive and X.Y version controls as other

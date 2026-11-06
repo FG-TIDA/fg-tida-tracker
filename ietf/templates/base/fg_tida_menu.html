@@ -4,7 +4,9 @@
     <ul class="dropdown-menu">
         <li><h6 class="dropdown-header">Working groups</h6></li>
         {% for group in navigation_groups %}{% group_number group as number %}<li><a class="dropdown-item" href="{% url 'fgtida:group' group.acronym %}">{{ number|default:group.acronym }} : {{ group.name }}</a></li>{% endfor %}
-        <li><a class="dropdown-item" href="{% url 'fgtida:group' 'incubation' %}">Incubation - approval for new wg</a></li>
+        <li><hr class="dropdown-divider"></li>
+        <li><h6 class="dropdown-header">New work</h6></li>
+        <li><a class="dropdown-item" href="{% url 'fgtida:incubation' %}">Incubation - approval for new wg</a></li>
         <li><hr class="dropdown-divider"></li>
         <li><h6 class="dropdown-header">Work programme</h6></li>
         <li><a class="dropdown-item" href="{% url 'fgtida:documents' %}?category=themes">Themes</a></li>

@@ -7,9 +7,12 @@ from . import resource_files
 from . import session_materials
 from . import mfa
 from . import github_views
+from . import document_formats
 
 app_name = 'fgtida'
 urlpatterns = [
+    path('work/incubation/', views.incubation, name='incubation'),
+    path('document-formats/<int:pk>/download/', document_formats.download, name='document-format'),
     path('integrations/github/build/', github_views.build, name='github-build'),
     path('integrations/github/webhook/', github_views.webhook, name='github-webhook'),
     path('work-items/<int:pk>/state.svg', github_views.state_badge, name='work-item-state'),

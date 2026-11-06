@@ -27,7 +27,7 @@ class ContributionForm(forms.ModelForm):
         self.fields['group'].label_from_instance = group_label
         self.fields['group'].queryset = self.fields['group'].queryset.exclude(state_id='conclude')
         self.fields['group'].label = 'Working group or Incubation'
-        self.fields['group'].help_text = 'Choose the relevant wg, or Incubation - approval for new wg if your contribution requires a new working group.'
+        self.fields['group'].help_text = 'Choose an existing wg, or Incubation for new work that does not belong to an existing wg. Incubation is a submission route, not a working group.'
         self.fields['draft_repository_url'].help_text = 'Optional public GitHub draft repository. On adoption, editors create the official WG repository.'
         self.fields['work_item_acronym'].help_text = 'Optional short identifier for the work item repository.'
         self.fields['upload'].help_text += ' Submitting creates a public work-item record and archives this file as version 0.0.'
@@ -48,7 +48,8 @@ class ContributionForm(forms.ModelForm):
 
 @login_required
 def submit(request):
-    form = ContributionForm(request.POST or None, request.FILES or None)
+    selected = core.groups().filter(acronym=request.GET.get('group', ''), acronym__in=['incubation']).first()
+    form = ContributionForm(request.POST or None, request.FILES or None, initial={'group': selected} if selected else None)
     if request.method == 'POST' and form.is_valid():
         # Serialize a user's submissions to enforce a bounded pending queue.
         with transaction.atomic():

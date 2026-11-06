@@ -4,7 +4,6 @@ from urllib.parse import urlsplit
 from django import template
 from django.urls import reverse
 from django.utils.html import format_html
-from ietf.utils.markdown import markdown
 from ietf.fgtida import workflow, core
 from django.utils.html import format_html_join
 
@@ -103,7 +102,7 @@ def document_categories(doc):
 
 
 @register.filter
-def rich_text(value):
+def rich_text(value, source_url=''):
     """Render complete Markdown blocks using Datatracker's HTML sanitizer."""
     # Imported prose can contain visually blank lines made of non-breaking
     # spaces. Markdown treats those as paragraph text, swallowing following tables.
@@ -120,34 +119,38 @@ def rich_text(value):
                 and re.fullmatch(r'\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)+\|?\s*',lines[index+1])
                 and normalized and normalized[-1].strip()):
             normalized.append('')
+        if not fenced:
+            line = re.sub(r'^(\s*>\s*)\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$', lambda match: match[1] + '**' + match[2].capitalize() + '**', line)
         normalized.append(line)
     text='\n'.join(normalized)
-    return format_html('<div class="fg-tida-rich-text">{}</div>', markdown(text))
+    from ietf.fgtida.rendering import markdown_fragment
+    from django.utils.safestring import mark_safe
+    return format_html('<div class="fg-tida-rich-text">{}</div>', mark_safe(markdown_fragment(text, source_url)))
 
 
 @register.filter
-def rich_rst(value):
+def rich_rst(value, source_url=''):
     import hashlib
     import subprocess
     import sys
     from django.core.cache import cache
-    from ietf.utils.html import clean_html
     from django.utils.safestring import mark_safe
     text=str(value or '')
     if len(text.encode())>500000:
         return format_html('<pre>{}</pre>',text)
-    key='fgtida:rst:'+hashlib.sha256(text.encode()).hexdigest()
+    from ietf.fgtida.rendering import clean_fragment
+    key='fgtida:rst:v2:'+hashlib.sha256(text.encode()).hexdigest()
     rendered=cache.get(key)
     if rendered is None:
         try:
             result=subprocess.run([sys.executable,'-m','ietf.fgtida.rst_worker'],input=text.encode(),
                 capture_output=True,check=True,timeout=15)
-            rendered=clean_html(result.stdout.decode())
+            rendered=clean_fragment(result.stdout.decode())
             if len(rendered.encode())<500000:
                 cache.set(key,rendered,3600)
         except (subprocess.SubprocessError,UnicodeError):
             return format_html('<pre>{}</pre>',text)
-    return format_html('<div class="fg-tida-rich-text">{}</div>',mark_safe(rendered))
+    return format_html('<div class="fg-tida-rich-text">{}</div>',mark_safe(clean_fragment(rendered, source_url)))
 
 
 @register.simple_tag
@@ -174,18 +177,25 @@ def file_type(doc):
 
 
 @register.inclusion_tag('fgtida/formats.html')
-def document_formats(doc):
+def document_formats(doc, alternatives_only=False, plain=False):
     links = []
     name = doc.doc.name if doc.is_dochistory() else doc.name
-    if doc.uploaded_filename and doc.rev and Path(doc.get_file_name()).is_file():
+    if not alternatives_only and doc.uploaded_filename and doc.rev and Path(doc.get_file_name()).is_file():
         extension = Path(doc.uploaded_filename).suffix.lower().lstrip('.')
         icon = {'pdf': 'file-pdf', 'txt': 'file-text', 'md': 'file-text', 'xml': 'file-code',
                 'docx': 'file-word', 'pptx': 'file-slides'}.get(extension, 'file-earmark')
         from ietf.fgtida.versioning import public_version
-        links.append((extension.upper(), icon, reverse('fgtida:download', args=[name, public_version(doc)])))
+        links.append(('Word' if extension == 'docx' else extension.upper(), icon, reverse('fgtida:download', args=[name, public_version(doc)])))
         if extension != 'txt' and Path(doc.get_file_name()).with_suffix('.txt').is_file():
             links.append(('Text', 'file-text', reverse('fgtida:text', args=[name, public_version(doc)])))
-    if doc.external_url and urlsplit(doc.external_url).scheme in ('http', 'https'):
+    original = doc.doc if doc.is_dochistory() else doc
+    for alternative in original.tida_formats.all():
+        if alternative.revision == doc.rev:
+            label = alternative.get_kind_display()
+            if Path(doc.uploaded_filename or '').suffix == '.' + alternative.kind:
+                label += ' (alternative)'
+            links.append((label, 'file-pdf' if alternative.kind == 'pdf' else 'file-word', reverse('fgtida:document-format', args=[alternative.pk])))
+    if not alternatives_only and doc.external_url and urlsplit(doc.external_url).scheme in ('http', 'https'):
         label, icon = ('Recording', 'camera-video') if doc.type_id == 'recording' else ('Template package', 'folder') if doc.type_id == 'tida-template' else ('External reference', 'box-arrow-up-right')
         links.append((label, icon, doc.external_url))
-    return {'format_links': links}
+    return {'format_links': links, 'plain': plain, 'alternatives_only': alternatives_only}

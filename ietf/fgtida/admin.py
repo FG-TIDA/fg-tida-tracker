@@ -19,7 +19,7 @@ from . import workflow
 from .files import extract_text, MAX_BYTES
 from .models import Contribution, ContributionRecipient, SessionResource, OutgoingMail, AdministratorApproval, SecurityQuestion
 from .models import (EmailVerification, GitHubAccount, WorkingGroupConfiguration, GitHubRepository,
-    GitHubSource, WorkItem, WorkItemRelease, GitHubJob, DocumentListing)
+    GitHubSource, WorkItem, WorkItemRelease, GitHubJob, DocumentListing, DocumentFormat)
 from .resource_files import SessionResourceForm
 from django.contrib.auth.models import User
 from ietf.ietfauth.admin import CustomUserAdmin
@@ -349,6 +349,7 @@ class DocumentForm(forms.ModelForm):
 
     def clean(self):
         values = super().clean()
+        self.instance._fgtida_upload_revision = bool(values.get('upload'))
         if values.get('document_direction'):
             from pathlib import Path
             upload = values.get('upload')
@@ -395,6 +396,34 @@ class DocumentForm(forms.ModelForm):
         return values
 
 
+class DocumentFormatInline(admin.TabularInline):
+    model = DocumentFormat
+    from .document_formats import DocumentFormatForm, DocumentFormatFormSet
+    form = DocumentFormatForm
+    formset = DocumentFormatFormSet
+    fields = ['revision', 'kind', 'upload', 'download_link']
+    readonly_fields = ['revision', 'download_link']
+    verbose_name_plural = 'Word / PDF alternatives — new rows attach to the revision saved above'
+    extra = 0
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).defer('content').order_by('-revision', 'kind')
+
+    def download_link(self, obj):
+        if obj and obj.pk:
+            return format_html('<a href="{}">{}</a>', reverse('fgtida:document-format', args=[obj.pk]), obj.filename)
+        return 'Save to publish this format'
+
+    def has_add_permission(self, request, obj=None):
+        return request.user.has_perm('doc.change_document') or request.user.has_perm('doc.add_document')
+
+    def has_change_permission(self, request, obj=None):
+        return request.user.has_perm('doc.change_document')
+
+    has_view_permission = has_change_permission
+    has_delete_permission = has_change_permission
+
+
 class FgDocumentAdmin(DocumentAdmin):
     form = DocumentForm
     fields = ['name', 'title', 'type', 'group', 'abstract', 'catalogued', 'tags', 'lifecycle_state',
@@ -403,7 +432,7 @@ class FgDocumentAdmin(DocumentAdmin):
     search_fields = ['name', 'title', 'abstract']
     list_filter = ['type', 'group', 'tags']
     raw_id_fields = []
-    inlines = [DocAuthorInline, RelatedDocumentInline, AdditionalUrlInLine]
+    inlines = [DocAuthorInline, RelatedDocumentInline, AdditionalUrlInLine, DocumentFormatInline]
     actions = []
 
     def get_queryset(self, request):

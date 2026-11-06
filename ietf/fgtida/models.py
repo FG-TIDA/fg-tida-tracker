@@ -294,3 +294,22 @@ class DocumentListing(models.Model):
     meeting = models.ForeignKey('meeting.Meeting', blank=True, null=True, on_delete=models.SET_NULL)
     source = models.CharField(max_length=255, blank=True, help_text='Submitting organization, author or working group.')
     created = models.DateTimeField(default=timezone.now, db_index=True)
+
+
+class DocumentFormatManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().defer('content')
+
+
+class DocumentFormat(models.Model):
+    """Optional editorial Word/PDF alternatives belonging to one archive revision."""
+    document = models.ForeignKey('doc.Document', on_delete=models.CASCADE, related_name='tida_formats')
+    revision = models.CharField(max_length=16)
+    kind = models.CharField(max_length=4, choices=[('pdf', 'PDF'), ('docx', 'Word')])
+    filename = models.CharField(max_length=255, editable=False)
+    content = models.BinaryField(editable=False)
+    updated = models.DateTimeField(auto_now=True)
+    objects = DocumentFormatManager()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['document', 'revision', 'kind'], name='fgtida_document_format_unique')]
