@@ -119,7 +119,7 @@ def provision(item):
             repo = client.request('POST',f'/repos/FG-TIDA/{template}/generate',{
                 'owner':config.github_account.organization,'name':name,'description':marker,'private':False,'include_all_branches':False})
         repository, _ = GitHubRepository.objects.get_or_create(account=config.github_account,name=name,
-            defaults={'group':item.document.group,'github_id':repo['id']})
+            defaults={'group':item.document.group,'github_id':repo['id'], 'group_evidence':'https://github.com/'+config.github_account.organization+'/'+name})
         item.repository=repository
         item.save(update_fields=['repository'])
     client = GitHubClient(item.repository.account,write=True)

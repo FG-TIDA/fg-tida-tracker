@@ -146,6 +146,7 @@ def document(request, name, rev=None):
         'work_item':work_item,'old_revision':bool(rev and rev!=doc.rev),'show_working':not rev,
         'events': doc.docevent_set.select_related('by')[:100],
         'authors': doc.documentauthor_set.select_related('person', 'email').order_by('order'),
+        'source_records': doc.github_sources.select_related('repository').all(),
         'sessions': doc.session_set.select_related('meeting'),
         'relationships': RelatedDocument.objects.filter(source=doc, target__in=core.documents()).select_related('target', 'relationship'),
         'incoming': RelatedDocument.objects.filter(target=doc, source__in=core.documents()).select_related('source', 'relationship'),

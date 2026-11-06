@@ -180,6 +180,12 @@ in chat, screenshots, tickets or repository workflow files.
 
 ## 7. Review and import the public sources
 
+Before another import, review [the source-classification audit](SOURCE-CLASSIFICATION-AUDIT.md).
+After migration 0015, plan/apply `audit_fgtida_classification` to correct older
+automatic defaults. The central `FG-TIDA/use-cases` repository is not automatically
+assigned to wg0, and `themes` is not automatically assigned to Incubation. A source
+collection/category requires evidence; unknown values remain unclassified.
+
 After deploying the latest code, capture a non-secret, read-only baseline in
 Render Shell:
 

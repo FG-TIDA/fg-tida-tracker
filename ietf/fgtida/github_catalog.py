@@ -36,12 +36,19 @@ def title_for(data, path):
 
 
 @transaction.atomic
-def store_source(repository, key, data, filename, title, source_url, sha, category=None, kind=None, dry_run=False):
+def store_source(repository, key, data, filename, title, source_url, sha, category=None, kind=None, dry_run=False, source_metadata=None):
     source = GitHubSource.objects.filter(repository=repository, source_key=key).first()
     digest = hashlib.sha256(data).hexdigest()
     if source and (source.sync_mode != 'automatic' or (not source.document_id and source.sha)):
         return 'manual/excluded'
+    from .classification import resolve, refresh
+    assigned_group, selected_category, observed = resolve(repository, key, source_url,
+        source_metadata if source_metadata is not None else (source.source_metadata if source else {}))
     if source and source.checksum == digest and source.document_id and source.document.uploaded_filename:
+        if dry_run:
+            return 'unchanged content; review classification'
+        if refresh(source, assigned_group, selected_category, observed):
+            return 'classification corrected; file unchanged'
         return 'unchanged'
     urls=[source_url]
     if key=='file:src/doc/index.rst' and (repository.mode=='workitem' or repository.document_type in {'tida-template','charter'}):
@@ -63,10 +70,12 @@ def store_source(repository, key, data, filename, title, source_url, sha, catego
     if source.sync_mode!='automatic':
         return 'manual/excluded'
     if source.checksum==digest and source.document_id and source.document.uploaded_filename:
+        refresh(source, assigned_group, selected_category, observed)
         return 'unchanged'
     if source.document_id and not doc:
         doc=Document.objects.select_for_update().get(pk=source.document_id)
     if doc and doc.uploaded_filename and repository.mode=='workitem':
+        refresh(source, assigned_group, selected_category, observed)
         # Main-branch source changes never manufacture an archived revision.
         # The authenticated PDF callback updates the working copy; tags archive it.
         source.sha,source.checksum,source.last_sync=sha,digest,timezone.now()
@@ -74,29 +83,27 @@ def store_source(repository, key, data, filename, title, source_url, sha, catego
         return 'working source changed; awaiting build'
     if not doc:
         name = 'fg-tida-'+slugify(repository.full_name+'-'+key)[:175]+'-'+hashlib.sha256((repository.full_name+':'+key).encode()).hexdigest()[:10]
-        doc = Document(name=name, group=repository.group, type_id=kind or repository.document_type)
+        doc = Document(name=name, group=assigned_group, type_id=kind or repository.document_type)
     doc.title = title
-    doc.group=repository.group
+    doc.group=assigned_group
     doc.abstract = data.decode('utf-8-sig')[:2000] if PurePosixPath(filename).suffix.lower() in {'.md','.txt'} else ''
     doc.external_url = source_url
     initial = 'draft' if repository.mode == 'workitem' or doc.type_id=='charter' else 'submitted'
     state = None if doc.pk and doc.states.exists() else State.objects.filter(type_id=doc.type_id, slug=initial if doc.type_id in {'tida','charter'} else 'active').first()
     core.save_document(doc, core.actor_for(), f'Synchronized {repository.full_name}: {key} ({sha}).', data=data, filename=filename, state=state)
-    selected_category = category or repository.category
+    doc.tags.remove(*doc.tags.filter(slug__in=['tida-'+slug for slug, _ in core.CATEGORIES]))
     if selected_category in dict(core.CATEGORIES):
-        doc.tags.remove(*doc.tags.filter(slug__in=['tida-'+key for key,_ in core.CATEGORIES]))
         doc.tags.add('tida-'+selected_category)
-    if doc.type_id == 'tida-template':
-        doc.tags.add('tida-templates')
     # Update the native snapshot after categories have been attached.
     from ietf.doc.utils import save_document_in_history
     save_document_in_history(doc)
     source.document, source.sha, source.checksum = doc, sha, digest
     source.source_url, source.last_sync = source_url, timezone.now()
+    source.source_metadata = observed
     source.save()
     if repository.mode == 'workitem':
         WorkItem.objects.get_or_create(document=doc, defaults={'repository':repository, 'short_name':slugify(title)[:48] or repository.name[:48]})
-    if repository.document_type=='charter' and not repository.group.charter_id:
+    if repository.document_type=='charter' and assigned_group.pk == repository.group_id and assigned_group.acronym != 'tida' and not repository.group.charter_id:
         repository.group.charter=doc
         repository.group.save(update_fields=['charter'])
     return 'updated' if doc.rev != '00' else 'created'
@@ -123,7 +130,9 @@ def sync_repository(repository, dry_run=False, client=None, metadata=None):
                 continue
             body = ('# '+issue['title']+'\n\n'+(issue.get('body') or '')+'\n').encode()
             results.append(store_source(repository, 'issue:'+str(issue['number']), body, f'issue-{issue["number"]}.md',
-                issue['title'][:255], issue['html_url'], issue['updated_at'], dry_run=dry_run))
+                issue['title'][:255], issue['html_url'], issue['updated_at'], dry_run=dry_run,
+                source_metadata={'labels':[label['name'] for label in issue.get('labels',[])], 'state':issue.get('state',''),
+                    'created_at':issue.get('created_at',''), 'updated_at':issue['updated_at']}))
             # Only explicitly linked GitHub-hosted document attachments are catalogued.
             for url in sorted(set(re.findall(r'https://github\.com/(?:user-attachments/files|[^\s/]+/[^\s/]+/files)/[^\s)<>\"\\]+',issue.get('body') or ''))):
                 path=urlsplit(url).path
@@ -133,7 +142,8 @@ def sync_repository(repository, dry_run=False, client=None, metadata=None):
                 data=client.attachment(url)
                 key='attachment:'+hashlib.sha256(url.encode()).hexdigest()
                 results.append(store_source(repository,key,data,filename,issue['title'][:200]+' — '+filename[:50],
-                    url,issue['updated_at'],dry_run=dry_run))
+                    url,issue['updated_at'],dry_run=dry_run,source_metadata={'labels':[label['name'] for label in issue.get('labels',[])],
+                        'state':issue.get('state',''), 'parent_issue':issue['html_url']}))
                 if not dry_run:
                     from ietf.doc.models import RelatedDocument
                     from ietf.name.models import DocRelationshipName

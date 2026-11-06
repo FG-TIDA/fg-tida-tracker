@@ -573,6 +573,21 @@ class GitHubRepositoryAdmin(IntegrationAdmin):
     readonly_fields=['last_sync','last_error']
     actions=['queue_sync']
 
+    def get_form(self, request, obj=None, **kwargs):
+        base = super().get_form(request, obj, **kwargs)
+        class EvidenceForm(base):
+            category = forms.ChoiceField(required=False, choices=[('', 'Not specified by source')] + core.CATEGORIES)
+            def clean(self):
+                values = super().clean()
+                from .classification import public_github_url
+                group = values.get('group')
+                if group and group.acronym != 'tida' and not public_github_url(values.get('group_evidence')):
+                    self.add_error('group_evidence', 'Provide public GitHub evidence of this group assignment; otherwise select FG-TIDA without a wg assignment.')
+                if values.get('category') and not public_github_url(values.get('category_evidence')):
+                    self.add_error('category_evidence', 'Provide public GitHub evidence for this category, or leave the category empty.')
+                return values
+        return EvidenceForm
+
     @admin.action(description='Queue synchronization for selected repositories')
     def queue_sync(self,request,queryset):
         import uuid
@@ -585,7 +600,7 @@ class GitHubSourceAdmin(IntegrationAdmin):
     list_display=['source_key','repository','document','sync_mode','last_sync']
     search_fields=['source_key','repository__name','document__name','document__title']
     list_filter=['sync_mode','repository']
-    readonly_fields=['sha','checksum','last_sync','source_url']
+    readonly_fields=['sha','checksum','last_sync','source_url','source_metadata']
 
     def save_model(self,request,obj,form,change):
         if 'sync_mode' in form.changed_data and obj.sync_mode=='automatic':

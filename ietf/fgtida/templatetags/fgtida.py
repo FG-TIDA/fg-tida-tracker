@@ -98,7 +98,7 @@ def document_categories(doc):
     categories = dict(core.CATEGORIES)
     return format_html_join(' ', '<a class="badge text-bg-light" href="{}">{}</a>',
         ((reverse('fgtida:documents') + '?category=' + tag.slug[5:], categories[tag.slug[5:]])
-         for tag in doc.tags.all() if tag.slug.startswith('tida-') and tag.slug[5:] in categories))
+         for tag in doc.tags.all() if tag.slug.startswith('tida-') and tag.slug[5:] in categories)) or 'Not classified'
 
 
 @register.filter
@@ -164,6 +164,8 @@ def group_number(group):
 
 @register.filter
 def group_label(group):
+    if group.acronym == 'tida':
+        return 'FG-TIDA (no wg assigned)'
     if group.acronym == 'incubation':
         return 'Incubation - approval for new wg'
     number=group_number(group)

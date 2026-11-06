@@ -184,7 +184,9 @@ class GitHubRepository(models.Model):
     publish_workflow = models.CharField(default='.github/workflows/docs.yml', max_length=200)
     mode = models.CharField(max_length=16, default='workitem', choices=[
         ('workitem', 'Versioned work item'), ('files', 'Document files'), ('issues', 'Theme / use-case issues')])
-    category = models.CharField(max_length=32, default='deliverables')
+    category = models.CharField(max_length=32, default='', blank=True)
+    group_evidence = models.URLField(max_length=2000, blank=True, help_text='Public GitHub page explicitly establishing the working-group assignment. A topic or a WG mention is not ownership.')
+    category_evidence = models.URLField(max_length=2000, blank=True, help_text='Public GitHub page explicitly describing this source collection. Leave category blank when not established.')
     document_type = models.CharField(max_length=24, default='tida')
     paths = models.JSONField(default=list, blank=True, help_text='Explicit document paths; support/code files are never automatically documents.')
     enabled = models.BooleanField(default=True)
@@ -216,6 +218,7 @@ class GitHubSource(models.Model):
     checksum = models.CharField(max_length=64, blank=True)
     source_url = models.URLField(max_length=2000, blank=True)
     last_sync = models.DateTimeField(null=True, blank=True)
+    source_metadata = models.JSONField(default=dict, blank=True, help_text='Observed GitHub labels/state and classification evidence; no inferred WG ownership.')
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['repository', 'source_key'], name='fgtida_github_source_unique')]

@@ -28,25 +28,25 @@ class Command(BaseCommand):
                 group.name = topic
                 if not group.description or group.description.strip() in {'WG1','WG2','WG0'}:
                     group.description = f'FG-TIDA WG{number}: {topic}. Public source: {reference}. Charter decisions remain with FG-TIDA editors.'
-                if not group.list_email:
-                    group.list_email = f'fgtidawg{number}@lists.itu.int'
                 group.save()
         sources = [
-            (account,'themes','incubation','issues','themes','tida',[]),
-            (account,'use-cases','tidawg0','issues','use-cases','tida',[]),
-            (account,'meetings','tida','files','resources','slides',['20*/*.pptx','20*/*.pdf','20*/*.docx','20*/minutes.md','20*/agenda.md']),
-            (account,'marketing','tida','files','resources','slides',['*.pptx','*.pdf']),
+            (account,'themes','tida','issues','themes','tida',[]),
+            (account,'use-cases','tida','issues','use-cases','tida',[]),
+            (account,'meetings','tida','files','','slides',['20*/*.pptx','20*/*.pdf','20*/*.docx','20*/minutes.md','20*/agenda.md']),
+            (account,'marketing','tida','files','','slides',['*.pptx','*.pdf']),
             (account,'spec-template','tida','files','templates','tida-template',['src/doc/index.rst']),
             (account,'wg-charter-template','tida','files','templates','tida-template',['src/doc/index.rst']),
-            (account,'wg1-ra-aai','tidawg1','workitem','deliverables','tida',['src/doc/index.rst']),
+            (account,'wg1-ra-aai','tidawg1','workitem','','tida',['src/doc/index.rst']),
         ]
         for number, repo, path in [(1,'wg1-cdra-charter','charter.md'),(2,'wg2-ibea-charter','src/doc/index.rst')]:
             owner = GitHubAccount.objects.get(organization=f'fg-tida-wg{number}')
-            sources.append((owner,repo,f'tidawg{number}','files','deliverables','charter',[path]))
+            sources.append((owner,repo,f'tidawg{number}','files','','charter',[path]))
         for owner, name, acronym, mode, category, kind, paths in sources:
+            from ietf.fgtida.classification import SOURCE_RULES
+            _, _, group_evidence, category_evidence = SOURCE_RULES[(owner.organization+'/'+name).lower()]
             GitHubRepository.objects.get_or_create(account=owner, name=name, defaults={
                 'group':Group.objects.get(acronym=acronym), 'mode':mode, 'category':category,
-                'document_type':kind, 'paths':paths})
+                'document_type':kind, 'paths':paths, 'group_evidence':group_evidence, 'category_evidence':category_evidence})
         # Retire only the empty, unconfigured WG3 placeholder from the earlier
         # setup. Real documents, memberships, submissions or custom names prevent
         # this automatic cleanup; future numbered WGs remain fully supported.

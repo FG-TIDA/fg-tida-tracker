@@ -42,7 +42,7 @@ class Command(BaseCommand):
                     if options['apply']:
                         GitHubRepository.objects.create(account=group.github_account,name=repo['name'],github_id=repo['id'],
                             group=group.group,branch=repo['default_branch'],mode='workitem',paths=['src/doc/index.rst'],
-                            document_type='charter' if repo['name'].endswith('-charter') else 'tida')
+                            document_type='charter' if repo['name'].endswith('-charter') else 'tida', group_evidence=repo['html_url'])
         records = GitHubRepository.objects.filter(enabled=True, account__enabled=True).select_related('account','group')
         if options['repository']:
             owner, name = options['repository'].split('/',1)

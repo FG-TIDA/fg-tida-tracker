@@ -239,6 +239,7 @@ class GitHubWorkflowTests(TestCase):
         self.repo.mode='files'
         self.repo.document_type='charter'
         self.repo.group=Group.objects.get(acronym='tidawg1')
+        self.repo.group_evidence=self.repo.url+'/blob/main/charter.md'
         self.repo.save()
         store_source(self.repo,'file:charter.md',b'# WG charter\n\nFull charter text.','charter.md','WG charter',self.repo.url+'/blob/main/charter.md','a'*40)
         self.repo.group.refresh_from_db()
