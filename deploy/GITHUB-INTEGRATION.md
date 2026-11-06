@@ -52,8 +52,12 @@ In the Render service shell run:
 
 ```sh
 python ietf/manage.py configure_fgtida_github --skip-checks
-python ietf/manage.py check
 ```
+
+If using bootstrap maintenance mode, restore `FGTIDA_RENDER_MODE=staged` and
+save/deploy before running `python ietf/manage.py check` in a new Shell. Bootstrap
+does not start Memcached; staged startup does. Follow MANUAL-SETUP.md for the
+complete order. Keep `FGTIDA_ENV=production` and the pre-deploy migration unchanged.
 
 The configuration command seeds WG0 (Use Cases and Terminology), WG1 (Continuous
 and Dynamic Remote Attestation for Agentic AI), WG2 (Identity, Behaviour and

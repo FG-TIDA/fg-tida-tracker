@@ -56,14 +56,30 @@ Coordinate with editors and stop other import/write jobs during this window.
 
    ```sh
    python ietf/manage.py configure_fgtida_github --skip-checks
-   python ietf/manage.py check
    python ietf/manage.py check_fgtida_publication --allow-deferred-smtp --skip-checks
    ```
+
+   Do not run the full `manage.py check` while in `bootstrap`: the maintenance
+   server intentionally does not start Memcached. A cache connection refusal in
+   that mode does not mean the configuration/import commands failed.
 
 6. After successful migration/configuration, return to **Environment**, restore
    `FGTIDA_RENDER_MODE=staged` while ITU mail is deferred, and **Save and deploy**
    the newly built release. Then verify the pages and MFA before reopening editing.
    Do not select normal `production` mode until its email/publication gates pass.
+
+7. After the staged deployment is Live, open a **new Shell** for that running
+   deployment and run:
+
+   ```sh
+   python ietf/manage.py check
+   python ietf/manage.py check_fgtida_publication --allow-deferred-smtp --skip-checks
+   ```
+
+   Staged startup launches and supervises Memcached at `127.0.0.1:11211`.
+   The full check must run here, rather than in bootstrap mode or the separate
+   pre-deploy environment. Keep the pre-deploy migration's `--skip-checks` option.
+   `FGTIDA_ENV` stays `production`; staged mode does not disable admin MFA or HTTPS.
 
 Migrations need a database role authorized to create/alter the schema. If the
 runtime role is intentionally CRUD-only, have the database owner arrange the
