@@ -154,15 +154,23 @@ def rich_rst(value):
 def group_number(group):
     from django.core.exceptions import ObjectDoesNotExist
     try:
-        return f'WG{group.tida_configuration.number}'
+        return f'wg{group.tida_configuration.number}'
     except ObjectDoesNotExist:
         return ''
 
 
 @register.filter
 def group_label(group):
+    if group.acronym == 'incubation':
+        return 'Incubation - approval for new wg'
     number=group_number(group)
     return group.name+(f' ({number})' if number else '')
+
+
+@register.filter
+def file_type(doc):
+    extension = Path(doc.uploaded_filename or '').suffix.lower()
+    return {'.docx': 'Word', '.pdf': 'PDF'}.get(extension, extension.lstrip('.').upper() or 'Not uploaded')
 
 
 @register.inclusion_tag('fgtida/formats.html')

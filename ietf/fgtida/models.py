@@ -172,7 +172,7 @@ class WorkingGroupConfiguration(models.Model):
     github_account = models.ForeignKey(GitHubAccount, null=True, blank=True, on_delete=models.SET_NULL)
 
     def __str__(self):
-        return f'WG{self.number}: {self.group.name}'
+        return f'wg{self.number}: {self.group.name}'
 
 
 class GitHubRepository(models.Model):
@@ -285,3 +285,12 @@ class DocumentVersion(models.Model):
     class Meta:
         constraints = [models.UniqueConstraint(fields=['document','revision'],name='fgtida_version_revision_unique'),
             models.UniqueConstraint(fields=['document','version'],name='fgtida_version_label_unique')]
+
+
+class DocumentListing(models.Model):
+    """Editorial classification of an input/output, using the native archive."""
+    document = models.OneToOneField('doc.Document', on_delete=models.CASCADE, related_name='tida_listing')
+    direction = models.CharField(max_length=6, choices=[('input', 'Input document'), ('output', 'Output document')], db_index=True)
+    meeting = models.ForeignKey('meeting.Meeting', blank=True, null=True, on_delete=models.SET_NULL)
+    source = models.CharField(max_length=255, blank=True, help_text='Submitting organization, author or working group.')
+    created = models.DateTimeField(default=timezone.now, db_index=True)

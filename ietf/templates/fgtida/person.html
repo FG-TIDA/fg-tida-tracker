@@ -1,8 +1,8 @@
-{% extends "base.html" %}
+{% extends "base.html" %}{% load fgtida %}
 {% block title %}{{ person.name }} | FG-TIDA{% endblock %}
 {% block content %}<h1>{{ person.name }}</h1>
 {% if person.photo_thumb or person.photo %}<img src="{% url 'fgtida:photo' person.pk %}" alt="Photo of {{ person.name }}" width="160" height="160" class="rounded object-fit-cover mb-3">{% endif %}
 <p>{{ person.biography|linebreaksbr }}</p>
 {% if perms.person.change_person %}<p><a class="btn btn-outline-primary" href="{% url 'admin:person_person_change' person.pk %}">Edit profile and photo</a></p>{% endif %}
-<h2>Groups and roles</h2><ul>{% for role in roles %}<li><a href="{% url 'fgtida:members' role.group.acronym %}">{{ role.group.name }}</a> — {{ role.name.name }}</li>{% endfor %}</ul>
+<h2>Groups and roles</h2><ul>{% for role in roles %}<li><a href="{% url 'fgtida:members' role.group.acronym %}">{{ role.group|group_label }}</a> — {{ role.name.name }}</li>{% endfor %}</ul>
 <h2>Recent authored documents</h2><ul>{% for doc in documents %}<li><a href="{% url 'fgtida:document' doc.name %}">{{ doc.title }}</a></li>{% empty %}<li>No authored documents recorded.</li>{% endfor %}</ul>{% endblock %}

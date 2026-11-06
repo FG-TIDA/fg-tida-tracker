@@ -1,4 +1,5 @@
 {% load fgtida %}<form action="{% url 'fgtida:documents' %}" method="get" class="mb-4">
+    {% if collection %}<input type="hidden" name="collection" value="{{ collection }}">{% endif %}
     <label for="doc-name" class="visually-hidden">Document name, title or abstract</label>
     <div class="input-group mb-3"><input class="form-control" id="doc-name" name="name" value="{% if query %}{{ query }}{% endif %}" placeholder="Document name, title or abstract" type="search"><button class="btn btn-primary" type="submit">Search</button></div>
     <details {% if selected_type or selected_group or selected_category or selected_state or author or recent %}open{% endif %} class="border rounded p-3">
@@ -12,6 +13,6 @@
             <div class="col-md-6"><label class="form-label" for="doc-category">Work category</label><select class="form-select" id="doc-category" name="category"><option value="">All categories</option>{% for slug,label in categories %}<option value="{{ slug }}" {% if selected_category == slug %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
             {% if states %}<div class="col-md-6"><label class="form-label" for="doc-state">Document state</label><select class="form-select" id="doc-state" name="state"><option value="">All states</option>{% for state in states %}<option value="{{ state.slug }}" {% if selected_state == state.slug %}selected{% endif %}>{{ state.name }}</option>{% endfor %}</select></div>{% endif %}
         </div>
-        <div class="mt-3"><button class="btn btn-primary" type="submit">Search</button> <a class="btn btn-outline-secondary" href="{% url 'fgtida:documents' %}">Clear</a></div>
+        <div class="mt-3"><button class="btn btn-primary" type="submit">Search</button> <a class="btn btn-outline-secondary" href="{% url 'fgtida:documents' %}{% if collection %}?collection={{ collection }}{% endif %}">Clear</a></div>
     </details>
 </form>

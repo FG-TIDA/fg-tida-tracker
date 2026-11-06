@@ -733,7 +733,7 @@ class NativeDatatrackerTests(TestCase):
         DocTypeName.objects.filter(slug='tida').update(name='templates')
         doc.tags.add('tida-templates')
         page = self.client.get('/doc/')
-        self.assertContains(page, '<td>FG-TIDA document</td>', html=True)
+        self.assertContains(page, '<td role="cell" data-label="Type">FG-TIDA document</td>', html=True)
         self.assertNotContains(page, '<td>templates<div>', html=False)
 
     def test_email_identity_remains_case_insensitive(self):

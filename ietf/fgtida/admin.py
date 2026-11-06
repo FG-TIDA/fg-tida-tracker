@@ -19,7 +19,7 @@ from . import workflow
 from .files import extract_text, MAX_BYTES
 from .models import Contribution, ContributionRecipient, SessionResource, OutgoingMail, AdministratorApproval, SecurityQuestion
 from .models import (EmailVerification, GitHubAccount, WorkingGroupConfiguration, GitHubRepository,
-    GitHubSource, WorkItem, WorkItemRelease, GitHubJob)
+    GitHubSource, WorkItem, WorkItemRelease, GitHubJob, DocumentListing)
 from .resource_files import SessionResourceForm
 from django.contrib.auth.models import User
 from ietf.ietfauth.admin import CustomUserAdmin
@@ -295,6 +295,10 @@ class FgGroupForm(GroupForm):
 
 
 class DocumentForm(forms.ModelForm):
+    document_direction = forms.ChoiceField(required=False, label='Input / output list', choices=[('', 'Neither'), ('input', 'Input document'), ('output', 'Output document')], help_text='Publish a PDF or Word document in the selected document list.')
+    document_meeting = forms.ModelChoiceField(required=False, label='Document meeting', queryset=Meeting.objects.none())
+    document_source = forms.CharField(required=False, max_length=255, label='Document source', help_text='Organization, author or working group displayed in the list.')
+    document_created = forms.SplitDateTimeField(required=False, label='Document creation date', widget=admin.widgets.AdminSplitDateTime, help_text='Leave blank to use the current date for a new list entry.')
     version = forms.CharField(required=False,max_length=32,label='New file version',help_text='Optional X.Y version, e.g. 0.1 or 1.0. Without a value the minor version increases. Archived versions are immutable.')
     catalogued = forms.BooleanField(required=False, initial=True, label='Show in public catalog', help_text='Leave unchecked for repository support files or records awaiting classification. This is catalog inclusion, not confidential storage.')
     upload = forms.FileField(required=False, help_text='Upload a new revision: PDF, DOCX, PPTX, TXT, Markdown or XML (up to 10 MB).')
@@ -309,6 +313,7 @@ class DocumentForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['type'].queryset = DocTypeName.objects.filter(slug__in=core.DOCUMENT_TYPES)
+        self.fields['document_meeting'].queryset = core.meetings().order_by('-date', '-pk')
         self.fields['type'].initial = 'tida'
         self.fields['group'].queryset = core.groups()
         self.fields['group'].required = True
@@ -321,6 +326,10 @@ class DocumentForm(forms.ModelForm):
         type_id = self.data.get('type') or self.instance.type_id or 'tida'
         self.fields['lifecycle_state'].queryset = State.objects.filter(type_id=type_id, used=True)
         if self.instance.pk:
+            listing = DocumentListing.objects.filter(document=self.instance).first()
+            if listing:
+                for field, value in [('document_direction', listing.direction), ('document_meeting', listing.meeting_id), ('document_source', listing.source), ('document_created', listing.created)]:
+                    self.fields[field].initial = value
             self.fields['catalogued'].initial = not self.instance.tags.filter(slug='tida-uncatalogued').exists()
             self.fields['lifecycle_state'].initial = self.instance.states.filter(type_id=type_id).first()
 
@@ -340,6 +349,12 @@ class DocumentForm(forms.ModelForm):
 
     def clean(self):
         values = super().clean()
+        if values.get('document_direction'):
+            from pathlib import Path
+            upload = values.get('upload')
+            filename = upload.name if upload else self.instance.uploaded_filename
+            if Path(filename or '').suffix.lower() not in {'.pdf', '.docx'}:
+                self.add_error('upload', 'Input and output documents require a PDF or Word (.docx) file.')
         if values.get('version'):
             from .versioning import next_version
             if not values.get('upload'):
@@ -383,7 +398,7 @@ class DocumentForm(forms.ModelForm):
 class FgDocumentAdmin(DocumentAdmin):
     form = DocumentForm
     fields = ['name', 'title', 'type', 'group', 'abstract', 'catalogued', 'tags', 'lifecycle_state',
-              'upload', 'version', 'meeting_session', 'external_url', 'comment_about_changes']
+              'upload', 'version', 'document_direction', 'document_meeting', 'document_source', 'document_created', 'meeting_session', 'external_url', 'comment_about_changes']
     list_display = ['name', 'title', 'type', 'group', 'public_version', 'time']
     search_fields = ['name', 'title', 'abstract']
     list_filter = ['type', 'group', 'tags']
@@ -402,7 +417,7 @@ class FgDocumentAdmin(DocumentAdmin):
     def save_model(self, request, obj, form, change):
         from .github_catalog import preserve_manual_document
         upload = form.cleaned_data.get('upload')
-        state = form.cleaned_data.get('lifecycle_state') or State.objects.filter(type=obj.type, used=True).order_by('order').first()
+        state = form.cleaned_data.get('lifecycle_state') or State.objects.filter(type_id=obj.type_id, used=True).order_by('order').first()
         core.save_document(obj, core.actor_for(request.user), form.cleaned_data['comment_about_changes'],
             data=upload.read(MAX_BYTES + 1) if upload else None, filename=upload.name if upload else None, state=state,
             session=form.cleaned_data.get('meeting_session'),version=form.cleaned_data.get('version') or None)
@@ -417,6 +432,16 @@ class FgDocumentAdmin(DocumentAdmin):
 
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
+        values = form.cleaned_data
+        if values.get('document_direction'):
+            from django.utils import timezone
+            existing = DocumentListing.objects.filter(document=form.instance).first()
+            DocumentListing.objects.update_or_create(document=form.instance, defaults={
+                'direction': values['document_direction'], 'meeting': values.get('document_meeting'),
+                'source': values.get('document_source', ''),
+                'created': values.get('document_created') or (existing.created if existing else timezone.now())})
+        else:
+            DocumentListing.objects.filter(document=form.instance).delete()
         tag = DocTagName.objects.get(slug='tida-uncatalogued')
         if form.cleaned_data['catalogued']:
             form.instance.tags.remove(tag)

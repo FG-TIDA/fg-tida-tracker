@@ -20,7 +20,7 @@
         <link href="{{ settings.STATIC_IETF_ORG }}/fonts/noto-sans-mono/import.css" rel="stylesheet">
         <link rel="stylesheet" href="{% static 'ietf/css/ietf.css' %}">
         <link rel="stylesheet" href="{% static 'ietf/css/select2.css' %}">
-        <link rel="stylesheet" href="{% static 'css/fgtida.css' %}">
+        <link rel="stylesheet" href="{% static 'css/fgtida.css' %}?v=20261106-3">
         {# load this in the head, to prevent flickering #}
         <script src="{% static 'ietf/js/theme.js' %}"></script>
         <style>
@@ -78,7 +78,7 @@
                         aria-controls="navbar-collapse"
                         aria-expanded="false"
                         aria-label="Toggle navigation">
-                    <i class="navbar-toggler-icon"></i>
+                    <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 6h18M3 12h18M3 18h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
                 </button>
             </div>
         </nav>
@@ -124,7 +124,7 @@
         {% block js %}
         {% endblock %}
         <script src="{% static 'ietf/js/select2.js' %}"></script>
-        <script src="{% static 'js/fgtida-layout.js' %}"></script>
+        <script src="{% static 'js/fgtida-layout.js' %}?v=20261106-3"></script>
 
       {% analytical_body_bottom %}
     </body>

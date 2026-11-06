@@ -48,6 +48,7 @@ class Command(BaseCommand):
         queue.extend(apps.get_model('fgtida', 'OutgoingMail').objects.filter(contribution__in=contributions))
         queue.extend(apps.get_model('fgtida', 'ContributionRecipient').objects.filter(group_id__in=groups))
         queue.extend(SessionResource.objects.filter(session_id__in=sessions))
+        queue.extend(apps.get_model('fgtida', 'DocumentListing').objects.filter(document_id__in=docs))
         queue.extend(apps.get_model('person', 'Person').objects.filter(user=user))
         for records in (core.documents(include_uncatalogued=True), core.groups(), core.meetings()):
             queue.extend(records)

@@ -2,9 +2,9 @@
 <li class="nav-item dropdown">
     <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Work</a>
     <ul class="dropdown-menu">
-        <li><a class="dropdown-item" href="{% url 'fgtida:groups' %}">Working groups</a></li>
-        <li><a class="dropdown-item" href="{% url 'fgtida:groups' %}?state=proposed">Proposed groups</a></li>
-        <li><a class="dropdown-item" href="{% url 'fgtida:groups' %}?state=conclude">Concluded groups</a></li>
+        <li><h6 class="dropdown-header">Working groups</h6></li>
+        {% for group in navigation_groups %}{% group_number group as number %}<li><a class="dropdown-item" href="{% url 'fgtida:group' group.acronym %}">{{ number|default:group.acronym }} : {{ group.name }}</a></li>{% endfor %}
+        <li><a class="dropdown-item" href="{% url 'fgtida:group' 'incubation' %}">Incubation - approval for new wg</a></li>
         <li><hr class="dropdown-divider"></li>
         <li><h6 class="dropdown-header">Work programme</h6></li>
         <li><a class="dropdown-item" href="{% url 'fgtida:documents' %}?category=themes">Themes</a></li>
@@ -16,15 +16,17 @@
     <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Documents</a>
     <ul class="dropdown-menu">
         <li><a class="dropdown-item" href="{% url 'fgtida:documents' %}">Search documents</a></li>
-        <li><a class="dropdown-item" href="{% url 'fgtida:submit' %}">Submit a proposal / contribution</a></li>
-        <li><a class="dropdown-item" href="{% url 'fgtida:documents' %}?type=charter">Charters</a></li>
+        <li><a class="dropdown-item" href="{% url 'fgtida:submit' %}">Submit a contribution</a></li>
+        <li><a class="dropdown-item" href="{% url 'fgtida:documents' %}?type=charter">WGs Charters</a></li>
         <li><a class="dropdown-item" href="{% url 'fgtida:documents' %}?type=tida-template">Templates</a></li>
+        <li><a class="dropdown-item" href="{% url 'fgtida:documents' %}?collection=input">Input documents</a></li>
+        <li><a class="dropdown-item" href="{% url 'fgtida:documents' %}?collection=output">Output documents</a></li>
     </ul>
 </li>
 <li class="nav-item dropdown">
     <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Meetings</a>
     <ul class="dropdown-menu">
-        <li><h6 class="dropdown-header">Meeting archive</h6></li>
+        <li><h6 class="dropdown-header">Meeting items</h6></li>
         <li><a class="dropdown-item" href="{% url 'fgtida:current-agenda' %}">Agenda</a></li>
         <li><a class="dropdown-item" href="{% url 'fgtida:upcoming' %}">Upcoming meetings</a></li>
         <li><a class="dropdown-item" href="{% url 'fgtida:past' %}">Past meetings</a></li>

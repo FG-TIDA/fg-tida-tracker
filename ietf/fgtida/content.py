@@ -24,4 +24,7 @@ def get_content(request=None):
 
 
 def public_content(request):
-    return {'platform_content': get_content(request)}
+    from . import core
+    from django.utils.functional import SimpleLazyObject
+    return {'platform_content': get_content(request),
+        'navigation_groups': SimpleLazyObject(lambda: core.groups().filter(type_id='wg').exclude(state_id='conclude').order_by('tida_configuration__number', 'name'))}

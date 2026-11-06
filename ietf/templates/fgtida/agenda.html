@@ -8,7 +8,7 @@
 {% if perms.meeting.change_meeting %}<p><a class="btn btn-outline-primary" href="{% url 'admin:meeting_meeting_change' meeting.pk %}">Edit meeting</a> <a class="btn btn-outline-primary" href="{% url 'admin:meeting_session_add' %}?meeting={{ meeting.pk }}">Add session</a> <a class="btn btn-outline-primary" href="{% url 'admin:meeting_timeslot_add' %}?meeting={{ meeting.pk }}">Add time slot</a></p>{% endif %}
 <div class="row g-4 fgtida-schedule"><div class="col-lg-10">
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4"><h2 class="display-6 mb-0">Schedule</h2>
-<div class="d-flex align-items-center gap-2"><strong><i class="bi bi-globe" aria-hidden="true"></i> Timezone:</strong><div class="btn-group" role="group" aria-label="Schedule timezone">
+<div class="d-flex flex-wrap align-items-center gap-2"><strong><i class="bi bi-globe" aria-hidden="true"></i> Timezone:</strong><div class="btn-group" role="group" aria-label="Schedule timezone">
 <button type="submit" form="agenda-filters" name="tz" value="meeting" class="btn {% if zone_mode == 'meeting' %}btn-primary{% else %}btn-outline-secondary{% endif %}" aria-pressed="{% if zone_mode == 'meeting' %}true{% else %}false{% endif %}">Meeting</button>
 <button type="submit" form="agenda-filters" name="tz" value="local" class="btn {% if zone_mode == 'local' %}btn-primary{% else %}btn-outline-secondary{% endif %}" aria-pressed="{% if zone_mode == 'local' %}true{% else %}false{% endif %}">Local</button>
 <button type="submit" form="agenda-filters" name="tz" value="UTC" class="btn {% if zone_mode == 'UTC' %}btn-primary{% else %}btn-outline-secondary{% endif %}" aria-pressed="{% if zone_mode == 'UTC' %}true{% else %}false{% endif %}">UTC</button>
@@ -34,7 +34,7 @@
 {% for entry in entries %}<tr id="assignment-{{ entry.pk }}" data-session="{{ entry.session.pk }}" data-group="{{ entry.session.group.acronym }}"><td class="text-nowrap">{{ entry.timeslot.time|date:"H:i" }} – {{ entry.ends_at|date:"H:i" }}</td><td>{% if entry.timeslot.location %}{{ entry.timeslot.location.name }}{% else %}To be confirmed{% endif %}</td><td>
 {% session_actions entry.session %}<details class="fgtida-agenda-event"><summary>{{ entry.session.name|default:entry.session.group.name }}</summary>
 {% session_status entry.session %}
-{% if entry.session.group %}<a href="{% url 'fgtida:group' entry.session.group.acronym %}">{{ entry.session.group.name }}</a>{% endif %}
+{% if entry.session.group %}<a href="{% url 'fgtida:group' entry.session.group.acronym %}">{{ entry.session.group|group_label }}</a>{% endif %}
 {% if entry.session.agenda_note %}<div>{{ entry.session.agenda_note|rich_text }}</div>{% endif %}
 {% if entry.session.current_status == 'canceled' or entry.session.current_status == 'canceledpa' %}<p class="text-warning-emphasis">This session is cancelled. Its materials remain available for reference.</p>{% elif entry.session.remote_instructions %}<div><strong>Remote participation:</strong> {{ entry.session.remote_instructions|rich_text }}</div>{% endif %}
 {% for doc in entry.session.public_materials %}{% if doc.type_id != 'agenda' %}<div class="mt-2"><a href="{% url 'fgtida:document' doc.name %}">{{ doc.title }}</a> {% document_formats doc %}</div>{% endif %}{% endfor %}

@@ -104,3 +104,68 @@ html { scroll-padding-top: calc(var(--fg-tida-header-height) + 24px); }
 .fg-version-bar:focus-visible { outline:3px solid #111; outline-offset:2px; }
 .fg-version-period time { position:absolute; top:2.1rem; left:0; font-size:.7rem; white-space:nowrap; transform:rotate(-55deg) translateX(-85%); transform-origin:top left; }
 .fg-document-metadata th { white-space:nowrap; width:1%; }
+
+/* Keep long document names inside their column; retain readable word boundaries. */
+.fg-document-results th { word-break: normal; hyphens: none; }
+.fg-document-results td { overflow-wrap: anywhere; word-break: normal; }
+.fg-tida-navbar .dropdown-menu { max-width: min(38rem, calc(100vw - 2rem)); }
+.fg-tida-navbar .dropdown-item { white-space: normal; overflow-wrap: anywhere; }
+
+@media (max-width: 991.98px) {
+    #fg-tida-navbar .container-fluid { gap: .5rem; }
+    #fg-tida-navbar .navbar-brand { order: 1; margin-right: auto; }
+    #fg-tida-navbar .container-fluid > .d-flex { order: 2; }
+    #fg-tida-navbar .navbar-toggler { order: 3; color: #062a3b; min-width: 44px; min-height: 44px; padding: .4rem; }
+    #fg-tida-navbar .navbar-collapse { order: 4; flex-basis: 100%; max-height: 70dvh; overflow-y: auto; }
+    #fg-tida-navbar .navbar-collapse .nav { flex-direction: column; padding: .5rem 0; }
+    #fg-tida-navbar .nav-link { padding: .7rem .5rem; }
+    #fg-tida-navbar .dropdown-menu { max-width: 100%; margin: 0 0 .5rem; }
+    #fg-tida-navbar .dropdown-item { padding: .7rem 1rem; }
+    #fg-tida-navbar form[role="search"] { display: none !important; }
+}
+
+@media (max-width: 767.98px) {
+    body.navbar-offset { padding-top: calc(var(--fg-tida-header-height) + 8px); }
+    #main, #content { min-width: 0; }
+    #main { padding-inline: 1rem; }
+    #content { width: 100%; }
+    #content h1 { font-size: 1.65rem; line-height: 1.25; overflow-wrap: anywhere; }
+    #content h2 { font-size: 1.3rem; line-height: 1.35; }
+    #content .lead { font-size: 1rem; overflow-wrap: anywhere; }
+    #content input, #content select, #content textarea { font-size: 1rem; }
+    #content .btn { min-height: 42px; }
+    .fg-home-intro { padding: 1.25rem 0 1.5rem !important; text-align: left !important; }
+    .fg-home-intro img { width: 64px; height: 64px; }
+    .fg-home-intro p { line-height: 1.65; }
+    .fg-home-intro + div { padding-inline: 0 !important; }
+    .fg-home-intro a { overflow-wrap: anywhere; }
+    .fg-document-results { overflow: visible; }
+    .fg-mobile-cards, .fg-mobile-cards tbody { display: block; width: 100%; }
+    .fg-mobile-cards thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    .fg-mobile-cards tr { display: block; border: 1px solid var(--bs-border-color); border-radius: .65rem; margin: 0 0 1rem; padding: .65rem .85rem; background: var(--bs-body-bg); }
+    .fg-mobile-cards td { display: grid; grid-template-columns: minmax(6.25rem, 32%) minmax(0, 1fr); column-gap: .75rem; padding: .55rem 0; border: 0; box-shadow: none; background: transparent; font-size: .95rem; text-align: left; }
+    .fg-mobile-cards td::before { content: attr(data-label); color: var(--bs-secondary-color); font-size: .8rem; font-weight: 600; padding-top: .15rem; }
+    .fg-mobile-cards td > * { min-width: 0; }
+    .fg-mobile-cards td > .small { grid-column: 2; margin-top: .25rem; }
+    .fg-mobile-cards td > .badge { grid-column: 2; width: fit-content; }
+    .fg-document-results td[data-label="Document"] { display: block; font-size: 1.03rem; }
+    .fg-document-results td[data-label="Document"]::before { display: block; margin-bottom: .35rem; }
+    .fg-mobile-cards td .btn { width: fit-content; margin: .1rem; }
+    .fg-mobile-cards .fg-empty td { display: block; padding: .8rem 0; }
+    .fg-mobile-cards .fg-empty td::before { content: none; }
+    .fg-document-metadata { font-size: .9rem; }
+    .fg-document-metadata th { white-space: normal; }
+    .fg-version-timeline { padding-left: 2rem; }
+    .fgtida-agenda-table { min-width: 42rem; }
+    .fgtida-agenda-sidebar { margin-top: 1rem; }
+    footer { display: flex; flex-wrap: wrap; justify-content: center; gap: .3rem .8rem; padding: 1.5rem 1rem !important; }
+    footer > a { padding: .5rem 0 !important; }
+    footer > div { display: flex; flex-wrap: wrap; justify-content: center; gap: .6rem; width: 100%; }
+    footer > div > * { margin: 0 !important; }
+}
+
+@media (max-width: 374.98px) {
+    #fg-tida-navbar .navbar-brand { font-size: 1rem; }
+    #fg-tida-navbar .navbar-brand img { width: 32px; height: 32px; }
+    .fg-mobile-cards td { grid-template-columns: minmax(5.5rem, 30%) minmax(0, 1fr); }
+}

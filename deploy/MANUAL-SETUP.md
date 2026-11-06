@@ -241,6 +241,54 @@ An admin-edited document remains paused, and a deleted source is not recreated.
 
 ## 8. Install build publishing using a pull request
 
+### File-based templates, charters and deliverables
+
+These document types use the same archive and X.Y version controls as other
+documents. For a repository containing ordinary document files:
+
+1. Open **Administration → GitHub repositories → select the repository**.
+2. Set **Mode** to **Document files**, select its owning group, document type
+   (`tida-template`, `charter` or `tida`) and category, and enter explicit document
+   paths. Do not include repository support files such as HOWTO or CHANGELOG.
+3. Review/apply the import in section 7. Each changed file becomes a new archived
+   minor version; identical files do not create versions. This mode does not
+   interpret release tags as version numbers. For tagged `vX.Y` PDF releases,
+   use **Versioned work item** and complete the authenticated build setup below.
+4. To automate file imports, complete the App/webhook and job-processing setup
+   in sections 4–6 and 10. A GitHub push queues a catalog job; processing that job
+   imports the changed approved paths. Merely deploying the tracker does not
+   activate this connection. Test one change before enabling unattended jobs.
+5. In **Administration → Documents**, admins can upload a replacement revision,
+   edit metadata or delete the document. Editing an imported document pauses its
+   source automatically; deleting it excludes that source so the next import
+   does not recreate it. Resume an individual source deliberately under
+   **GitHub sources → Sync mode → Sync from GitHub** when appropriate.
+
+Archived file bytes remain immutable. Corrections are new revisions, preserving
+links to previously cited versions.
+
+### Input and output documents
+
+After deploying migration `fgtida.0013_documentlisting`:
+
+1. Open **Administration → Documents → Add document** (or edit an existing one).
+2. Enter the identifier, title and owning group. Upload a **PDF or Word (.docx)**
+   file using **Upload**; validated files use the existing persistent archive.
+3. Set **Input / output list** to **Input document** or **Output document**.
+4. Fill in **Document meeting**, **Document source** and optionally **Document
+   creation date**. These populate the public table. The creation date stays
+   fixed when uploading a new revision; the lists show newest entries first.
+5. Leave **Show in public catalog** checked, add a history note, then save.
+   **Documents → Input documents / Output documents** now shows the entry.
+   Its name downloads the file; its title opens metadata and revision history.
+6. Upload subsequent revisions on the same document and optionally specify an
+   increasing X.Y version. To remove an entry from these lists without deleting
+   its archive, set **Input / output list** to **Neither**. The normal document
+   delete action remains available to authorized admins.
+
+Do not re-import a local database fixture over production to add these lists.
+The migration adds only the editorial metadata table, leaving existing data intact.
+
 Do this in both templates and existing work-item repositories. Updating a template
 does not modify repositories previously created from it.
 

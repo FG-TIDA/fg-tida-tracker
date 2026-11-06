@@ -1,13 +1,19 @@
 {% extends "base.html" %}
 {% load fgtida %}
-{% block title %}Document search | FG-TIDA Datatracker{% endblock %}
+{% block title %}{% if collection %}{{ collection_title }}{% else %}Document search{% endif %} | FG-TIDA Datatracker{% endblock %}
 {% block content %}
-{% if group_obj %}{% include 'fgtida/group_tabs.html' %}<h2>Group documents</h2>{% else %}<h1>FG-TIDA Document Search</h1>{% endif %}
+{% if group_obj %}{% include 'fgtida/group_tabs.html' %}<h2>Group documents</h2>{% elif collection %}<h1>{{ collection_title }}</h1>{% else %}<h1>FG-TIDA Document Search</h1>{% endif %}
 {% include 'fgtida/search_form.html' %}
 {% if perms.doc.add_document %}<p><a class="btn btn-primary" href="{% url 'admin:doc_document_add' %}">Add document</a></p>{% endif %}
 <p>{{ page.paginator.count }} document{{ page.paginator.count|pluralize }}</p>
-<div class="table-responsive"><table class="table table-striped"><thead><tr><th>Document</th><th>Formats / resources</th><th>Type</th><th>Group</th><th>State</th><th>Updated</th></tr></thead><tbody>
-{% for doc in page %}<tr><td><a href="{% url 'fgtida:document' doc.name %}">{{ doc.title }}</a> {% document_recency doc %}<div class="small text-muted">{{ doc.name }}{% if doc.uploaded_filename %}-{{ doc|document_version }}{% endif %}</div></td><td>{% document_formats doc %}</td><td>{% document_type doc %}</td><td><a href="{% url 'fgtida:group' doc.group.acronym %}">{{ doc.group.acronym|upper }}</a></td><td>{% document_states doc %}</td><td>{{ doc.time|date:"Y-m-d" }}</td></tr>{% empty %}<tr><td colspan="6">No matching documents.</td></tr>{% endfor %}
+{% if collection %}
+<div class="table-responsive fg-document-results"><table class="table table-striped fg-mobile-cards" role="table"><thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Type</th><th scope="col" role="columnheader">Name</th><th scope="col" role="columnheader">Meeting</th><th scope="col" role="columnheader">Title</th><th scope="col" role="columnheader">Source</th><th scope="col" role="columnheader">Created</th></tr></thead><tbody role="rowgroup">
+{% for doc in page %}<tr role="row"><td role="cell" data-label="Type">{{ doc|file_type }}</td><td role="cell" data-label="Name"><a href="{% url 'fgtida:download' doc.name doc|document_version %}">{{ doc.name }}</a><div class="small text-body-secondary">Version {{ doc|document_version }}</div></td><td role="cell" data-label="Meeting">{% if doc.tida_listing.meeting %}<a href="{% url 'fgtida:meeting' doc.tida_listing.meeting.number %}">{{ doc.tida_listing.meeting.display_title }}</a>{% else %}Not assigned{% endif %}</td><td role="cell" data-label="Title"><a href="{% url 'fgtida:document' doc.name %}">{{ doc.title }}</a></td><td role="cell" data-label="Source">{{ doc.tida_listing.source|default:'Not entered' }}</td><td role="cell" data-label="Created">{{ doc.tida_listing.created|date:'Y-m-d H:i T' }}</td></tr>{% empty %}<tr class="fg-empty" role="row"><td colspan="6">No matching documents.</td></tr>{% endfor %}
 </tbody></table></div>
+{% else %}
+<div class="table-responsive fg-document-results"><table class="table table-striped fg-mobile-cards" role="table"><thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Document</th><th scope="col" role="columnheader">Formats / resources</th><th scope="col" role="columnheader">Type</th><th scope="col" role="columnheader">Group</th><th scope="col" role="columnheader">State</th><th scope="col" role="columnheader">Updated</th></tr></thead><tbody role="rowgroup">
+{% for doc in page %}<tr role="row"><td role="cell" data-label="Document"><a href="{% url 'fgtida:document' doc.name %}">{{ doc.title }}</a> {% document_recency doc %}<div class="small text-muted">{{ doc.name }}{% if doc.uploaded_filename %}-{{ doc|document_version }}{% endif %}</div></td><td role="cell" data-label="Formats / resources">{% document_formats doc %}</td><td role="cell" data-label="Type">{% document_type doc %}</td><td role="cell" data-label="Group"><a href="{% url 'fgtida:group' doc.group.acronym %}">{{ doc.group|group_label }}</a></td><td role="cell" data-label="State">{% document_states doc %}</td><td role="cell" data-label="Updated">{{ doc.time|date:"Y-m-d" }}</td></tr>{% empty %}<tr class="fg-empty" role="row"><td colspan="6">No matching documents.</td></tr>{% endfor %}
+</tbody></table></div>
+{% endif %}
 {% include 'fgtida/pagination.html' %}
 {% endblock %}

@@ -23,10 +23,11 @@ class ContributionForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         from django.db.models import Q
         self.fields['group'].queryset = core.groups().filter(Q(type_id='wg') | Q(acronym='incubation')).order_by('tida_configuration__number','name')
-        self.fields['group'].label_from_instance=lambda group: group.name+(f' (WG{group.tida_configuration.number})' if getattr(group,'tida_configuration',None) else '')
+        from .templatetags.fgtida import group_label
+        self.fields['group'].label_from_instance = group_label
         self.fields['group'].queryset = self.fields['group'].queryset.exclude(state_id='conclude')
         self.fields['group'].label = 'Working group or Incubation'
-        self.fields['group'].help_text = 'Choose the relevant WG, or Incubation if your proposal requires a new working group.'
+        self.fields['group'].help_text = 'Choose the relevant wg, or Incubation - approval for new wg if your contribution requires a new working group.'
         self.fields['draft_repository_url'].help_text = 'Optional public GitHub draft repository. On adoption, editors create the official WG repository.'
         self.fields['work_item_acronym'].help_text = 'Optional short identifier for the work item repository.'
         self.fields['upload'].help_text += ' Submitting creates a public work-item record and archives this file as version 0.0.'

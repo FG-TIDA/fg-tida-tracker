@@ -43,13 +43,17 @@ def database_access(request):
 
 def search(request, acronym=None):
     query = (request.GET.get('name') or request.GET.get('q') or '').strip()[:200]
-    docs = core.documents().select_related('group', 'type').prefetch_related('states', 'tags', 'tida_versions').annotate(
+    docs = core.documents().select_related('group', 'group__tida_configuration', 'type', 'tida_listing', 'tida_listing__meeting').prefetch_related('states', 'tags', 'tida_versions').annotate(
         first_activity=Min('docevent__time'), latest_revision=Max('docevent__time', filter=Q(docevent__type='new_revision')))
     if query:
         docs = docs.filter(Q(name__icontains=query) | Q(title__icontains=query) | Q(abstract__icontains=query))
     group = acronym or request.GET.get('group', '')
     kind = request.GET.get('type', '')
     category = request.GET.get('category', '')
+    collection = request.GET.get('collection', '')
+    collection = collection if collection in {'input', 'output'} else ''
+    if collection:
+        docs = docs.filter(tida_listing__direction=collection)
     author = request.GET.get('author', '').strip()[:200]
     state = request.GET.get('state', '')
     if group:
@@ -71,10 +75,12 @@ def search(request, acronym=None):
     sort = request.GET.get('sort', '-time')
     if sort not in ('-time', 'time', 'name', 'title'):
         sort = '-time'
+    ordering = '-tida_listing__created' if collection and 'sort' not in request.GET else sort
     params = request.GET.copy()
     params.pop('page', None)
     return render(request, 'fgtida/search.html', {
-        'page': Paginator(docs.distinct().order_by(sort, 'pk'), 25).get_page(request.GET.get('page')),
+        'page': Paginator(docs.distinct().order_by(ordering, '-pk'), 25).get_page(request.GET.get('page')),
+        'collection': collection, 'collection_title': {'input': 'Input documents', 'output': 'Output documents'}.get(collection, ''),
         'recent': recent, 'sort': sort,
         'query': query, 'selected_group': group, 'selected_type': kind, 'selected_category': category,
         'author': author, 'selected_state': state, 'groups': core.groups().order_by('name'),
@@ -162,9 +168,8 @@ def download(request, name, rev):
 
 def groups(request):
     records = core.groups().select_related('type', 'state', 'parent','tida_configuration').order_by('tida_configuration__number','name')
-    state = request.GET.get('state', '')
-    if state in ('active', 'proposed', 'conclude'):
-        records = records.filter(state_id=state)
+    records = records.filter(type_id='wg').exclude(state_id='conclude')
+    state = ''
     return render(request, 'fgtida/groups.html', {'groups': records, 'selected_state': state})
 
 
