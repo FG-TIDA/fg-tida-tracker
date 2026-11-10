@@ -15,7 +15,7 @@ ADMIN_MODELS = {
     'name': {'importantdatename'},
     'doc': {'document'},
     'group': {'group', 'role', 'groupmilestone', 'groupurl'},
-    'meeting': {'meeting', 'session', 'timeslot', 'room', 'floorplan', 'schedule',
+    'meeting': {'meeting', 'meetingcategory', 'session', 'timeslot', 'room', 'floorplan', 'schedule',
                 'schedtimesessassignment', 'sessionpresentation', 'registration', 'importantdate'},
 }
 EDITOR_MODELS = {f'{app}.{model}' for app, models in ADMIN_MODELS.items()

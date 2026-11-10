@@ -2,7 +2,7 @@
 {% block title %}{{ meeting.display_title }} agenda | FG-TIDA{% endblock %}
 {% block content %}
 <h1>{{ meeting.display_title }} agenda</h1>
-<p>{% meeting_status meeting %}</p>
+<p>{% if meeting.category %}<span class="badge text-bg-secondary">{{ meeting.category.name }}</span> {% endif %}{% meeting_status meeting %}</p>
 <p>{{ meeting.city }} · {{ meeting.date|date:"j F Y" }} – {{ meeting.end_date|date:"j F Y" }}</p>
 {% include 'fgtida/meeting_nav.html' %}
 {% if perms.meeting.change_meeting %}<p><a class="btn btn-outline-primary" href="{% url 'admin:meeting_meeting_change' meeting.pk %}">Edit meeting</a> <a class="btn btn-outline-primary" href="{% url 'admin:meeting_session_add' %}?meeting={{ meeting.pk }}">Add session</a> <a class="btn btn-outline-primary" href="{% url 'admin:meeting_timeslot_add' %}?meeting={{ meeting.pk }}">Add time slot</a></p>{% endif %}

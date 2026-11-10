@@ -29,7 +29,7 @@ class Command(BaseCommand):
         from django_otp.plugins.otp_totp.models import TOTPDevice
         contributions = Contribution.objects.filter(group_id__in=groups)
         approved_ids = {user.pk} | set(AdministratorApproval.objects.values_list('user_id', flat=True))
-        account_ids = approved_ids | set(contributions.values_list('submitter_id', flat=True)) | set(RecoveryQuestions.objects.values_list('user_id', flat=True))
+        account_ids = approved_ids | set(contributions.exclude(submitter_id=None).values_list('submitter_id', flat=True)) | set(RecoveryQuestions.objects.values_list('user_id', flat=True))
         extra_accounts = get_user_model().objects.filter(pk__in=account_ids).exclude(pk=user.pk)
         if extra_accounts.exclude(pk__in=approved_ids).filter(models.Q(is_staff=True) | models.Q(is_superuser=True)).exists():
             raise CommandError('A contributor has privileged access; explicitly review the account policy before exporting.')
@@ -38,6 +38,7 @@ class Command(BaseCommand):
         queue.extend(apps.get_model('person', 'Email').objects.filter(person__user_id__in=account_ids))
         queue.extend(RecoveryQuestions.objects.filter(user_id__in=account_ids))
         queue.extend(SecurityQuestion.objects.all())
+        queue.extend(apps.get_model('meeting', 'MeetingCategory').objects.all())
         queue.extend(TOTPDevice.objects.filter(user_id__in=account_ids, confirmed=True))
         # Recovery-code hashes are tied to this environment's signing key.
         # Generate fresh recovery codes after moving to a new production key.

@@ -205,7 +205,7 @@ def group(request, acronym, section='about'):
 
 
 def meetings(request, scope='upcoming', acronym=None):
-    records = core.meetings().annotate(end=Cast(
+    records = core.meetings().select_related('category').annotate(end=Cast(
         F('date') + (F('days') - 1) * Value(timedelta(days=1)), output_field=DateField()))
     today = timezone.localdate()
     if scope == 'past':
@@ -269,7 +269,7 @@ def meeting(request, num, section='agenda'):
     if selected_meeting and selected_meeting != num:
         target = get_object_or_404(core.meetings(), number=selected_meeting)
         return redirect(reverse('fgtida:meeting', args=[target.number]) + '?' + urlencode({k: v for k, v in request.GET.items() if k not in {'meeting', 'day', 'month'}}))
-    meeting = get_object_or_404(core.meetings(), number=num)
+    meeting = get_object_or_404(core.meetings().select_related('category'), number=num)
     sessions = Session.objects.with_current_status().filter(meeting=meeting).select_related('group').order_by('pk').prefetch_related(
         Prefetch('materials', queryset=core.documents().select_related('type').order_by('type_id', 'title'), to_attr='public_materials'))
     if section == 'agenda':

@@ -14,7 +14,7 @@ from django.utils import timezone
 from ietf.doc.models import Document, State
 from ietf.group.models import Group, Role
 from ietf.person.models import Person, Email
-from ietf.meeting.models import Meeting, Session, Schedule, TimeSlot, SchedTimeSessAssignment, SessionPresentation, ImportantDate
+from ietf.meeting.models import Meeting, MeetingCategory, Session, Schedule, TimeSlot, SchedTimeSessAssignment, SessionPresentation, ImportantDate
 from . import core
 
 
@@ -657,7 +657,8 @@ class NativeDatatrackerTests(TestCase):
         self.assertTrue(AdministratorApproval.objects.filter(user=user, approved_by=self.user).exists())
 
     def test_superuser_can_delete_an_account_without_deleting_its_contributions(self):
-        from .models import AdministratorApproval, Contribution, OutgoingMail
+        from django_otp.plugins.otp_totp.models import TOTPDevice
+        from .models import AdministratorApproval, Contribution, EmailVerification, OutgoingMail, RecoveryQuestions
         member = get_user_model().objects.create_user('delete-member', email='delete-member@example.test')
         person = core.actor_for(member)
         document = Document.objects.create(name='delete-member-doc', title='Keep this document',
@@ -666,10 +667,19 @@ class NativeDatatrackerTests(TestCase):
             title='Keep this contribution', filename='source.txt', content=b'Archive')
         approval = AdministratorApproval.objects.create(user=self.user, approved_by=member)
         queued = OutgoingMail.objects.create(recipient=member.email, subject='Reset', body='Test', purpose='reset')
+        verification = EmailVerification.objects.create(user=member, email=member.email)
+        TOTPDevice.objects.create(user=member, name='Authenticator', confirmed=True)
+        RecoveryQuestions.objects.create(user=member)
+        self.assertEqual(self.client.get(f'/admin/fgtida/emailverification/{verification.pk}/delete/').status_code, 403)
         self.assertEqual(self.client.post(f'/admin/auth/user/{self.user.pk}/delete/', {'post': 'yes'}).status_code, 403)
+        preview = self.client.get(f'/admin/auth/user/{member.pk}/delete/')
+        self.assertFalse(preview.context['perms_lacking'])
         response = self.client.post(f'/admin/auth/user/{member.pk}/delete/', {'post': 'yes'})
         self.assertEqual(response.status_code, 302)
         self.assertFalse(get_user_model().objects.filter(pk=member.pk).exists())
+        self.assertFalse(EmailVerification.objects.filter(pk=verification.pk).exists())
+        self.assertFalse(TOTPDevice.objects.filter(user_id=member.pk).exists())
+        self.assertFalse(RecoveryQuestions.objects.filter(user_id=member.pk).exists())
         person.refresh_from_db()
         item.refresh_from_db()
         approval.refresh_from_db()
@@ -849,17 +859,21 @@ class NativeDatatrackerTests(TestCase):
 
     def test_admin_meeting_uses_native_schedule_and_public_lists(self):
         day = timezone.localdate() + timedelta(days=10)
+        response = self.client.post('/admin/meeting/meetingcategory/add/', {'name': 'Interoperability session', '_save': 'Save'})
+        self.assertEqual(response.status_code, 302)
+        category = MeetingCategory.objects.get(name='Interoperability session')
         data = self.admin_payload('/admin/meeting/meeting/add/', {'number': 'tida-future-test',
-            'date': day, 'days': 2, 'city': 'Paris', 'country': 'FR', 'time_zone': 'Europe/Paris', '_save': 'Save'})
+            'category': category.pk, 'date': day, 'days': 2, 'city': 'Paris', 'country': 'FR', 'time_zone': 'Europe/Paris', '_save': 'Save'})
         response = self.client.post('/admin/meeting/meeting/add/', data)
         self.assertEqual(response.status_code, 302, getattr(response, 'context', None) and response.context['adminform'].form.errors)
         meeting = Meeting.objects.get(number='tida-future-test')
         self.assertEqual(meeting.type_id, 'tida')
+        self.assertEqual(meeting.category, category)
         self.assertIsNotNone(meeting.schedule_id)
         self.client.logout()
         self.assertContains(self.client.get('/meeting/upcoming/'), 'tida-future-test')
         self.assertNotContains(self.client.get('/meeting/past/'), 'tida-future-test')
-        self.assertEqual(self.client.get('/meeting/tida-future-test/agenda/').status_code, 200)
+        self.assertContains(self.client.get('/meeting/tida-future-test/agenda/'), 'Interoperability session')
 
     def test_admin_is_required_and_catalog_account_header_is_gone(self):
         self.client.logout()

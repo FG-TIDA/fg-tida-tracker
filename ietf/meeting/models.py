@@ -67,12 +67,25 @@ TIMEZONES = (EMPTY_CHOICE,) + tuple(
 )
 
 
+class MeetingCategory(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name_plural = 'meeting categories'
+
+    def __str__(self):
+        return self.name
+
+
 class Meeting(models.Model):
     # number is either the number for IETF meetings, or some other
     # identifier for interim meetings/IESG retreats/liaison summits/...
     number = models.CharField(unique=True, max_length=64)
     title = models.CharField(max_length=255, blank=True, help_text='Full public meeting name. Spaces and punctuation are allowed.')
     type = ForeignKey(MeetingTypeName)
+    category = models.ForeignKey(MeetingCategory, null=True, blank=True, on_delete=models.PROTECT,
+        help_text='Optional public category, such as Plenary, Preparation meeting or Workshop.')
     # Date is useful when generating a set of timeslot for this meeting, but
     # is not used to determine date for timeslot instances thereafter, as
     # they have their own datetime field.

@@ -13,7 +13,7 @@ from ietf.group.admin import GroupAdmin, GroupForm, RoleInline, GroupURLInline
 from ietf.group.models import Group, Role, GroupEvent
 from ietf.group.utils import save_group_in_history
 from ietf.meeting.admin import MeetingAdmin, SessionAdmin
-from ietf.meeting.models import Meeting, Session, Schedule, SessionPresentation, SchedTimeSessAssignment, TimeSlot, SchedulingEvent, Room
+from ietf.meeting.models import Meeting, MeetingCategory, Session, Schedule, SessionPresentation, SchedTimeSessAssignment, TimeSlot, SchedulingEvent, Room
 from ietf.name.models import DocTypeName, DocTagName, ImportantDateName
 from ietf.name.admin import ImportantDateNameAdmin
 from . import core
@@ -75,6 +75,11 @@ class FgPersonAdmin(PersonAdmin):
     inlines = [FgEmailInline, AliasInline, PersonUUIDInline]
 
 
+def can_delete_account_credential(request, obj=None):
+    return (obj is not None and request.user.is_superuser
+            and obj.user_id in getattr(request, '_fgtida_deleting_user_ids', ()))
+
+
 class FgUserAdmin(CustomUserAdmin):
     actions = None
     add_fieldsets = CustomUserAdmin.add_fieldsets + (
@@ -89,6 +94,16 @@ class FgUserAdmin(CustomUserAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return request.user.is_superuser and (obj is None or obj.pk != request.user.pk)
+
+    def get_deleted_objects(self, objs, request):
+        # Django checks each registered child admin during cascade previews.
+        # Allow account-owned credentials only within this user deletion.
+        objs = list(objs)
+        request._fgtida_deleting_user_ids = {obj.pk for obj in objs if self.has_delete_permission(request, obj)}
+        try:
+            return super().get_deleted_objects(objs, request)
+        finally:
+            del request._fgtida_deleting_user_ids
 
     @transaction.atomic
     def delete_model(self, request, obj):
@@ -693,8 +708,8 @@ class EmailVerificationAdmin(IntegrationAdmin):
     def has_add_permission(self,request):
         return False
 
-    def has_delete_permission(self,request,obj=None):
-        return False
+    def has_delete_permission(self, request, obj=None):
+        return can_delete_account_credential(request, obj)
 
 
 class FgGroupAdmin(GroupAdmin):
@@ -772,15 +787,13 @@ class FgMeetingForm(forms.ModelForm):
 class FgMeetingAdmin(MeetingAdmin):
     form = FgMeetingForm
     search_fields = ['title', 'number']
-    list_display = ['display_title', 'number', 'type', 'date', 'location', 'time_zone']
-    fields = ['title', 'number', 'meeting_type', 'date', 'days', 'city', 'country', 'time_zone',
+    list_display = ['display_title', 'number', 'category', 'date', 'location', 'time_zone']
+    list_filter = ['category']
+    list_select_related = ['category']
+    fields = ['title', 'number', 'category', 'date', 'days', 'city', 'country', 'time_zone',
               'venue_name', 'venue_addr', 'agenda_info_note', 'agenda_warning_note', 'proceedings_final', 'manage_agenda']
-    readonly_fields = ['meeting_type', 'manage_agenda']
+    readonly_fields = ['manage_agenda']
     actions = ['cancel_sessions']
-
-    @admin.display(description='Meeting type')
-    def meeting_type(self, obj):
-        return 'FG-TIDA Meeting'
 
     @admin.display(description='Agenda and session materials')
     def manage_agenda(self, obj):
@@ -1045,7 +1058,7 @@ def configure_admin():
     admin.site.site_header = 'FG-TIDA Datatracker administration'
     admin.site.site_title = 'FG-TIDA administration'
     admin.site.index_title = 'Documents, groups, meetings and participants'
-    for model, cls in [(Document, FgDocumentAdmin), (Group, FgGroupAdmin), (Role, FgRoleAdmin), (Meeting, FgMeetingAdmin), (Session, FgSessionAdmin), (ImportantDateName, FgImportantDateNameAdmin)]:
+    for model, cls in [(Document, FgDocumentAdmin), (Group, FgGroupAdmin), (Role, FgRoleAdmin), (Meeting, FgMeetingAdmin), (Session, FgSessionAdmin), (ImportantDateName, FgImportantDateNameAdmin), (MeetingCategory, admin.ModelAdmin)]:
         if model in admin.site._registry:
             admin.site.unregister(model)
         admin.site.register(model, cls)
@@ -1091,7 +1104,8 @@ def configure_admin():
         if opts.model_name not in allowed.get(opts.app_label, set()):
             registered.has_add_permission = hidden_admin_permission
             registered.has_change_permission = hidden_admin_permission
-            registered.has_delete_permission = hidden_admin_permission
+            registered.has_delete_permission = (can_delete_account_credential
+                if opts.label_lower == 'otp_totp.totpdevice' else hidden_admin_permission)
             registered.has_view_permission = hidden_admin_permission
             continue
         registered.list_per_page = 50
