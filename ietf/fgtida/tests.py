@@ -567,7 +567,11 @@ class NativeDatatrackerTests(TestCase):
         self.assertTrue(message.body.startswith('Dear New,'))
         (alternative,) = message.alternatives
         self.assertEqual(alternative.mimetype, 'text/html')
-        self.assertIn('https://github.com/fg-tida-wg0/use-cases#contributing', alternative.content)
+        self.assertIn('https://fg-tida.github.io/.github/', message.body)
+        self.assertIn('https://fg-tida.github.io/.github/', alternative.content)
+        self.assertIn('/meeting/', message.body)
+        self.assertIn('/meeting/">Open Datatracker meetings', alternative.content)
+        self.assertIn('<em>Please do not reply to this email.</em>', alternative.content)
         user = get_user_model().objects.get(username='newmember@example.test')
         self.assertEqual(user.person.name, 'New Member')
         self.assertFalse(user.person.alias_set.filter(name='New').exists())

@@ -247,9 +247,10 @@ def email_proof(user, address):
 def queue_confirmation(request, verification):
     user = verification.user
     token = signing.dumps([user.pk, verification.email, email_proof(user, verification.email)], salt='fgtida-email-confirmation')
-    link = mail_origin(request) + reverse('fgtida:email-confirm', args=[token])
+    origin = mail_origin(request)
+    link = origin + reverse('fgtida:email-confirm', args=[token])
     from .email_templates import confirmation
-    subject, body, html = confirmation(user, link, mail_origin(request) + reverse('fgtida:submit'))
+    subject, body, html = confirmation(user, link, origin + reverse('fgtida:submit'), origin + reverse('fgtida:meetings'))
     enqueue(verification.email, subject, body, timezone.now()+timedelta(hours=24), purpose='verification', html_body=html)
 
 
