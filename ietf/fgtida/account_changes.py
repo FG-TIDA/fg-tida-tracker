@@ -6,6 +6,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import PasswordChangeForm
 from django.contrib.auth.hashers import check_password
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from django.views.decorators.debug import sensitive_post_parameters
 from unidecode import unidecode
@@ -72,7 +73,9 @@ def change(request, kind='profile'):
     if request.method == 'POST' and form.is_valid():
         if kind != 'password' and not request.user.check_password(form.cleaned_data['current_password']):
             form.add_error('current_password', 'Incorrect password.')
-        elif kind == 'username' and get_user_model().objects.exclude(pk=request.user.pk).filter(username__iexact=form.cleaned_data['username']).exists():
+        elif kind == 'username' and get_user_model().objects.exclude(pk=request.user.pk).filter(
+            Q(username__iexact=form.cleaned_data['username']) | Q(email__iexact=form.cleaned_data['username'])
+        ).exists():
             form.add_error('username', 'This username is unavailable.')
         else:
             error = verify_answers(request.user, form.cleaned_data)

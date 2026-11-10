@@ -748,6 +748,9 @@ class AnyEmailAuthenticationForm(AuthenticationForm):
             email = Email.objects.filter(address=username).first()
             if email and email.person:
                 user = email.person.user  # might be None
+            if user is None:
+                from ietf.fgtida.accounts import verified_account_for_email
+                user = verified_account_for_email(username)
         if user is None:
             raise self.get_invalid_login_error()
         self._unauthenticated_user = user  # remember this for the clean() method

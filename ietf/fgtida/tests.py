@@ -656,13 +656,19 @@ class NativeDatatrackerTests(TestCase):
         self.assertTrue(user.is_superuser and user.is_staff)
         self.assertTrue(AdministratorApproval.objects.filter(user=user, approved_by=self.user).exists())
 
+    @override_settings(FGTIDA_MAIL_ENABLED=False)
     def test_superuser_can_delete_an_account_without_deleting_its_contributions(self):
+        import re
+        from urllib.parse import urlsplit
         from django_otp.plugins.otp_totp.models import TOTPDevice
+        from ietf.doc.models import DocumentAuthor
         from .models import AdministratorApproval, Contribution, EmailVerification, OutgoingMail, RecoveryQuestions
         member = get_user_model().objects.create_user('delete-member', email='delete-member@example.test')
         person = core.actor_for(member)
         document = Document.objects.create(name='delete-member-doc', title='Keep this document',
             group=self.root, type_id='tida')
+        email = Email.objects.create(address=member.email, person=person, origin='FG-TIDA registration')
+        author = DocumentAuthor.objects.create(document=document, person=person, email=email)
         item = Contribution.objects.create(submitter=member, group=self.root, document=document,
             title='Keep this contribution', filename='source.txt', content=b'Archive')
         approval = AdministratorApproval.objects.create(user=self.user, approved_by=member)
@@ -689,6 +695,33 @@ class NativeDatatrackerTests(TestCase):
         self.assertIsNone(approval.approved_by_id)
         self.assertEqual(item.document_id, document.pk)
         self.assertLessEqual(queued.expires, timezone.now())
+
+        self.client.logout()
+        reserved = Email.objects.create(address='historical-contact@example.test', person=person, origin='author: archived-document')
+        self.assertContains(self.client.post('/accounts/create/', {'email': reserved.address}), 'already registered or reserved')
+        response = self.client.post('/accounts/create/', {'email': member.email.upper()})
+        self.assertEqual(response.status_code, 302)
+        password = 'Harbor!Quartz$River77-cloud'
+        response = self.client.post(response.url, {'name': 'New Profile', 'password': password,
+            'password_confirmation': password, 'question_1': 'book', 'answer_1': 'purple glass harbour',
+            'question_2': 'place', 'answer_2': 'orange clay cloud', 'question_3': 'phrase', 'answer_3': 'silver linden path'})
+        self.assertContains(response, 'awaiting email confirmation')
+        replacement = get_user_model().objects.get(email=member.email)
+        self.assertFalse(replacement.is_active)
+        self.assertFalse(replacement.is_superuser)
+        self.assertNotEqual(replacement.person.pk, person.pk)
+        self.assertContains(self.client.post('/accounts/create/', {'email': member.email}), 'already registered or reserved')
+        confirmation = OutgoingMail.objects.get(recipient=member.email, purpose='verification')
+        path = urlsplit(re.search(r'https?://\S+', confirmation.body).group()).path
+        self.assertContains(self.client.post(path), 'Email confirmed')
+        replacement.username = 'replacement-member'
+        replacement.save(update_fields=['username'])
+        self.assertRedirects(self.client.post('/accounts/login/', {'username': member.email, 'password': password}),
+            '/', fetch_redirect_response=False)
+        self.assertEqual(int(self.client.session['_auth_user_id']), replacement.pk)
+        author.refresh_from_db()
+        self.assertEqual(author.person_id, person.pk)
+        self.assertEqual(author.email.person_id, person.pk)
 
     @override_settings(FGTIDA_MAIL_ENABLED=True)
     def test_smtp_failure_is_diagnosed_without_storing_the_provider_response(self):

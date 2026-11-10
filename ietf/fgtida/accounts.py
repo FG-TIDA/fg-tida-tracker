@@ -30,6 +30,7 @@ QUESTIONS = [('book', 'What was the title of a memorable childhood book?'),
     ('phrase', 'What private phrase will you remember for account recovery?'),
     ('object', 'What was a meaningful object from your childhood?')]
 CUSTOM_QUESTION = ':custom:'
+ACCOUNT_EMAIL_ORIGINS = {'FG-TIDA registration', 'FG-TIDA administration'}
 
 
 def question_choices():
@@ -153,11 +154,33 @@ def allowed_request(email):
     return OutgoingMail.objects.filter(recipient=email, created__gte=timezone.now()-timedelta(hours=1)).count() < 5
 
 
+def is_retired_account_email(email):
+    return (email.origin in ACCOUNT_EMAIL_ORIGINS and email.person_id is not None
+            and email.person.user_id is None)
+
+
+def address_has_account(address):
+    return get_user_model().objects.filter(Q(email__iexact=address) | Q(username__iexact=address)).exists()
+
+
+def verified_account_for_email(address):
+    # An address reused after deletion still points at the old Person in the
+    # native catalogue. EmailVerification identifies the new account instead.
+    try:
+        verification = EmailVerification.objects.select_related('user').get(
+            email__iexact=address, verified__isnull=False,
+            user__is_active=True, user__email__iexact=address)
+    except (EmailVerification.DoesNotExist, EmailVerification.MultipleObjectsReturned):
+        return None
+    return verification.user
+
+
 def create(request):
     form = SignupEmailForm(request.POST or None)
     if request.method == 'POST' and form.is_valid():
         address = form.cleaned_data['email']
-        if Email.objects.filter(address__iexact=address).exists() or get_user_model().objects.filter(Q(email__iexact=address) | Q(username__iexact=address)).exists():
+        email = Email.objects.filter(address__iexact=address).select_related('person').first()
+        if (email and not is_retired_account_email(email)) or address_has_account(address):
             form.add_error('email', 'This address is already registered or reserved. Sign in, reset your password, or contact the secretariat.')
         else:
             token = signing.dumps(address, salt='fgtida-signup')
@@ -181,7 +204,8 @@ def confirm(request, auth):
     form = SignupForm(request.POST or None, email=address)
     if request.method == 'POST' and form.is_valid():
         with transaction.atomic():
-            if Email.objects.filter(address__iexact=address).exists():
+            email = Email.objects.select_for_update(of=('self',)).filter(address__iexact=address).select_related('person').first()
+            if (email and not is_retired_account_email(email)) or address_has_account(address):
                 return page(request, 'Create an account', message='This email is already registered or reserved. Contact the secretariat if you need assistance.')
             # Unique username prevents simultaneous confirmation of one address.
             user, created = get_user_model().objects.get_or_create(username=address, defaults={'email': address})
@@ -196,12 +220,15 @@ def confirm(request, auth):
             person = Person.objects.create(user=user, name=name,
                 ascii=unidecode(name)[:Person._meta.get_field('ascii').max_length],
                 biography=form.cleaned_data['biography'])
-            _, email_created = Email.objects.get_or_create(address=address,
-                defaults={'person': person, 'origin': 'FG-TIDA registration', 'active': False})
-            if not email_created:
-                response = page(request, 'Create an account', message='This email is already registered or reserved. Contact the secretariat if you need assistance.')
-                transaction.set_rollback(True)
-                return response
+            # Retain the old Email-to-Person relationship, including its use by
+            # authors and group roles. The new account gets its own Person.
+            if email is None:
+                _, email_created = Email.objects.get_or_create(address=address,
+                    defaults={'person': person, 'origin': 'FG-TIDA registration', 'active': False})
+                if not email_created:
+                    response = page(request, 'Create an account', message='This email is already registered or reserved. Contact the secretariat if you need assistance.')
+                    transaction.set_rollback(True)
+                    return response
             form.save(user)
             verification = EmailVerification.objects.create(user=user, email=address)
             queue_confirmation(request, verification)
