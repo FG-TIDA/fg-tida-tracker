@@ -2,7 +2,8 @@
 from types import MethodType
 from django import forms
 from django.contrib import admin
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
+from django.db import transaction
 from urllib.parse import urlsplit
 
 from ietf.doc.admin import DocumentAdmin, DocAuthorInline, RelatedDocumentInline, AdditionalUrlInLine
@@ -25,6 +26,7 @@ from .resource_files import SessionResourceForm
 from django.contrib.auth.models import User
 from ietf.ietfauth.admin import CustomUserAdmin
 from django.utils.html import format_html
+from django.utils import timezone
 from django.urls import reverse, NoReverseMatch
 from ietf.person.models import Person
 from ietf.person.admin import PersonAdmin, EmailInline, AliasInline, PersonUUIDInline
@@ -74,6 +76,7 @@ class FgPersonAdmin(PersonAdmin):
 
 
 class FgUserAdmin(CustomUserAdmin):
+    actions = None
     add_fieldsets = CustomUserAdmin.add_fieldsets + (
         ('Contact and administrator access', {'fields': ('email', 'is_staff', 'is_superuser')}),
     )
@@ -83,6 +86,28 @@ class FgUserAdmin(CustomUserAdmin):
 
     def has_change_permission(self, request, obj=None):
         return request.user.is_superuser
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser and (obj is None or obj.pk != request.user.pk)
+
+    @transaction.atomic
+    def delete_model(self, request, obj):
+        # Serialize administrator deletions so two admins cannot delete each
+        # other's accounts concurrently and leave the site without an admin.
+        admins = set(User.objects.select_for_update().filter(is_active=True, is_superuser=True)
+                     .order_by('pk').values_list('pk', flat=True))
+        if request.user.pk not in admins or not self.has_delete_permission(request, obj):
+            raise PermissionDenied
+        from ietf.person.models import Email
+        from django.db.models import Q
+        addresses = {address.lower() for address in Email.objects.filter(person__user=obj).values_list('address', flat=True)}
+        if obj.email:
+            addresses.add(obj.email.lower())
+        OutgoingMail.objects.filter(sent__isnull=True).filter(
+            Q(recipient__in=addresses, purpose__in=['verification', 'reset']) |
+            Q(contribution__submitter=obj, purpose='submitter')
+        ).update(expires=timezone.now(), last_error='Account deleted; delivery cancelled.')
+        super().delete_model(request, obj)
 
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
@@ -97,7 +122,7 @@ class FgUserAdmin(CustomUserAdmin):
 
 
 class OutgoingMailAdmin(admin.ModelAdmin):
-    list_display = ['subject', 'recipient', 'created', 'sent', 'attempts', 'last_error']
+    list_display = ['subject', 'recipient', 'created', 'sent', 'expires', 'attempts', 'last_error']
     readonly_fields = ['recipient', 'subject', 'body', 'contribution', 'created', 'sent', 'expires', 'attempts', 'last_error']
     actions = ['retry_delivery']
 

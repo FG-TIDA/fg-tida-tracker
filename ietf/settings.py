@@ -76,7 +76,7 @@ PASSWORD_HASHERS = [
 ]
 
 
-PASSWORD_POLICY_MIN_LENGTH = 12
+PASSWORD_POLICY_MIN_LENGTH = 15
 PASSWORD_POLICY_ENFORCE_AT_LOGIN = False  # should turn this on for prod
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -89,6 +89,8 @@ AUTH_PASSWORD_VALIDATORS = [
     {
         "NAME": "ietf.ietfauth.password_validation.StrongPasswordValidator",
     },
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
 ]
 # In dev environments, settings_local overrides the password validators. Save
 # a handle to the original value so settings_test can restore it so tests match

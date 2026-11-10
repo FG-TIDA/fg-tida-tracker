@@ -429,19 +429,24 @@ Render Cron container that writes native files without access to that disk. No
 separate Redis/worker is necessary for this configuration. Horizontal scaling
 requires shared object storage and an appropriate separate job runtime first.
 
-## 11. Email and public registration remain pending ITU
+## 11. Configure and test email delivery
 
-Keep `FGTIDA_MAIL_ENABLED=false` until ITU provides the approved SMTP credentials
-or API contract. The outbox/templates exist; an API-specific transport still needs
-to be implemented against ITU's contract. Configure recipients now, but no email
-is sent yet. New self-registered users cannot activate until confirmation delivery
-works; existing users/admin MFA remain available.
+Use the verified tracker-domain sender with the configured SMTP provider, or an
+ITU-approved service if using `tsbfgtida@itu.int`. An API-only service needs its
+own transport. Set `FGTIDA_MAIL_ENABLED=true` in the running web service once SMTP
+is configured. Keep `FGTIDA_MAIL_SCHEDULE_ENABLED=false` during single-message
+tests. The pre-deploy migration command can still disable SMTP for its own process.
 
-After ITU setup, test confirmation (including expired/reused links), reset plus
-recovery checks, and one WG/Incubation notification with its attachment. Verify
-authorized sender `tsbfgtida@itu.int` and deliverability before enabling production
-mail and public registration. Run the final publication check without the deferred
-SMTP exception. Never drain stale outbox messages blindly; expired links are skipped.
+In **Outgoing mail**, select a fresh confirmation and use **Retry delivery of
+selected messages**. An unsent row with zero attempts has not reached SMTP.
+Check its expiry and mail settings. After an attempt, check the safe diagnostic
+in **Last error** or delivery status in the provider dashboard. Test confirmation,
+password reset with recovery answers, and a WG/Incubation message with its attachment.
+
+Review older pending messages before setting `FGTIDA_MAIL_SCHEDULE_ENABLED=true`
+and redeploying. Mail then runs independently of GitHub synchronization. Existing
+deployments without a mail schedule override keep their prior scheduler behavior.
+Run the final publication check without the deferred SMTP exception after testing.
 
 ## 12. Failures, rollback and future WGs
 

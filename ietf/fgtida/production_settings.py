@@ -61,7 +61,9 @@ X_FRAME_OPTIONS = 'DENY'
 DATA_UPLOAD_MAX_MEMORY_SIZE = 12 * 1024 * 1024
 FILE_UPLOAD_MAX_MEMORY_SIZE = 1024 * 1024
 DATA_UPLOAD_MAX_NUMBER_FILES = 10
-PASSWORD_POLICY_ENFORCE_AT_LOGIN = True
+# Apply stronger validation when setting passwords, without locking existing
+# accounts out while they still depend on email to reset their credentials.
+PASSWORD_POLICY_ENFORCE_AT_LOGIN = False
 USE_DEBUG_TOOLBAR = False
 INTERNAL_IPS = []
 

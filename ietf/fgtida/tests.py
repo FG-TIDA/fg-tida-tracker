@@ -547,7 +547,13 @@ class NativeDatatrackerTests(TestCase):
         self.assertEqual(detail['Cache-Control'], 'no-store')
         password = 'Harbor!Quartz$River77-cloud'
         answers = {'question_1': 'book', 'answer_1': 'private book answer', 'question_2': 'place',
-                   'answer_2': 'private place answer', 'question_3': 'phrase', 'answer_3': 'private phrase answer'}
+                   'answer_2': 'private place answer', 'question_3': ':custom:',
+                   'custom_question_3': 'What is my imaginary lighthouse called?', 'answer_3': 'purple glass harbour'}
+        short_password = 'H3!qV9$zT5!aJ'
+        response = self.client.post(path, {**answers, 'name': 'New Member',
+            'password': short_password, 'password_confirmation': short_password})
+        self.assertContains(response, 'at least 15 characters')
+        self.assertFalse(get_user_model().objects.filter(username='newmember@example.test').exists())
         Person.objects.create(name='New', ascii='New')
         Person.objects.create(name='New Member', ascii='New Member')
         with patch('ietf.person.models.send_mail_preformatted', side_effect=Person.DoesNotExist) as legacy_alert:
@@ -569,12 +575,15 @@ class NativeDatatrackerTests(TestCase):
         user.refresh_from_db()
         self.assertTrue(user.is_active)
         recovery = RecoveryQuestions.objects.get(user=user)
+        self.assertEqual(recovery.prompts[recovery.questions[2]], answers['custom_question_3'])
+        self.assertFalse(user.is_superuser)
         self.assertNotIn('private book answer', str(recovery.answer_hashes))
         self.assertFalse(user.is_staff)
         self.assertTrue(user.check_password(password))
         with self.captureOnCommitCallbacks(execute=True):
             self.client.post('/accounts/reset/', {'email': user.email})
         reset_path = urlsplit(re.search(r'https?://\S+', mail.outbox[-1].body).group()).path
+        self.assertContains(self.client.get(reset_path), answers['custom_question_3'])
         reset_data = {'password': 'Valley!Satellite82$amber', 'password_confirmation': 'Valley!Satellite82$amber',
             'answer_1': 'wrong answer', 'answer_2': answers['answer_2'], 'answer_3': answers['answer_3']}
         self.assertContains(self.client.post(reset_path, reset_data), 'answers did not match')
@@ -646,6 +655,45 @@ class NativeDatatrackerTests(TestCase):
         user = get_user_model().objects.get(username='additional-admin')
         self.assertTrue(user.is_superuser and user.is_staff)
         self.assertTrue(AdministratorApproval.objects.filter(user=user, approved_by=self.user).exists())
+
+    def test_superuser_can_delete_an_account_without_deleting_its_contributions(self):
+        from .models import AdministratorApproval, Contribution, OutgoingMail
+        member = get_user_model().objects.create_user('delete-member', email='delete-member@example.test')
+        person = core.actor_for(member)
+        document = Document.objects.create(name='delete-member-doc', title='Keep this document',
+            group=self.root, type_id='tida')
+        item = Contribution.objects.create(submitter=member, group=self.root, document=document,
+            title='Keep this contribution', filename='source.txt', content=b'Archive')
+        approval = AdministratorApproval.objects.create(user=self.user, approved_by=member)
+        queued = OutgoingMail.objects.create(recipient=member.email, subject='Reset', body='Test', purpose='reset')
+        self.assertEqual(self.client.post(f'/admin/auth/user/{self.user.pk}/delete/', {'post': 'yes'}).status_code, 403)
+        response = self.client.post(f'/admin/auth/user/{member.pk}/delete/', {'post': 'yes'})
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(get_user_model().objects.filter(pk=member.pk).exists())
+        person.refresh_from_db()
+        item.refresh_from_db()
+        approval.refresh_from_db()
+        queued.refresh_from_db()
+        self.assertIsNone(person.user_id)
+        self.assertIsNone(item.submitter_id)
+        self.assertIsNone(approval.approved_by_id)
+        self.assertEqual(item.document_id, document.pk)
+        self.assertLessEqual(queued.expires, timezone.now())
+
+    @override_settings(FGTIDA_MAIL_ENABLED=True)
+    def test_smtp_failure_is_diagnosed_without_storing_the_provider_response(self):
+        from smtplib import SMTPAuthenticationError
+        from unittest.mock import patch
+        from .mail import deliver
+        from .models import OutgoingMail
+        item = OutgoingMail.objects.create(recipient='member@example.test', subject='Confirm', body='Confirm')
+        with patch('ietf.fgtida.mail.EmailMessage.send', side_effect=SMTPAuthenticationError(535, b'private response')):
+            self.assertFalse(deliver(item.pk))
+        item.refresh_from_db()
+        self.assertIsNone(item.sent)
+        self.assertEqual(item.attempts, 1)
+        self.assertIn('SMTP authentication failed (535)', item.last_error)
+        self.assertNotIn('private response', item.last_error)
 
     @override_settings(FGTIDA_MAIL_ENABLED=False)
     def test_contribution_notification_persists_without_smtp(self):

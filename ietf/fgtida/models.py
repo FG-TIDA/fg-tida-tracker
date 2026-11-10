@@ -43,7 +43,8 @@ class AuthenticationAttempt(models.Model):
 
 class AdministratorApproval(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='administrator_approvals')
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='administrator_approvals')
     created = models.DateTimeField(auto_now_add=True)
 
 
@@ -62,7 +63,7 @@ class OutgoingMail(models.Model):
 
 class Contribution(models.Model):
     """Private review metadata linked to a public submitted document."""
-    submitter = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    submitter = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
     notifications_queued = models.BooleanField(default=True, editable=False)
     group = models.ForeignKey('group.Group', on_delete=models.PROTECT)
     title = models.CharField(max_length=255)

@@ -1,3 +1,5 @@
+import smtplib
+
 from django.conf import settings
 from django.core.mail import EmailMessage
 from django.db import transaction
@@ -26,9 +28,11 @@ def deliver(pk):
         item.last_error = 'Recipient is no longer configured; notification cancelled.'
         item.save(update_fields=['expires', 'last_error'])
         return False
-    if item.contribution_id and item.purpose == 'submitter' and item.recipient.casefold() != item.contribution.submitter.email.casefold():
+    if item.contribution_id and item.purpose == 'submitter' and (
+        not item.contribution.submitter_id or item.recipient.casefold() != item.contribution.submitter.email.casefold()
+    ):
         item.expires = timezone.now()
-        item.last_error = 'Submitter email changed; notification cancelled.'
+        item.last_error = 'Submitter account was removed or email changed; notification cancelled.'
         item.save(update_fields=['expires', 'last_error'])
         return False
     item.attempts += 1
@@ -41,6 +45,14 @@ def deliver(pk):
                            mimetypes.guess_type(attachment.filename)[0] or 'application/octet-stream')
         if message.send() != 1:
             raise RuntimeError('Mail backend did not accept the message')
+    except smtplib.SMTPAuthenticationError as error:
+        item.last_error = f'SMTP authentication failed ({error.smtp_code}). Check the sending credential.'
+    except smtplib.SMTPRecipientsRefused:
+        item.last_error = 'SMTP rejected the recipient. Check the address and mail provider.'
+    except smtplib.SMTPResponseException as error:
+        item.last_error = f'SMTP rejected the request ({error.smtp_code}). Check the sending domain, limits and provider logs.'
+    except (OSError, smtplib.SMTPException):
+        item.last_error = 'SMTP connection failed. Check the server, port and TLS settings.'
     except Exception:
         item.last_error = 'Delivery failed; check the SMTP configuration and retry.'
     else:

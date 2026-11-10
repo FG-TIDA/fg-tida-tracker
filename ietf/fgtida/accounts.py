@@ -29,6 +29,7 @@ QUESTIONS = [('book', 'What was the title of a memorable childhood book?'),
     ('project', 'What was the name of your first personal project?'),
     ('phrase', 'What private phrase will you remember for account recovery?'),
     ('object', 'What was a meaningful object from your childhood?')]
+CUSTOM_QUESTION = ':custom:'
 
 
 def question_choices():
@@ -54,22 +55,41 @@ class QuestionsForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.question_prompts = dict(question_choices())
+        choices = [('', 'Choose a question'), *self.question_prompts.items(),
+                   (CUSTOM_QUESTION, 'Write my own question')]
         for n in range(1, 4):
-            self.fields[f'question_{n}'] = forms.ChoiceField(choices=[('', 'Choose a question'), *self.question_prompts.items()])
+            self.fields[f'question_{n}'] = forms.ChoiceField(choices=choices, label=f'Security question {n}')
+            self.fields[f'custom_question_{n}'] = forms.CharField(required=False, max_length=255,
+                label=f'Your own question {n}', help_text='Fill this in only if you chose “Write my own question”.')
             self.fields[f'answer_{n}'] = forms.CharField(min_length=4, max_length=200, widget=forms.PasswordInput)
 
     def clean(self):
         values = super().clean()
-        questions = [values.get(f'question_{n}') for n in range(1, 4)]
+        prompts = {}
+        for n in range(1, 4):
+            key = values.get(f'question_{n}')
+            if key == CUSTOM_QUESTION:
+                prompt = values.get(f'custom_question_{n}')
+                if not prompt:
+                    self.add_error(f'custom_question_{n}', 'Enter your own question.')
+                    continue
+                prompts[f'{CUSTOM_QUESTION}{n}'] = prompt
+            elif key in self.question_prompts:
+                prompts[key] = self.question_prompts[key]
         answers = [normalize(values.get(f'answer_{n}', '')) for n in range(1, 4)]
-        if len(set(questions)) != 3 or len(set(answers)) != 3 or any(len(a) < 4 for a in answers):
+        if len({normalize(prompt) for prompt in prompts.values()}) != 3 or len(set(answers)) != 3 or any(len(a) < 4 for a in answers):
             raise forms.ValidationError('Choose three different questions and three different answers of at least four characters.')
+        for prompt, answer in zip(prompts.values(), answers):
+            if answer in normalize(prompt):
+                raise forms.ValidationError('Keep your answers out of your security questions.')
+        values['recovery_prompts'] = prompts
         return values
 
     def save(self, user):
+        prompts = self.cleaned_data['recovery_prompts']
         RecoveryQuestions.objects.update_or_create(user=user, defaults={
-            'questions': [self.cleaned_data[f'question_{n}'] for n in range(1, 4)],
-            'prompts': {self.cleaned_data[f'question_{n}']: self.question_prompts[self.cleaned_data[f'question_{n}']] for n in range(1, 4)},
+            'questions': list(prompts),
+            'prompts': prompts,
             'answer_hashes': [make_password(normalize(self.cleaned_data[f'answer_{n}'])) for n in range(1, 4)],
             'failures': 0, 'locked_until': None})
 
@@ -78,15 +98,24 @@ class SignupForm(QuestionsForm):
     name = forms.CharField(max_length=100)
     first_name = forms.CharField(required=False, max_length=100, label='Given name', help_text='Optional name used to address you in account emails.')
     biography = forms.CharField(required=False, max_length=5000, widget=forms.Textarea, help_text='Optional public biography.')
-    password = forms.CharField(widget=forms.PasswordInput)
-    password_confirmation = forms.CharField(widget=forms.PasswordInput)
+    password = forms.CharField(strip=False, widget=forms.PasswordInput(attrs={'autocomplete': 'new-password'}))
+    password_confirmation = forms.CharField(strip=False, widget=forms.PasswordInput(attrs={'autocomplete': 'new-password'}))
+
+    def __init__(self, *args, email='', **kwargs):
+        super().__init__(*args, **kwargs)
+        self.email = email
+        self.fields['password'].help_text = password_validation.password_validators_help_text_html()
 
     def clean(self):
         values = super().clean()
         if values.get('password') != values.get('password_confirmation'):
             self.add_error('password_confirmation', 'Passwords must match.')
         if values.get('password'):
-            password_validation.validate_password(values['password'])
+            user = get_user_model()(username=self.email, email=self.email, first_name=values.get('first_name', ''))
+            try:
+                password_validation.validate_password(values['password'], user)
+            except forms.ValidationError as error:
+                self.add_error('password', error)
         return values
 
 
@@ -149,7 +178,7 @@ def confirm(request, auth):
     if not email_form.is_valid():
         return redirect('fgtida:signup')
     address = email_form.cleaned_data['email']
-    form = SignupForm(request.POST or None)
+    form = SignupForm(request.POST or None, email=address)
     if request.method == 'POST' and form.is_valid():
         with transaction.atomic():
             if Email.objects.filter(address__iexact=address).exists():

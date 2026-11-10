@@ -54,8 +54,8 @@ class PasswordStrengthField(forms.CharField):
     
 
 class PasswordForm(forms.Form):
-    password = PasswordStrengthField()
-    password_confirmation = forms.CharField(widget=PasswordConfirmationInput(
+    password = PasswordStrengthField(strip=False)
+    password_confirmation = forms.CharField(strip=False, widget=PasswordConfirmationInput(
                                                         confirm_with='password',
                                                         attrs={'class':'password_confirmation'}),
                                             help_text="Enter the same password as above, for verification.",)

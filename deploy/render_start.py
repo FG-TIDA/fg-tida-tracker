@@ -70,10 +70,15 @@ def main():
             subprocess.run([sys.executable, 'ietf/manage.py', 'collectstatic', '--noinput', '--skip-checks'], check=True)
             command = ['gunicorn', '--config', 'deploy/gunicorn.conf.py', 'ietf.wsgi:application']
         children.append(subprocess.Popen(command))
-        if mode!='bootstrap' and os.environ.get('FGTIDA_GITHUB_SCHEDULE_ENABLED','').lower()=='true':
-            # Runs beside Gunicorn with the same persistent disk; no separate
-            # Cron container can safely write this disk-backed document catalog.
-            children.append(subprocess.Popen([sys.executable,'deploy/maintenance.py']))
+        if mode != 'bootstrap':
+            github_schedule = os.environ.get('FGTIDA_GITHUB_SCHEDULE_ENABLED', 'false')
+            mail_schedule = os.environ.get('FGTIDA_MAIL_SCHEDULE_ENABLED', github_schedule)
+            # Preserve the existing schedule when the mail override is absent.
+            # Use separate loops so a slow repository never delays reset mail.
+            if github_schedule.lower() == 'true':
+                children.append(subprocess.Popen([sys.executable, 'deploy/maintenance.py', 'github']))
+            if mail_schedule.lower() == 'true' and os.environ.get('FGTIDA_MAIL_ENABLED', '').lower() == 'true':
+                children.append(subprocess.Popen([sys.executable, 'deploy/maintenance.py', 'mail']))
         while all(child.poll() is None for child in children):
             time.sleep(0.5)
         return next((child.returncode or 1 for child in children if child.poll() is not None), 1)
