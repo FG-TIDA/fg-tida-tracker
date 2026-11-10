@@ -1,5 +1,11 @@
 # GitHub source classification review — 6 November 2026
 
+Update, 10 November 2026. GitHub transferred the use-case repository to
+[`fg-tida-wg0/use-cases`](https://github.com/fg-tida-wg0/use-cases). Its repository ID
+is unchanged. The original findings below describe the pre-transfer state.
+Migration 0017 updates the source mapping, and the next sync refreshes the
+working group on automatically managed use cases. See [the setup guide](MANUAL-SETUP.md#7-review-and-import-the-public-sources).
+
 This review concerns public GitHub imports, not editor-authored tracker records.
 The GitHub repository/collection is separate from a working-group assignment.
 Topical similarity, a WG number in prose, or a linked WG document does not prove

@@ -41,16 +41,18 @@ def store_source(repository, key, data, filename, title, source_url, sha, catego
     digest = hashlib.sha256(data).hexdigest()
     if source and (source.sync_mode != 'automatic' or (not source.document_id and source.sha)):
         return 'manual/excluded'
-    from .classification import resolve, refresh
+    from .classification import resolve, refresh, USE_CASES_URL, LEGACY_USE_CASES_URL
     assigned_group, selected_category, observed = resolve(repository, key, source_url,
         source_metadata if source_metadata is not None else (source.source_metadata if source else {}))
     if source and source.checksum == digest and source.document_id and source.document.uploaded_filename:
         if dry_run:
             return 'unchanged content; review classification'
-        if refresh(source, assigned_group, selected_category, observed):
+        if refresh(source, assigned_group, selected_category, observed, source_url):
             return 'classification corrected; file unchanged'
         return 'unchanged'
     urls=[source_url]
+    if key.startswith('issue:') and source_url.lower().startswith(USE_CASES_URL + '/issues/'):
+        urls.append(LEGACY_USE_CASES_URL + source_url[len(USE_CASES_URL):])
     if key=='file:src/doc/index.rst' and (repository.mode=='workitem' or repository.document_type in {'tida-template','charter'}):
         urls.extend([repository.url,repository.url+'/',f'https://{repository.account.organization.lower()}.github.io/{repository.name}/'])
     doc = source.document if source else core.documents(include_uncatalogued=True).filter(external_url__in=urls).first()
@@ -70,7 +72,7 @@ def store_source(repository, key, data, filename, title, source_url, sha, catego
     if source.sync_mode!='automatic':
         return 'manual/excluded'
     if source.checksum==digest and source.document_id and source.document.uploaded_filename:
-        refresh(source, assigned_group, selected_category, observed)
+        refresh(source, assigned_group, selected_category, observed, source_url)
         return 'unchanged'
     if source.document_id and not doc:
         doc=Document.objects.select_for_update().get(pk=source.document_id)

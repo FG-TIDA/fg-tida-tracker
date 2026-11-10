@@ -31,7 +31,7 @@ class Command(BaseCommand):
                 group.save()
         sources = [
             (account,'themes','tida','issues','themes','tida',[]),
-            (account,'use-cases','tida','issues','use-cases','tida',[]),
+            (GitHubAccount.objects.get(organization='fg-tida-wg0'),'use-cases','tidawg0','issues','use-cases','tida',[]),
             (account,'meetings','tida','files','','slides',['20*/*.pptx','20*/*.pdf','20*/*.docx','20*/minutes.md','20*/agenda.md']),
             (account,'marketing','tida','files','','slides',['*.pptx','*.pdf']),
             (account,'spec-template','tida','files','templates','tida-template',['src/doc/index.rst']),

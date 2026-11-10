@@ -29,8 +29,6 @@ class Command(BaseCommand):
             if rule:
                 acronym, category, group_evidence, category_evidence = rule
                 old_groups = {'tida', acronym}
-                if repo.full_name.lower() == 'fg-tida/use-cases':
-                    old_groups.add('tidawg0')
                 if repo.full_name.lower() == 'fg-tida/themes':
                     old_groups.add('incubation')
                 if not repo.group_evidence and repo.group.acronym in old_groups:

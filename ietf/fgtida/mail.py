@@ -1,15 +1,15 @@
 import smtplib
 
 from django.conf import settings
-from django.core.mail import EmailMessage
+from django.core.mail import EmailMessage, EmailMultiAlternatives
 from django.db import transaction
 from django.utils import timezone
 from .models import OutgoingMail
 
 
-def enqueue(recipient, subject, body, expires=None, contribution=None, purpose=None):
+def enqueue(recipient, subject, body, expires=None, contribution=None, purpose=None, html_body=''):
     item = OutgoingMail.objects.create(recipient=recipient, subject=subject, body=body, expires=expires,
-        contribution=contribution, purpose=purpose or ('group' if contribution else 'general'))
+        contribution=contribution, purpose=purpose or ('group' if contribution else 'general'), html_body=html_body)
     if getattr(settings, 'FGTIDA_MAIL_IMMEDIATE', True):
         transaction.on_commit(lambda: deliver(item.pk))
     return item
@@ -37,7 +37,10 @@ def deliver(pk):
         return False
     item.attempts += 1
     try:
-        message = EmailMessage(item.subject, item.body, settings.DEFAULT_FROM_EMAIL, [item.recipient])
+        message_type = EmailMultiAlternatives if item.html_body else EmailMessage
+        message = message_type(item.subject, item.body, settings.DEFAULT_FROM_EMAIL, [item.recipient])
+        if item.html_body:
+            message.attach_alternative(item.html_body, 'text/html')
         if item.contribution_id:
             import mimetypes
             attachment = item.contribution

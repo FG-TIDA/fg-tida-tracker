@@ -562,7 +562,12 @@ class NativeDatatrackerTests(TestCase):
                     'password': password, 'password_confirmation': password})
             legacy_alert.assert_not_called()
         self.assertEqual(response.status_code, 200)
-        self.assertEqual([item.subject for item in mail.outbox], ['FG-TIDA Datatracker — confirm your email address'])
+        self.assertEqual([item.subject for item in mail.outbox], ['Welcome - email confirmation'])
+        message = mail.outbox[0]
+        self.assertTrue(message.body.startswith('Dear New,'))
+        (alternative,) = message.alternatives
+        self.assertEqual(alternative.mimetype, 'text/html')
+        self.assertIn('https://github.com/fg-tida-wg0/use-cases#contributing', alternative.content)
         user = get_user_model().objects.get(username='newmember@example.test')
         self.assertEqual(user.person.name, 'New Member')
         self.assertFalse(user.person.alias_set.filter(name='New').exists())
@@ -572,6 +577,7 @@ class NativeDatatrackerTests(TestCase):
         user.refresh_from_db()
         self.assertFalse(user.is_active)  # Link scanners cannot activate accounts.
         self.assertEqual(self.client.post(confirmation_path).status_code, 200)
+        self.assertEqual(len(mail.outbox), 1)
         user.refresh_from_db()
         self.assertTrue(user.is_active)
         recovery = RecoveryQuestions.objects.get(user=user)

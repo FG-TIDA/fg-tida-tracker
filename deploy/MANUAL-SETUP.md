@@ -159,10 +159,11 @@ in chat, screenshots, tickets or repository workflow files.
 ## 6. Install the App and map organizations
 
 1. In the App settings choose **Install App → FG-TIDA → Install**. Select the
-   known content/template repositories: themes, use-cases, meetings, marketing,
+   known content/template repositories: themes, meetings, marketing,
    wg1-ra-aai, spec-template and wg-charter-template.
 2. Install in **fg-tida-wg0**, **fg-tida-wg1** and **fg-tida-wg2** too. Select their
-   official existing repositories. The new repository-creation permission grants
+   official existing repositories, including `fg-tida-wg0/use-cases` for wg0.
+   The repository-creation permission, if enabled, grants
    the creating App access to newly created repositories; verify this in the
    acceptance test rather than granting access to unrelated repositories.
 3. For each installation open its configuration page. The number in
@@ -181,10 +182,16 @@ in chat, screenshots, tickets or repository workflow files.
 ## 7. Review and import the public sources
 
 Before another import, review [the source-classification audit](SOURCE-CLASSIFICATION-AUDIT.md).
-After migration 0015, plan/apply `audit_fgtida_classification` to correct older
-automatic defaults. The central `FG-TIDA/use-cases` repository is not automatically
-assigned to wg0, and `themes` is not automatically assigned to Incubation. A source
-collection/category requires evidence; unknown values remain unclassified.
+Plan/apply `audit_fgtida_classification` to correct older automatic defaults.
+`themes` remains a Focus Group source. A source collection or category requires
+evidence, and unknown values remain unclassified.
+
+GitHub transferred `FG-TIDA/use-cases` to `fg-tida-wg0/use-cases`. Migration 0017
+moves the existing mapping to the wg0 account in place. Use the existing mapping
+and grant the App access to the transferred repository in the wg0 installation.
+Enter that installation ID under **GitHub accounts**. Preview and then apply
+`sync_fgtida_github --repository fg-tida-wg0/use-cases` to refresh automatic
+records and their source links while preserving archives and manual overrides.
 
 After deploying the latest code, capture a non-secret, read-only baseline in
 Render Shell:

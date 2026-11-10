@@ -54,6 +54,7 @@ class OutgoingMail(models.Model):
     recipient = models.EmailField()
     subject = models.CharField(max_length=255)
     body = models.TextField()
+    html_body = models.TextField(blank=True, db_default='')
     created = models.DateTimeField(auto_now_add=True)
     sent = models.DateTimeField(null=True, blank=True, db_index=True)
     expires = models.DateTimeField(null=True, blank=True)

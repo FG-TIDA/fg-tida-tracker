@@ -249,8 +249,8 @@ def queue_confirmation(request, verification):
     token = signing.dumps([user.pk, verification.email, email_proof(user, verification.email)], salt='fgtida-email-confirmation')
     link = mail_origin(request) + reverse('fgtida:email-confirm', args=[token])
     from .email_templates import confirmation
-    subject, body = confirmation(user, link)
-    enqueue(verification.email, subject, body, timezone.now()+timedelta(hours=24), purpose='verification')
+    subject, body, html = confirmation(user, link, mail_origin(request) + reverse('fgtida:submit'))
+    enqueue(verification.email, subject, body, timezone.now()+timedelta(hours=24), purpose='verification', html_body=html)
 
 
 @never_cache

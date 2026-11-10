@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Welcome to FG-TIDA</title></head>
+<body>
+<p>{{ greeting }}</p>
+<p>{{ intro }}</p>
+<p><strong><a href="{{ link }}">Confirm your email address</a></strong></p>
+<p>{{ activation }}</p>
+<h2>Use cases are open for submissions</h2>
+<p>{{ cases }} <a href="{{ use_cases_url }}">Read the wg0 use-case submission instructions</a>.</p>
+<h2>Contribute through Datatracker</h2>
+<p>{{ contribution }} <a href="{{ submit_url }}">Open Submit a contribution</a>.</p>
+<h2>Meeting minutes and slides</h2>
+<p>{{ minutes }} <a href="{{ meetings_url }}">Open the meetings repository</a>.</p>
+<h2>Useful links</h2>
+<ul>{% for label, url in links %}<li><a href="{{ url }}">{{ label }}</a></li>{% endfor %}</ul>
+<p>{{ access }}</p>
+<p>{{ closing }}</p>
+<p>FG-TIDA Secretariat</p>
+</body>
+</html>
