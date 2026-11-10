@@ -325,7 +325,7 @@ class Person(models.Model):
     def save(self, *args, **kwargs):
         created = not self.pk
         super(Person, self).save(*args, **kwargs)
-        if created:
+        if created and getattr(settings, 'SEND_PERSON_DUPLICATE_NOTIFICATIONS', True):
             if Person.objects.filter(name=self.name).count() > 1 :
                 msg = render_to_string('person/mail/possible_duplicates.txt',
                                        dict(name=self.name,
@@ -395,7 +395,7 @@ class Alias(models.Model):
     def save(self, *args, **kwargs):
         created = not self.pk
         super(Alias, self).save(*args, **kwargs)
-        if created:
+        if created and getattr(settings, 'SEND_PERSON_DUPLICATE_NOTIFICATIONS', True):
             if Alias.objects.filter(name=self.name).exclude(person=self.person).count() > 0 :
                 msg = render_to_string('person/mail/possible_duplicates.txt',
                                        dict(name=self.name,

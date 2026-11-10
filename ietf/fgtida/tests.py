@@ -357,6 +357,7 @@ class NativeDatatrackerTests(TestCase):
         self.assertEqual(browser.post('/accounts/login/', credentials, HTTP_ORIGIN='https://untrusted.example.invalid').status_code, 403)
 
     def test_all_content_admin_lists_and_creation_forms_are_accessible(self):
+        import re
         from django.contrib import admin
         from django.apps import apps
         from django.test import RequestFactory
@@ -379,8 +380,11 @@ class NativeDatatrackerTests(TestCase):
                         response = self.client.get(reverse(f'admin:{app}_{name}_change', args=[quote(record.pk)]))
                         self.assertEqual(response.status_code, 200, getattr(response, 'url', ''))
                     can_add = admin.site._registry[model].has_add_permission(request)
-                    self.assertEqual(self.client.get(f'/admin/{app}/{name}/add/').status_code,
-                                     200 if can_add else 403)
+                    response = self.client.get(f'/admin/{app}/{name}/add/')
+                    self.assertEqual(response.status_code, 200 if can_add else 403)
+                    if can_add:
+                        for related_app, related_model in re.findall(r'href="/admin/([^/]+)/([^/]+)/add/\?', response.content.decode()):
+                            self.assertIn(related_model, ADMIN_MODELS.get(related_app, set()))
 
     def test_admin_relationship_search_is_paginated_and_permission_checked(self):
         from django.contrib import admin
@@ -529,6 +533,7 @@ class NativeDatatrackerTests(TestCase):
     def test_registration_email_and_three_question_reset(self):
         import re
         from urllib.parse import urlsplit
+        from unittest.mock import patch
         from django.core import mail
         from .models import RecoveryQuestions
         self.client.logout()
@@ -543,11 +548,18 @@ class NativeDatatrackerTests(TestCase):
         password = 'Harbor!Quartz$River77-cloud'
         answers = {'question_1': 'book', 'answer_1': 'private book answer', 'question_2': 'place',
                    'answer_2': 'private place answer', 'question_3': 'phrase', 'answer_3': 'private phrase answer'}
-        with self.captureOnCommitCallbacks(execute=True):
-            response = self.client.post(path, {**answers, 'name': 'New Member', 'password': password, 'password_confirmation': password})
+        Person.objects.create(name='New', ascii='New')
+        Person.objects.create(name='New Member', ascii='New Member')
+        with patch('ietf.person.models.send_mail_preformatted', side_effect=Person.DoesNotExist) as legacy_alert:
+            with self.captureOnCommitCallbacks(execute=True):
+                response = self.client.post(path, {**answers, 'name': 'New Member', 'first_name': 'New',
+                    'password': password, 'password_confirmation': password})
+            legacy_alert.assert_not_called()
         self.assertEqual(response.status_code, 200)
         self.assertEqual([item.subject for item in mail.outbox], ['FG-TIDA Datatracker — confirm your email address'])
         user = get_user_model().objects.get(username='newmember@example.test')
+        self.assertEqual(user.person.name, 'New Member')
+        self.assertFalse(user.person.alias_set.filter(name='New').exists())
         self.assertFalse(user.is_active)
         confirmation_path = urlsplit(re.search(r'https?://\S+', mail.outbox[-1].body).group()).path
         self.assertEqual(self.client.get(confirmation_path).status_code, 200)
@@ -790,10 +802,11 @@ class NativeDatatrackerTests(TestCase):
     def test_admin_meeting_uses_native_schedule_and_public_lists(self):
         day = timezone.localdate() + timedelta(days=10)
         data = self.admin_payload('/admin/meeting/meeting/add/', {'number': 'tida-future-test',
-            'type': 'tida', 'date': day, 'days': 2, 'city': 'Paris', 'country': 'FR', 'time_zone': 'Europe/Paris', '_save': 'Save'})
+            'date': day, 'days': 2, 'city': 'Paris', 'country': 'FR', 'time_zone': 'Europe/Paris', '_save': 'Save'})
         response = self.client.post('/admin/meeting/meeting/add/', data)
         self.assertEqual(response.status_code, 302, getattr(response, 'context', None) and response.context['adminform'].form.errors)
         meeting = Meeting.objects.get(number='tida-future-test')
+        self.assertEqual(meeting.type_id, 'tida')
         self.assertIsNotNone(meeting.schedule_id)
         self.client.logout()
         self.assertContains(self.client.get('/meeting/upcoming/'), 'tida-future-test')
@@ -897,11 +910,14 @@ class NativeDatatrackerTests(TestCase):
     def test_admin_deadlines_and_milestone_choices_are_fg_tida_scoped(self):
         meeting = Meeting.objects.create(number='tida-deadlines', type_id='tida', date=timezone.localdate(), days=1)
         date = timezone.localdate() + timedelta(days=3)
-        response = self.client.post('/admin/meeting/importantdate/add/', {'meeting': meeting.pk,
-            'name': 'tida-contributions', 'date': date.isoformat(), '_save': 'Save'})
+        response = self.client.post('/admin/name/importantdatename/add/', {'slug': 'agenda-publication',
+            'name': 'Agenda publication', 'used': 'on', 'order': 0, 'default_offset_days': 0, '_save': 'Save'})
         self.assertEqual(response.status_code, 302)
-        self.assertTrue(ImportantDate.objects.filter(meeting=meeting, name_id='tida-contributions').exists())
-        self.assertContains(self.client.get('/meeting/tida-deadlines/important-dates/'), 'Contribution deadline')
+        response = self.client.post('/admin/meeting/importantdate/add/', {'meeting': meeting.pk,
+            'name': 'tida-agenda-publication', 'date': date.isoformat(), '_save': 'Save'})
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(ImportantDate.objects.filter(meeting=meeting, name_id='tida-agenda-publication').exists())
+        self.assertContains(self.client.get('/meeting/tida-deadlines/important-dates/'), 'Agenda publication')
         response = self.client.get('/admin/group/groupmilestone/add/')
         self.assertEqual(response.status_code, 200)
         choices = response.context['adminform'].form.fields['group'].queryset

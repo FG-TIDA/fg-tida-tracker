@@ -355,6 +355,15 @@ LOGGING = {
 }
 
 
+def redact_signed_account_path(record):
+    request = getattr(record, 'request', None)
+    path = getattr(request, 'path', '')
+    if path.startswith(('/accounts/create/confirm/', '/accounts/confirm-email/', '/accounts/reset/confirm/')):
+        record.msg = record.getMessage().replace(path, '/accounts/[redacted]/')
+        record.args = ()
+    return True
+
+
 X_FRAME_OPTIONS = 'SAMEORIGIN'
 CSRF_TRUSTED_ORIGINS = [
     "https://ietf.org",
@@ -1384,6 +1393,11 @@ if SERVER_MODE != "production":
 # sensitive or site-specific changes.  DO NOT commit settings_local.py to svn.
 if SERVER_MODE == 'production':
     from ietf.fgtida.production_settings import *
+    LOGGING['loggers']['django']['handlers'] = ['console']
+    LOGGING['filters']['redact_signed_account_path'] = {
+        '()': 'django.utils.log.CallbackFilter', 'callback': redact_signed_account_path,
+    }
+    LOGGING['handlers']['console']['filters'] = ['redact_signed_account_path']
 else:
     from ietf.settings_local import *            # pyflakes:ignore pylint: disable=wildcard-import
 

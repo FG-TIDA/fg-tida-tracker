@@ -19,8 +19,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.crypto import salted_hmac, constant_time_compare
 from django.views.decorators.debug import sensitive_post_parameters
-from ietf.person.models import Email
-from . import core
+from ietf.person.models import Email, Person
 from .models import RecoveryQuestions, OutgoingMail, SecurityQuestion, EmailVerification
 from .mail import enqueue
 
@@ -54,8 +53,9 @@ def normalize(value):
 class QuestionsForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.question_prompts = dict(question_choices())
         for n in range(1, 4):
-            self.fields[f'question_{n}'] = forms.ChoiceField(choices=[('', 'Choose a question')] + question_choices())
+            self.fields[f'question_{n}'] = forms.ChoiceField(choices=[('', 'Choose a question'), *self.question_prompts.items()])
             self.fields[f'answer_{n}'] = forms.CharField(min_length=4, max_length=200, widget=forms.PasswordInput)
 
     def clean(self):
@@ -69,7 +69,7 @@ class QuestionsForm(forms.Form):
     def save(self, user):
         RecoveryQuestions.objects.update_or_create(user=user, defaults={
             'questions': [self.cleaned_data[f'question_{n}'] for n in range(1, 4)],
-            'prompts': {self.cleaned_data[f'question_{n}']: dict(question_choices())[self.cleaned_data[f'question_{n}']] for n in range(1, 4)},
+            'prompts': {self.cleaned_data[f'question_{n}']: self.question_prompts[self.cleaned_data[f'question_{n}']] for n in range(1, 4)},
             'answer_hashes': [make_password(normalize(self.cleaned_data[f'answer_{n}'])) for n in range(1, 4)],
             'failures': 0, 'locked_until': None})
 
@@ -94,6 +94,15 @@ class EmailForm(forms.Form):
     email = forms.EmailField()
 
 
+class SignupEmailForm(EmailForm):
+    def clean_email(self):
+        address = self.cleaned_data['email'].lower()
+        max_length = get_user_model()._meta.get_field('username').max_length
+        if len(address) > max_length:
+            raise forms.ValidationError(f'Use an email address with at most {max_length} characters.')
+        return address
+
+
 def page(request, title, form=None, message='', button='Continue'):
     response = render(request, 'fgtida/account_form.html', {'title': title, 'form': form, 'message': message, 'button': button})
     response['Cache-Control'] = 'no-store'
@@ -116,9 +125,9 @@ def allowed_request(email):
 
 
 def create(request):
-    form = EmailForm(request.POST or None)
+    form = SignupEmailForm(request.POST or None)
     if request.method == 'POST' and form.is_valid():
-        address = form.cleaned_data['email'].lower()
+        address = form.cleaned_data['email']
         if Email.objects.filter(address__iexact=address).exists() or get_user_model().objects.filter(Q(email__iexact=address) | Q(username__iexact=address)).exists():
             form.add_error('email', 'This address is already registered or reserved. Sign in, reset your password, or contact the secretariat.')
         else:
@@ -136,11 +145,14 @@ def confirm(request, auth):
         address = signing.loads(auth, salt='fgtida-signup', max_age=86400)
     except signing.BadSignature:
         raise Http404('Invalid or expired link')
+    email_form = SignupEmailForm({'email': address})
+    if not email_form.is_valid():
+        return redirect('fgtida:signup')
+    address = email_form.cleaned_data['email']
     form = SignupForm(request.POST or None)
     if request.method == 'POST' and form.is_valid():
         with transaction.atomic():
-            existing_email = Email.objects.select_for_update(of=('self',)).filter(address=address).select_related('person').first()
-            if existing_email:
+            if Email.objects.filter(address__iexact=address).exists():
                 return page(request, 'Create an account', message='This email is already registered or reserved. Contact the secretariat if you need assistance.')
             # Unique username prevents simultaneous confirmation of one address.
             user, created = get_user_model().objects.get_or_create(username=address, defaults={'email': address})
@@ -150,19 +162,17 @@ def confirm(request, auth):
             user.is_active = False
             user.first_name = form.cleaned_data.get('first_name', '').strip()
             user.save()
-            person = existing_email.person if existing_email and existing_email.person_id else core.actor_for(user)
-            person.user = user
-            person.name = form.cleaned_data['name']
-            person.biography = form.cleaned_data['biography']
             from unidecode import unidecode
-            person.ascii = unidecode(person.name)
-            person.save()
-            email, _ = Email.objects.get_or_create(address=address, defaults={'person': person, 'origin': 'FG-TIDA registration'})
-            if email.person_id and email.person_id != person.pk:
-                raise forms.ValidationError('Email is already assigned; contact the secretariat.')
-            email.person = person
-            email.active = False
-            email.save()
+            name = form.cleaned_data['name']
+            person = Person.objects.create(user=user, name=name,
+                ascii=unidecode(name)[:Person._meta.get_field('ascii').max_length],
+                biography=form.cleaned_data['biography'])
+            _, email_created = Email.objects.get_or_create(address=address,
+                defaults={'person': person, 'origin': 'FG-TIDA registration', 'active': False})
+            if not email_created:
+                response = page(request, 'Create an account', message='This email is already registered or reserved. Contact the secretariat if you need assistance.')
+                transaction.set_rollback(True)
+                return response
             form.save(user)
             verification = EmailVerification.objects.create(user=user, email=address)
             queue_confirmation(request, verification)

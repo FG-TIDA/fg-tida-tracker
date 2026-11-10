@@ -7,6 +7,9 @@ FGTIDA_REQUIRE_ADMIN_MFA = True
 FGTIDA_DEV_ADMIN_MFA_PAUSED = (os.environ.get('FGTIDA_ENV') != 'production'
     and os.environ.get('FGTIDA_DEV_ADMIN_MFA_PAUSED', 'true').lower() == 'true')
 OTP_TOTP_ISSUER = 'FG-TIDA Datatracker'
+# Duplicate names are valid here. The upstream alerts depend on IETF's
+# system person and mail archive and bypass the FG-TIDA transactional outbox.
+SEND_PERSON_DUPLICATE_NOTIFICATIONS = False
 FGTIDA_GITHUB_APP_ID = os.environ.get('FGTIDA_GITHUB_APP_ID', '')
 FGTIDA_GITHUB_PRIVATE_KEY_FILE = os.environ.get('FGTIDA_GITHUB_PRIVATE_KEY_FILE', '')
 FGTIDA_GITHUB_WRITE_ENABLED = os.environ.get('FGTIDA_GITHUB_WRITE_ENABLED', '').lower() == 'true'

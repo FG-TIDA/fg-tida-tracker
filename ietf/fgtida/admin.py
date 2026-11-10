@@ -13,7 +13,8 @@ from ietf.group.models import Group, Role, GroupEvent
 from ietf.group.utils import save_group_in_history
 from ietf.meeting.admin import MeetingAdmin, SessionAdmin
 from ietf.meeting.models import Meeting, Session, Schedule, SessionPresentation, SchedTimeSessAssignment, TimeSlot, SchedulingEvent, Room
-from ietf.name.models import DocTypeName, DocTagName, MeetingTypeName
+from ietf.name.models import DocTypeName, DocTagName, ImportantDateName
+from ietf.name.admin import ImportantDateNameAdmin
 from . import core
 from . import workflow
 from .files import extract_text, MAX_BYTES
@@ -747,10 +748,14 @@ class FgMeetingAdmin(MeetingAdmin):
     form = FgMeetingForm
     search_fields = ['title', 'number']
     list_display = ['display_title', 'number', 'type', 'date', 'location', 'time_zone']
-    fields = ['title', 'number', 'type', 'date', 'days', 'city', 'country', 'time_zone',
+    fields = ['title', 'number', 'meeting_type', 'date', 'days', 'city', 'country', 'time_zone',
               'venue_name', 'venue_addr', 'agenda_info_note', 'agenda_warning_note', 'proceedings_final', 'manage_agenda']
-    readonly_fields = ['manage_agenda']
+    readonly_fields = ['meeting_type', 'manage_agenda']
     actions = ['cancel_sessions']
+
+    @admin.display(description='Meeting type')
+    def meeting_type(self, obj):
+        return 'FG-TIDA Meeting'
 
     @admin.display(description='Agenda and session materials')
     def manage_agenda(self, obj):
@@ -777,18 +782,39 @@ class FgMeetingAdmin(MeetingAdmin):
     def get_queryset(self, request):
         return super().get_queryset(request).filter(type_id='tida')
 
-    def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        if db_field.name == 'type':
-            kwargs['queryset'] = MeetingTypeName.objects.filter(slug='tida')
-            kwargs['initial'] = 'tida'
-        return super().formfield_for_foreignkey(db_field, request, **kwargs)
-
     def save_model(self, request, obj, form, change):
         obj.type_id = 'tida'
         super().save_model(request, obj, form, change)
         if obj.schedule_id is None:
             obj.schedule = Schedule.objects.create(meeting=obj, name='official', owner=core.actor_for(request.user), public=True, visible=True)
             obj.save(update_fields=['schedule'])
+
+
+class FgImportantDateNameForm(forms.ModelForm):
+    slug = forms.SlugField(max_length=32, label='Identifier',
+        help_text='Use a short identifier. The tracker adds the tida- prefix if needed.')
+
+    class Meta:
+        model = ImportantDateName
+        fields = '__all__'
+
+    def clean_slug(self):
+        slug = self.cleaned_data['slug'].lower()
+        if not slug.startswith('tida-'):
+            slug = 'tida-' + slug
+        if len(slug) > 32:
+            raise ValidationError('Use at most 27 characters after the tida- prefix.')
+        return slug
+
+
+class FgImportantDateNameAdmin(ImportantDateNameAdmin):
+    form = FgImportantDateNameForm
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).filter(slug__startswith='tida-')
+
+    def get_readonly_fields(self, request, obj=None):
+        return ('slug',) if obj else ()
 
 
 class AssignmentInline(admin.TabularInline):
@@ -977,6 +1003,10 @@ class ScopedNativeAdmin:
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
+def hidden_admin_permission(request, obj=None):
+    return False
+
+
 def configure_admin():
     if not admin.site.is_registered(SecurityQuestion):
         admin.site.register(SecurityQuestion, SecurityQuestionAdmin)
@@ -990,7 +1020,7 @@ def configure_admin():
     admin.site.site_header = 'FG-TIDA Datatracker administration'
     admin.site.site_title = 'FG-TIDA administration'
     admin.site.index_title = 'Documents, groups, meetings and participants'
-    for model, cls in [(Document, FgDocumentAdmin), (Group, FgGroupAdmin), (Role, FgRoleAdmin), (Meeting, FgMeetingAdmin), (Session, FgSessionAdmin)]:
+    for model, cls in [(Document, FgDocumentAdmin), (Group, FgGroupAdmin), (Role, FgRoleAdmin), (Meeting, FgMeetingAdmin), (Session, FgSessionAdmin), (ImportantDateName, FgImportantDateNameAdmin)]:
         if model in admin.site._registry:
             admin.site.unregister(model)
         admin.site.register(model, cls)
@@ -1016,8 +1046,9 @@ def configure_admin():
                 cls.form = FloorPlanForm
             admin.site.unregister(model)
             admin.site.register(model, cls)
-    # Preserve upstream admin routes and permissions, but omit unrelated IETF
-    # governance/configuration modules from the FG-TIDA administration dashboard.
+    # Preserve upstream URL names for template reversals. Deny hidden models at
+    # the admin permission layer too, so related widgets don't advertise their
+    # add/change/delete/view popups and lead editors to a blocked route.
     from .security import ADMIN_MODELS
     allowed = ADMIN_MODELS
     # Keep lists and relationship pickers usable as meetings, people and
@@ -1033,6 +1064,10 @@ def configure_admin():
     for model, registered in admin.site._registry.items():
         opts = model._meta
         if opts.model_name not in allowed.get(opts.app_label, set()):
+            registered.has_add_permission = hidden_admin_permission
+            registered.has_change_permission = hidden_admin_permission
+            registered.has_delete_permission = hidden_admin_permission
+            registered.has_view_permission = hidden_admin_permission
             continue
         registered.list_per_page = 50
         registered.list_max_show_all = 0
