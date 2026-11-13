@@ -111,6 +111,39 @@ class NavigationTests(TestCase):
         self.assertTrue(Document.objects.filter(pk=doc.pk).exists())
         self.assertEqual(Path(doc.get_file_name()).read_bytes(), original)
 
+    def test_discovered_wg0_charter_path_repair(self):
+        from .models import GitHubAccount, GitHubRepository
+        account, _ = GitHubAccount.objects.get_or_create(organization='fg-tida-wg0')
+        repo = GitHubRepository.objects.create(account=account, name='wg0-uct-charter',
+            github_id=1451540158, group=Group.objects.get(acronym='tidawg0'),
+            mode='workitem', paths=['src/doc/index.rst'], document_type='charter')
+        apps = MigrationExecutor(connection).loader.project_state([('fgtida', '0024_wg0_charter_source')]).apps
+        repair = import_module('ietf.fgtida.migrations.0025_repair_discovered_wg0_charter').repair
+        repair(apps, SimpleNamespace(connection=connection))
+        repo.refresh_from_db()
+        self.assertEqual((repo.mode, repo.paths), ('files', ['charter.md']))
+        repo.paths = ['custom/charter.md']
+        repo.save(update_fields=['paths'])
+        repair(apps, SimpleNamespace(connection=connection))
+        repo.refresh_from_db()
+        self.assertEqual(repo.paths, ['custom/charter.md'])
+
+    def test_discovery_uses_markdown_charter(self):
+        from unittest.mock import patch
+        from .models import GitHubAccount, GitHubRepository
+        from .management.commands.sync_fgtida_github import Command
+        account = GitHubAccount.objects.create(organization='fg-tida-wg0')
+        WorkingGroupConfiguration.objects.create(group=Group.objects.get(acronym='tidawg0'),
+            number=0, topic_acronym='uct', github_account=account)
+        metadata = {'id':1451540158, 'name':'wg0-uct-charter', 'full_name':'fg-tida-wg0/wg0-uct-charter',
+            'default_branch':'main', 'html_url':'https://github.com/fg-tida-wg0/wg0-uct-charter'}
+        with patch('ietf.fgtida.management.commands.sync_fgtida_github.GitHubClient') as client, patch('ietf.fgtida.management.commands.sync_fgtida_github.sync_repository', return_value=['created']):
+            client.return_value.pages.return_value = [metadata]
+            client.return_value.request.side_effect = [{'tree':[{'type':'blob','path':'charter.md'}]}, metadata]
+            Command(stdout=io.StringIO()).synchronize({'discover':True,'apply':True,'repository':metadata['full_name']})
+        repo = GitHubRepository.objects.get(account=account)
+        self.assertEqual((repo.mode, repo.paths, repo.document_type), ('files', ['charter.md'], 'charter'))
+
 
 class LiaisonPackageTests(SimpleTestCase):
     def test_word_zip_preserves_original_and_extracts_reading_text(self):

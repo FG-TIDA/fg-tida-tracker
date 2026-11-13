@@ -167,6 +167,8 @@ def sync_repository(repository, dry_run=False, client=None, metadata=None):
     if not tree or tree.get('truncated'):
         raise ValueError('Repository tree is unavailable or truncated; narrow the document source.')
     files = [row for row in tree['tree'] if row['type']=='blob' and eligible(row['path'], repository.paths)]
+    if not files:
+        raise ValidationError('No document files match the configured paths. Check the repository branch and document paths in GitHub repositories administration.')
     for row in files:
         path = row['path']
         if row.get('size',0) > 10*1024*1024:

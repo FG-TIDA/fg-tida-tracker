@@ -40,9 +40,20 @@ class Command(BaseCommand):
                         continue
                     self.stdout.write('Discovered '+repo['full_name'])
                     if options['apply']:
+                        charter = repo['name'].endswith('-charter')
+                        paths = ['src/doc/index.rst']
+                        if charter:
+                            tree = client.request('GET', '/repos/'+repo['full_name']+'/git/trees/'+repo['default_branch']+'?recursive=1')
+                            if not tree or tree.get('truncated'):
+                                raise CommandError('Cannot determine charter document path for '+repo['full_name'])
+                            available = {row['path'] for row in tree.get('tree', []) if row['type'] == 'blob'}
+                            paths = [next((path for path in ['charter.md', 'src/doc/index.rst'] if path in available), '')]
+                            if not paths[0]:
+                                self.stdout.write('No supported charter entry document; configure manually: '+repo['full_name'])
+                                continue
                         GitHubRepository.objects.create(account=group.github_account,name=repo['name'],github_id=repo['id'],
-                            group=group.group,branch=repo['default_branch'],mode='workitem',paths=['src/doc/index.rst'],
-                            document_type='charter' if repo['name'].endswith('-charter') else 'tida', group_evidence=repo['html_url'])
+                            group=group.group,branch=repo['default_branch'],mode='files' if charter else 'workitem',paths=paths,
+                            document_type='charter' if charter else 'tida', group_evidence=repo['html_url'])
         records = GitHubRepository.objects.filter(enabled=True, account__enabled=True).select_related('account','group')
         if options['repository']:
             owner, name = options['repository'].split('/',1)
