@@ -44,9 +44,14 @@ def bootstrap_repository(item, client):
     metadata = {'document':document.name,'title':document.title,'authors':authors,
         'tracker_url':origin+'/doc/'+document.name+'/','group':document.group.name}
     from .models import Contribution
-    draft=Contribution.objects.filter(document=document).values_list('draft_repository_url',flat=True).first()
+    contribution=Contribution.objects.filter(document=document).first()
+    draft=contribution.draft_repository_url if contribution else ''
     if draft:
         metadata['original_draft_repository']=draft
+    if contribution and contribution.source_archive:
+        if contribution.submission_method == 'word' and not contribution.conversion_verified_at:
+            raise ValidationError('Word conversion must be verified before source import.')
+        metadata['submitted_source'] = contribution.source_manifest
     serialized=json.dumps(metadata,ensure_ascii=False,indent=2)+'\n'
     main_metadata=client.request('GET','/repos/'+repo+'/contents/.tracker/metadata.json?ref='+quote(item.repository.branch,safe=''))
     if main_metadata and base64.b64decode(main_metadata.get('content',''))==serialized.encode():
@@ -83,19 +88,31 @@ def bootstrap_repository(item, client):
             marker = '<!-- FG-TIDA tracker -->'
             text = text.split(marker)[0].rstrip()+'\n\n'+marker+'\n'+f'[![Tracker state]({origin}/work-items/{item.pk}/state.svg)]({metadata["tracker_url"]})\n'
         files[path] = text
+    if contribution and contribution.source_archive:
+        from .source_packages import unpack
+        # Import document content on the review branch, preserving the official
+        # template's executable configuration and GitHub workflows.
+        for name, content in unpack(bytes(contribution.source_archive)).items():
+            if name == 'conf.py' or name.endswith('.py'):
+                continue
+            files['src/doc/' + name] = content
+        entry = contribution.source_manifest['entry_document']
+        if entry != 'index.rst':
+            files['src/doc/index.rst'] = '.. include:: ' + entry + '\n'
     for path, text in files.items():
-        current = client.request('GET','/repos/'+repo+'/contents/'+path+'?ref='+quote(branch,safe=''))
-        content = text.encode()
+        api_path = '/repos/'+repo+'/contents/'+quote(path, safe='/')
+        current = client.request('GET',api_path+'?ref='+quote(branch,safe=''))
+        content = text if isinstance(text, bytes) else text.encode()
         if current and base64.b64decode(current.get('content','')) == content:
             continue
         data = {'message':'Connect FG-TIDA tracker metadata','branch':branch,'content':base64.b64encode(content).decode()}
         if current:
             data['sha']=current['sha']
-        client.request('PUT','/repos/'+repo+'/contents/'+path,data)
+        client.request('PUT',api_path,data)
     pulls = client.request('GET','/repos/'+repo+'/pulls?state=open&head='+quote(item.repository.account.organization+':'+branch,safe='')) or []
     if not pulls:
         client.request('POST','/repos/'+repo+'/pulls',{'title':'Connect FG-TIDA Datatracker work item',
-            'head':branch,'base':item.repository.branch,'body':'Review this metadata and the submitted document before merging. '
+            'head':branch,'base':item.repository.branch,'body':'Review the imported source, assets and metadata before merging. Submitted executable configuration is not imported; the official template configuration is retained. '
             'The tracker does not push directly to main. Install the approved tracker-sync workflow in the canonical templates to enable build publishing.'})
     update_state(item,client)
 

@@ -54,6 +54,11 @@ def resolve(repository, key, source_url='', metadata=None):
             group = Group.objects.get(acronym='tida')
             evidence = ''
     category = repository.category if public_github_url(repository.category_evidence) and repository.category in dict(core.CATEGORIES) else ''
+    if category == 'use-cases':
+        # Explicit FG-TIDA ownership policy: all use cases and their supporting
+        # attachments belong to WG0, irrespective of issue topic labels.
+        group = Group.objects.get(acronym='tidawg0', parent__acronym='tida')
+        evidence = USE_CASES_URL
     if key.startswith('attachment:'):
         category = ''  # Supporting files are not themselves theme/use-case proposals.
     result = {'group': group.acronym, 'group_evidence': evidence if group.acronym != 'tida' else '',

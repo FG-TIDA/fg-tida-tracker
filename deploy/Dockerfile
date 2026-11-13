@@ -26,7 +26,7 @@ RUN dpkg -i /tmp/security-packages/*.deb && ldconfig && rm -rf /tmp/security-pac
 COPY --from=native-security /out/pyexpat*.so /usr/local/lib/python3.12/lib-dynload/
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential libpq-dev libmagic1 libpango-1.0-0 libpangoft2-1.0-0 libcairo2 \
-    libgdk-pixbuf-2.0-0 libffi-dev shared-mime-info patch ca-certificates memcached \
+    libgdk-pixbuf-2.0-0 libffi-dev shared-mime-info patch ca-certificates memcached pandoc \
     && rm -rf /var/lib/apt/lists/*
 COPY deploy/requirements-runtime.lock ./requirements-runtime.lock
 RUN python -m pip install --no-cache-dir --upgrade pip==26.3 \

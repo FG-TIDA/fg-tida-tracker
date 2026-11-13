@@ -167,15 +167,18 @@ def group_label(group):
     if group.acronym == 'tida':
         return 'FG-TIDA (no wg assigned)'
     if group.acronym == 'incubation':
-        return 'Incubation - approval for new wg'
+        return 'No working group yet'
     number=group_number(group)
-    return group.name+(f' ({number})' if number else '')
+    if number:
+        acronym = group.tida_configuration.topic_acronym.upper()
+        return f'{number.upper()} ({acronym}) : {group.name}' if acronym else f'{number.upper()} : {group.name}'
+    return group.name
 
 
 @register.filter
 def file_type(doc):
     extension = Path(doc.uploaded_filename or '').suffix.lower()
-    return {'.docx': 'Word', '.pdf': 'PDF'}.get(extension, extension.lstrip('.').upper() or 'Not uploaded')
+    return {'.docx': 'Word', '.pdf': 'PDF', '.zip': 'ZIP package'}.get(extension, extension.lstrip('.').upper() or 'Not uploaded')
 
 
 @register.inclusion_tag('fgtida/formats.html')

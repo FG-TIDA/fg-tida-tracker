@@ -359,6 +359,6 @@ class GitHubWorkflowTests(TestCase):
 
     def test_topic_configuration_and_search_render_with_numbered_groups(self):
         call_command('configure_fgtida_github',skip_checks=True,stdout=io.StringIO())
-        self.assertContains(self.client.get('/doc/'),'Use Cases and Terminology (wg0)')
+        self.assertContains(self.client.get('/doc/'),'WG0 (UCT) : Use Cases and Terminology')
         from django.urls import reverse
         self.assertContains(self.client.get(reverse('fgtida:groups')),'wg2')

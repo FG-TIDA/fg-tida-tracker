@@ -2,4 +2,4 @@
 {% block title %}Groups | FG-TIDA Datatracker{% endblock %}
 {% block content %}<h1>FG-TIDA groups</h1>{% if perms.group.add_group %}<a class="btn btn-primary mb-3" href="{% url 'admin:group_group_add' %}">Add group</a>{% endif %}
 <ul class="list-group mb-4">{% for group in groups %}{% group_number group as number %}<li class="list-group-item"><a href="{% url 'fgtida:group' group.acronym %}">{{ number|default:group.acronym }} : {{ group.name }}</a></li>{% empty %}<li class="list-group-item">No working groups have been added.</li>{% endfor %}</ul>
-<h2>New work</h2><p><a href="{% url 'fgtida:incubation' %}">Incubation - approval for new wg</a> lists public contributions that do not belong to an existing working group.</p>{% endblock %}
+<h2>New work</h2><p><a href="{% url 'fgtida:incubation' %}">No working group yet</a> lists public contributions that do not belong to an existing working group.</p>{% endblock %}

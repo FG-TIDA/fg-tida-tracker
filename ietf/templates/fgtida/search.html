@@ -2,7 +2,7 @@
 {% load fgtida %}
 {% block title %}{% if incubation %}Incubation{% elif collection %}{{ collection_title }}{% else %}Document search{% endif %} | FG-TIDA Datatracker{% endblock %}
 {% block content %}
-{% if incubation %}<h1>Incubation - approval for new wg</h1><p>Browse public contributions and proposed work that do not belong to an existing working group. Incubation is a submission route, not a working group. Adopted contributions retain their link here.</p><p><a href="{% url 'fgtida:submit' %}?group=incubation">Submit a contribution</a></p>{% elif group_obj %}{% include 'fgtida/group_tabs.html' %}<h2>Group documents</h2>{% elif collection %}<h1>{{ collection_title }}</h1>{% else %}<h1>FG-TIDA Document Search</h1>{% endif %}
+{% if incubation %}<h1>No working group yet</h1><p>Browse public contributions and proposed work that do not belong to an existing working group. This is a submission route for work without an assigned group. Adopted contributions retain their link here.</p><p><a href="{% url 'fgtida:submit' %}?group=incubation">Submit a contribution</a></p>{% elif group_obj %}{% include 'fgtida/group_tabs.html' %}<h2>{{ group_collection_title|default:"Group documents" }}</h2>{% elif collection %}<h1>{{ collection_title }}</h1>{% else %}<h1>FG-TIDA Document Search</h1>{% endif %}
 {% include 'fgtida/search_form.html' %}
 {% if perms.doc.add_document %}<p><a class="btn btn-primary" href="{% url 'admin:doc_document_add' %}">Add document</a></p>{% endif %}
 <p>{{ page.paginator.count }} document{{ page.paginator.count|pluralize }}</p>

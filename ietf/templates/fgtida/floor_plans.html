@@ -1,0 +1,5 @@
+{% extends 'base.html' %}
+{% block content %}{% include 'fgtida/meeting_nav.html' %}
+<h1>Floor plan — {{ meeting.title|default:meeting.number }}</h1>
+<ul>{% for plan in plans %}<li><a href="{% url 'fgtida:floor-plan' meeting.number plan.pk %}">{{ plan.name }}</a></li>{% empty %}<li>No floor plan has been added for this meeting.</li>{% endfor %}</ul>
+{% endblock %}

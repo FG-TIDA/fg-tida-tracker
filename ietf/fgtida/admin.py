@@ -176,7 +176,7 @@ class SessionResourceInline(admin.TabularInline):
 class ContributionReviewForm(forms.ModelForm):
     decision = forms.ChoiceField(required=False, choices=[('','Save review note'),('adopt','Adopt into a working group'),('reject','Reject proposal')])
     adopt_into = forms.ModelChoiceField(queryset=Group.objects.filter(parent__acronym='tida',type_id='wg').exclude(state_id='conclude'),required=False,
-        help_text='For Incubation, create the new WG and its numbered GitHub configuration first, then select it here.')
+        help_text='For No working group yet, create the new WG and its numbered GitHub configuration first, then select it here.')
 
     class Meta:
         model=Contribution
@@ -188,6 +188,8 @@ class ContributionReviewForm(forms.ModelForm):
             self.add_error('adopt_into','Select the working group formed to adopt this proposal.')
         if values.get('decision') and self.instance.status!='pending':
             self.add_error('decision','This proposal already has a review decision. Use its document lifecycle for further changes.')
+        if values.get('decision') == 'adopt' and self.instance.submission_method == 'word' and not self.instance.conversion_verified_at:
+            self.add_error('decision', 'The contributor must verify the automatic Word-to-RST conversion before adoption.')
         return values
 
 
@@ -196,7 +198,8 @@ class ContributionAdmin(admin.ModelAdmin):
     list_display = ['title', 'submitter', 'group', 'created', 'status', 'notifications_queued']
     list_filter = ['status', 'group']
     search_fields = ['title', 'submitter__username']
-    fields = ['title', 'submitter', 'group', 'abstract', 'submitted_file', 'created',
+    fields = ['title', 'submitter', 'group', 'abstract', 'submitted_file', 'source_details', 'submission_method', 'source_commit',
+              'source_folder', 'entry_document', 'conversion_verified_at', 'created',
               'status', 'review_note', 'decision', 'adopt_into', 'draft_repository_url', 'reviewed_by', 'reviewed_at', 'document', 'notifications_queued']
     readonly_fields = [field for field in fields if field not in {'review_note','decision','adopt_into'}]
     actions = ['accept_contributions', 'reject_contributions']
@@ -213,7 +216,7 @@ class ContributionAdmin(admin.ModelAdmin):
             reject(obj.pk,request.user)
 
     def get_queryset(self, request):
-        return super().get_queryset(request).defer('content').select_related('submitter', 'group')
+        return super().get_queryset(request).defer('content', 'source_archive').select_related('submitter', 'group')
 
     def has_add_permission(self, request):
         return False
@@ -223,6 +226,9 @@ class ContributionAdmin(admin.ModelAdmin):
 
     def submitted_file(self, obj):
         return format_html('<a href="{}">{}</a>', reverse('fgtida:contribution-download', args=[obj.pk]), obj.filename)
+
+    def source_details(self, obj):
+        return format_html('<a href="{}">Review source preview, assets and provenance</a>', reverse('fgtida:contribution', args=[obj.pk]))
 
     @admin.action(description='Accept and publish selected pending contributions', permissions=['change'])
     def accept_contributions(self, request, queryset):
@@ -336,13 +342,13 @@ class FgGroupForm(GroupForm):
 
 
 class DocumentForm(forms.ModelForm):
-    document_direction = forms.ChoiceField(required=False, label='Input / output list', choices=[('', 'Neither'), ('input', 'Input document'), ('output', 'Output document')], help_text='Publish a PDF or Word document in the selected document list.')
+    document_direction = forms.ChoiceField(required=False, label='Liaison statements', choices=[('', 'Neither'), ('input', 'Incoming liaison statement'), ('output', 'Outgoing liaison statement')], help_text='Preserve the received/sent Word, PDF or ZIP as the original. ZIPs may contain Word/PDF documents and supporting text/images. An optional PDF reading copy can be attached to the same revision.')
     document_meeting = forms.ModelChoiceField(required=False, label='Document meeting', queryset=Meeting.objects.none())
     document_source = forms.CharField(required=False, max_length=255, label='Document source', help_text='Organization, author or working group displayed in the list.')
     document_created = forms.SplitDateTimeField(required=False, label='Document creation date', widget=admin.widgets.AdminSplitDateTime, help_text='Leave blank to use the current date for a new list entry.')
     version = forms.CharField(required=False,max_length=32,label='New file version',help_text='Optional X.Y version, e.g. 0.1 or 1.0. Without a value the minor version increases. Archived versions are immutable.')
     catalogued = forms.BooleanField(required=False, initial=True, label='Show in public catalog', help_text='Leave unchecked for repository support files or records awaiting classification. This is catalog inclusion, not confidential storage.')
-    upload = forms.FileField(required=False, help_text='Upload a new revision: PDF, DOCX, PPTX, TXT, Markdown or XML (up to 10 MB).')
+    upload = forms.FileField(required=False, help_text='Upload a new revision: RST source ZIP, RST, PDF, DOCX, PPTX, TXT, Markdown or XML (up to 10 MB).')
     lifecycle_state = forms.ModelChoiceField(queryset=State.objects.none(), required=False, label='Document state')
     meeting_session = forms.ModelChoiceField(queryset=Session.objects.none(), required=False, label='Attach to meeting session')
     comment_about_changes = forms.CharField(widget=forms.Textarea(attrs={'rows': 3}), label='History note')
@@ -395,8 +401,8 @@ class DocumentForm(forms.ModelForm):
             from pathlib import Path
             upload = values.get('upload')
             filename = upload.name if upload else self.instance.uploaded_filename
-            if Path(filename or '').suffix.lower() not in {'.pdf', '.docx'}:
-                self.add_error('upload', 'Input and output documents require a PDF or Word (.docx) file.')
+            if Path(filename or '').suffix.lower() not in {'.pdf', '.docx', '.rst', '.zip'}:
+                self.add_error('upload', 'Input and output documents require an RST source ZIP, RST, PDF or Word (.docx) file.')
         if values.get('version'):
             from .versioning import next_version
             if not values.get('upload'):
@@ -556,7 +562,7 @@ class ContributionRecipientAdmin(admin.ModelAdmin):
 class ContributionRecipientInline(admin.TabularInline):
     model = ContributionRecipient
     extra = 0
-    verbose_name_plural = 'Contribution notification recipients (Incubation: FG management)'
+    verbose_name_plural = 'Contribution notification recipients (No working group yet: FG management)'
 
     def has_add_permission(self, request, obj=None):
         return request.user.is_superuser

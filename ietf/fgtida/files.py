@@ -7,15 +7,15 @@ from defusedxml import ElementTree
 from django.core.exceptions import ValidationError
 
 MAX_BYTES = 10 * 1024 * 1024
-EXTENSIONS = {'.txt', '.md', '.rst', '.xml', '.pdf', '.docx', '.pptx'}
+EXTENSIONS = {'.txt', '.md', '.rst', '.xml', '.pdf', '.docx', '.pptx', '.zip'}
 
 
 def extract_text(data, filename):
     if len(data) > MAX_BYTES or os.path.splitext(filename)[1].lower() not in EXTENSIONS:
-        raise ValidationError('Use a PDF, DOCX, PPTX, TXT, Markdown or XML file up to 10 MB.')
+        raise ValidationError('Use a PDF, DOCX, PPTX, TXT, Markdown, RST, XML or RST ZIP file up to 10 MB.')
     # Compressed PDF/Office data may expand far beyond upload size. Parsing is
     # bounded in a separate process so a malformed file cannot exhaust a worker.
-    if os.path.splitext(filename)[1].lower() in {'.pdf', '.docx', '.pptx', '.xml'}:
+    if os.path.splitext(filename)[1].lower() in {'.pdf', '.docx', '.pptx', '.xml', '.zip'}:
         try:
             result = subprocess.run([sys.executable, '-m', 'ietf.fgtida.extract_worker',
                                      os.path.splitext(filename)[1].lower()],
@@ -28,10 +28,27 @@ def extract_text(data, filename):
 
 def _extract_text(data, filename):
     if len(data) > MAX_BYTES or os.path.splitext(filename)[1].lower() not in EXTENSIONS:
-        raise ValidationError('Use a PDF, DOCX, PPTX, TXT, Markdown or XML file up to 10 MB.')
+        raise ValidationError('Use a PDF, DOCX, PPTX, TXT, Markdown, RST, XML or RST ZIP file up to 10 MB.')
     extension = os.path.splitext(filename)[1].lower()
     try:
-        if extension in {'.txt', '.md', '.rst'}:
+        if extension == '.zip':
+            from .source_packages import unpack, package_text
+            files = unpack(data)
+            if any(name.endswith('.rst') for name in files):
+                return package_text(data)
+            # Liaison packages retain their original bytes; extract a reading
+            # aid only. Do not convert institutional correspondence into RST.
+            permitted = {'.pdf', '.docx', '.txt', '.png', '.jpg', '.jpeg', '.gif', '.svg'}
+            if not any(os.path.splitext(name)[1].lower() in {'.pdf', '.docx'} for name in files):
+                raise ValueError('Liaison ZIP needs a PDF or Word document')
+            if any(os.path.splitext(name)[1].lower() not in permitted for name in files):
+                raise ValueError('Unsupported liaison attachment')
+            chunks = []
+            for name, content in sorted(files.items()):
+                if os.path.splitext(name)[1].lower() in {'.pdf', '.docx', '.txt'}:
+                    chunks.append(name + '\n' + _extract_text(content, name))
+            text = '\n\n'.join(chunks)
+        elif extension in {'.txt', '.md', '.rst'}:
             text = data.decode('utf-8-sig')
         elif extension == '.xml':
             text = ' '.join(ElementTree.fromstring(data).itertext())

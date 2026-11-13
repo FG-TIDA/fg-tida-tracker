@@ -419,6 +419,11 @@ class NativeDatatrackerTests(TestCase):
         core.actor_for(self.user)
         self.client.force_login(self.user)
 
+    def source_submission(self, text=b'Contribution'):
+        from .source_packages import pack
+        return {'submission_method': 'rst', 'publication_consent': 'on', 'entry_document': 'index.rst',
+                'upload': SimpleUploadedFile('proposal.zip', pack({'index.rst': text}))}
+
     def admin_payload(self, url, values):
         if '/doc/document/' in url:
             values.setdefault('catalogued', 'on')
@@ -448,7 +453,7 @@ class NativeDatatrackerTests(TestCase):
         member = get_user_model().objects.create_user('contributor', password='test-password')
         self.client.force_login(member)
         response = self.client.post('/submit/', {'title': 'Community proposal', 'group': Group.objects.get(acronym='tidawg1').pk,
-            'abstract': 'Proposal summary', 'upload': SimpleUploadedFile('proposal.txt', b'Contribution content')})
+            'abstract': 'Proposal summary', **self.source_submission(b'Contribution content')})
         self.assertEqual(response.status_code, 302)
         item = Contribution.objects.get()
         self.assertTrue(Document.objects.filter(title=item.title).exists())
@@ -469,7 +474,7 @@ class NativeDatatrackerTests(TestCase):
         self.assertEqual(self.client.get('/submit/').status_code, 302)
         self.client.force_login(self.user)
         self.assertContains(self.client.post('/submit/', {'title': 'Bad file', 'group': Group.objects.get(acronym='tidawg1').pk,
-            'upload': SimpleUploadedFile('file.exe', b'bad')}), 'Use a PDF')
+            'submission_method': 'rst', 'publication_consent': 'on', 'entry_document': 'index.rst', 'upload': SimpleUploadedFile('file.exe', b'bad')}), 'Upload an RST source ZIP')
 
     def test_admin_user_creation_and_profile(self):
         response = self.client.get('/admin/auth/user/add/')
@@ -754,9 +759,10 @@ class NativeDatatrackerTests(TestCase):
         wg = Group.objects.get(acronym='tidawg1')
         ContributionRecipient.objects.create(group=wg, email='wg1@example.test')
         self.client.post('/submit/', {'title': 'Queued proposal', 'group': wg.pk,
-            'upload': SimpleUploadedFile('proposal.txt', b'Persistent proposal')})
+            **self.source_submission(b'Persistent proposal')})
         item = Contribution.objects.get(title='Queued proposal')
-        self.assertEqual(bytes(item.content), b'Persistent proposal')
+        from .source_packages import unpack
+        self.assertEqual(unpack(bytes(item.content))['index.rst'], b'Persistent proposal')
         notification = OutgoingMail.objects.get(recipient='wg1@example.test')
         self.assertIsNone(notification.sent)
         self.assertEqual(notification.contribution_id, item.pk)
@@ -792,7 +798,7 @@ class NativeDatatrackerTests(TestCase):
             group = Group.objects.get(acronym=acronym)
             address = acronym + '@example.test'
             self.client.post('/submit/', {'title': acronym + ' proposal', 'group': group.pk,
-                'upload': SimpleUploadedFile('proposal.txt', b'Original proposal')})
+                **self.source_submission(b'Original proposal')})
             item = Contribution.objects.get(title=acronym + ' proposal')
             self.assertFalse(item.notifications_queued)
             ContributionRecipient.objects.create(group=group, email=address)
@@ -804,8 +810,9 @@ class NativeDatatrackerTests(TestCase):
             self.assertTrue(deliver(notification.pk))
             self.assertFalse(deliver(notification.pk))
             self.assertEqual(mail.outbox[-1].to, [address])
-            self.assertEqual(mail.outbox[-1].attachments[0].filename, 'proposal.txt')
-            self.assertEqual(mail.outbox[-1].attachments[0].content, 'Original proposal')
+            self.assertEqual(mail.outbox[-1].attachments[0].filename, 'proposal.zip')
+            from .source_packages import unpack
+            self.assertEqual(unpack(mail.outbox[-1].attachments[0].content)['index.rst'], b'Original proposal')
 
     @override_settings(FGTIDA_MAIL_ENABLED=True, FGTIDA_MAIL_IMMEDIATE=False,
                        EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
@@ -1171,6 +1178,6 @@ class NativeDatatrackerTests(TestCase):
         self.assertContains(page, doc.title)
         self.assertContains(page, '>Updated</span>')
         self.assertContains(page, 'text-bg-warning')
-        self.assertContains(page, '>Deliverables</a>')
+        self.assertContains(page, '<option value="deliverables" selected>Deliverables</option>')
         self.assertEqual(recent_marker(doc), 'Updated')
         self.assertNotContains(self.client.get('/doc/?state=published'), doc.title)

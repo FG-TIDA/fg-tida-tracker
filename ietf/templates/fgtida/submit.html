@@ -1,6 +1,41 @@
 {% extends 'base.html' %}{% load django_bootstrap5 %}
 {% block title %}Submit a contribution | FG-TIDA{% endblock %}
 {% block content %}<h1>Submit a contribution</h1>
-<p>Choose an existing working group, or <strong>Incubation - approval for new wg</strong> for new work that does not belong to an existing working group. Incubation is a submission route, not a working group. Notifications go to the selected group's recipients, or FG management for Incubation, once email delivery is available. For assistance, contact <a href="mailto:{{ platform_content.secretariat_email }}">the secretariat</a>.</p>
+<p>Submit to an existing working group, or choose <strong>No working group yet</strong> when no working group covers your proposal. All routes require your DataTracker account. The selected group's recipients (or FG management for No working group yet) receive the contribution through the existing notification service.</p>
+<p><strong>Submissions are public.</strong> Use the <a href="https://github.com/FG-TIDA/spec-template">FG-TIDA specification template</a> and include your title, authors, scope, technical content and references.</p>
+<div class="row g-3 mb-4">
+  <section class="col-md-6"><div class="card h-100"><div class="card-body">
+    <h2 class="h4">1. GitHub repository</h2>
+    <ol>
+      <li>You need <strong>your own GitHub account</strong>. <a href="https://github.com/signup">Create one</a> if needed, then sign in.</li>
+      <li>Open the specification template, choose <strong>Use this template → Create a new repository</strong>, select your own username as Owner and make the repository public.</li>
+      <li>Replace the example RST chapters with your contribution. Keep every referenced image, diagram and bibliography in the documentation folder, normally <code>src/doc</code>.</li>
+      <li>Follow the template README to check the build. Save your completed changes as a commit and copy its full 40-character SHA from GitHub.</li>
+      <li>Below, choose GitHub and enter your repository URL, commit SHA, source folder and entry document. Do not upload a file.</li>
+    </ol>
+    <p>The DataTracker archives the selected source and assets at that exact commit. Later repository changes do not replace this submission. WG editors establish the official repository in the adopting WG's organisation after adoption.</p>
+  </div></div></section>
+  <section class="col-md-6"><div class="card h-100"><div class="card-body">
+    <h2 class="h4">2. RST source ZIP</h2>
+    <ol>
+      <li><strong>No GitHub account is needed.</strong> Open the same template and choose <strong>Code → Download ZIP</strong>.</li>
+      <li>Extract it on your computer. Edit the <code>.rst</code> text files and include every referenced image, diagram and reference file under the documentation folder.</li>
+      <li>Keep the folder structure and use relative paths, such as <code>figures/architecture.svg</code>. Check the build using the README instructions if possible.</li>
+      <li>Compress your completed source folder into one ZIP, at most 10 MB (500 entries / 30 MB expanded). Exclude installed environments, generated output and secrets.</li>
+      <li>Choose RST source ZIP below, upload it and enter the full path to its main RST file inside the ZIP, such as <code>my-contribution/src/doc/index.rst</code>. Leave GitHub fields empty.</li>
+    </ol>
+    <p>The original ZIP is retained. The maintained source package contains the entry document's folder and its subfolders. Include all supporting files there.</p>
+  </div></div></section>
+</div>
+<details class="border rounded p-3 mb-4"><summary><strong>3. Word (.docx) — exceptional fallback, discouraged</strong></summary>
+  <p class="mt-2">Use this route if you cannot prepare RST, even with the ZIP method. No GitHub account or RST knowledge is required.</p>
+  <ol><li>Write your contribution using Word heading styles. Include title, authors, scope, references, captions and embedded figures.</li>
+  <li>Resolve all tracked changes. Embed images instead of linking to files on your computer or the web. Save as <code>.docx</code>, at most 10 MB.</li>
+  <li>Choose Word below and upload that file. Leave the repository, commit, source folder and entry document fields empty.</li>
+  <li>The DataTracker automatically converts it to RST and extracts supported images. After submission, check the preview, assets and downloadable RST package against your Word original.</li>
+  <li>Confirm the conversion on your contribution page. Editors cannot adopt it until you confirm. If tables, equations, drawings or references are missing or incorrect, contact the secretariat; do not confirm an inaccurate conversion.</li></ol>
+  <p>The Word original remains archived. Verified RST is used for subsequent standards work. Conversion is not technical approval.</p>
+</details>
+<p>For assistance, contact <a href="mailto:{{ platform_content.secretariat_email }}">the secretariat</a>. Receipt and WG notifications use the same mail workflow for all three routes.</p>
 <form method="post" enctype="multipart/form-data">{% csrf_token %}{% bootstrap_form form %}<button class="btn btn-primary" type="submit">Submit for review</button></form>
 <h2 class="mt-4">My submissions</h2><table class="table"><thead><tr><th>Title</th><th>Submitted</th><th>Status</th></tr></thead><tbody>{% for item in submissions %}<tr><td><a href="{% url 'fgtida:contribution' item.pk %}">{{ item.title }}</a></td><td>{{ item.created }}</td><td>{{ item.get_status_display }}</td></tr>{% empty %}<tr><td colspan="3">No submissions yet.</td></tr>{% endfor %}</tbody></table>{% include 'fgtida/pagination.html' %}{% endblock %}

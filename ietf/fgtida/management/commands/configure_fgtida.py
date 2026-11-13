@@ -42,7 +42,7 @@ class Command(BaseCommand):
             'description': 'ITU-T Focus Group on Trust and Identity for Humans and Agentic AI.'})
         for acronym, name in [('tidawg0', 'Use Cases and Terminology'),
                               ('tidawg1', 'Continuous and Dynamic Remote Attestation for Agentic AI'),
-                              ('tidawg2', 'Identity, Behaviour and Enforcement for AI Agents'), ('incubation', 'Incubation')]:
+                              ('tidawg2', 'Identity, Behaviour and Enforcement for AI Agents'), ('incubation', 'No working group yet')]:
             Group.objects.get_or_create(acronym=acronym, defaults={'name': name,
                 'parent': root, 'type_id': 'team' if acronym == 'incubation' else 'wg',
                 'state_id': 'active'})

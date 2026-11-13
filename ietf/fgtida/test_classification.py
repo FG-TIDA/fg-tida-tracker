@@ -33,7 +33,9 @@ class SourceClassificationTests(TestCase):
         self.assertEqual(doc.rev, '00')
 
     def test_labels_are_evidence_but_unknown_or_multiple_groups_are_not_invented(self):
-        repo = self.repository(category_evidence='https://github.com/FG-TIDA/use-cases#readme')
+        repo = self.repository(category_evidence='https://github.com/FG-TIDA/themes#readme')
+        repo.category = 'themes'
+        repo.save(update_fields=['category'])
         WorkingGroupConfiguration.objects.create(group=Group.objects.get(acronym='tidawg1'), number=1, topic_acronym='cdra')
         args = (repo, 'issue:1', b'# A proposal', 'issue-1.md', 'A proposal', repo.url+'/issues/1', 'updated')
         store_source(*args, source_metadata={'labels':['wg5'], 'state':'open'})
@@ -46,7 +48,7 @@ class SourceClassificationTests(TestCase):
         self.assertEqual(source.document.rev, '00')
         self.assertEqual(source.source_metadata['classification']['group_evidence'], repo.url+'/issues/1')
         self.assertEqual(source.source_metadata['state'], 'closed')
-        self.assertTrue(source.document.tags.filter(slug='tida-use-cases').exists())
+        self.assertTrue(source.document.tags.filter(slug='tida-themes').exists())
         store_source(*args, source_metadata={'labels':['wg1','wg5']})
         source.refresh_from_db()
         self.assertEqual(source.document.group_id, self.root.pk)

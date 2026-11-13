@@ -45,7 +45,7 @@ def incubation(request):
     return search(request, acronym='incubation', incubation=True)
 
 
-def search(request, acronym=None, incubation=False):
+def search(request, acronym=None, incubation=False, category_slug=None):
     query = (request.GET.get('name') or request.GET.get('q') or '').strip()[:200]
     docs = core.documents().select_related('group', 'group__tida_configuration', 'type', 'tida_listing', 'tida_listing__meeting').prefetch_related('states', 'tags', 'tida_versions').annotate(
         first_activity=Min('docevent__time'), latest_revision=Max('docevent__time', filter=Q(docevent__type='new_revision')))
@@ -53,7 +53,7 @@ def search(request, acronym=None, incubation=False):
         docs = docs.filter(Q(name__icontains=query) | Q(title__icontains=query) | Q(abstract__icontains=query))
     group = acronym or request.GET.get('group', '')
     kind = request.GET.get('type', '')
-    category = request.GET.get('category', '')
+    category = category_slug or request.GET.get('category', '')
     collection = request.GET.get('collection', '')
     collection = collection if collection in {'input', 'output'} else ''
     if collection:
@@ -87,7 +87,8 @@ def search(request, acronym=None, incubation=False):
     params.pop('page', None)
     return render(request, 'fgtida/search.html', {
         'page': Paginator(docs.distinct().order_by(ordering, '-pk'), 25).get_page(request.GET.get('page')),
-        'collection': collection, 'collection_title': {'input': 'Input documents', 'output': 'Output documents'}.get(collection, ''),
+        'collection': collection, 'collection_title': {'input': 'Liaison statements inputs', 'output': 'Liaison statements outputs'}.get(collection, ''),
+        'group_collection_title': dict(core.CATEGORIES).get(category_slug, ''),
         'recent': recent, 'sort': sort,
         'query': query, 'selected_group': group, 'selected_type': kind, 'selected_category': category,
         'author': author, 'selected_state': state, 'groups': core.groups().order_by('name'),
@@ -96,7 +97,7 @@ def search(request, acronym=None, incubation=False):
         'categories': core.CATEGORIES, 'queryargs': params.urlencode(),
         'incubation': incubation,
         'group_obj': get_object_or_404(core.groups(), acronym=acronym) if acronym and not incubation else None,
-        'section': 'documents',
+        'section': category_slug or 'documents',
     })
 
 
@@ -142,7 +143,8 @@ def document(request, name, rev=None):
         'last_change':doc.docevent_set.order_by('-time','-pk').first(),
         'text': snapshot.text() if file_available else None,
         'text_is_markdown': Path(snapshot.uploaded_filename or '').suffix.lower() in ('.md', '.markdown'),
-        'text_is_rst': Path(snapshot.uploaded_filename or '').suffix.lower()=='.rst',
+        'text_is_rst': Path(snapshot.uploaded_filename or '').suffix.lower() == '.rst' or (Path(snapshot.uploaded_filename or '').suffix.lower() == '.zip' and not hasattr(doc, 'tida_listing')),
+        'text_is_package': Path(snapshot.uploaded_filename or '').suffix.lower() == '.zip' and not hasattr(doc, 'tida_listing'),
         'work_item':work_item,'old_revision':bool(rev and rev!=doc.rev),'show_working':not rev,
         'events': doc.docevent_set.select_related('by')[:100],
         'authors': doc.documentauthor_set.select_related('person', 'email').order_by('order'),
@@ -189,6 +191,10 @@ def group(request, acronym, section='about'):
         'documents': core.documents().filter(group=group).select_related('type').order_by('-time')[:10],
         'milestones': group.groupmilestone_set.exclude(state_id='deleted').prefetch_related('docs').order_by('due'),
         'resources': group.groupurl_set.all()}
+    if section == 'charter':
+        context['charter'] = core.documents().filter(group=group, type_id='charter').order_by('-time').first()
+        if group.charter_id:
+            context['charter'] = core.documents().filter(pk=group.charter_id, group=group).first() or context['charter']
     if section in ('members', 'photos'):
         people = Person.objects.filter(role__group=group).distinct().order_by('name', 'pk').prefetch_related(
             Prefetch('role_set', queryset=Role.objects.filter(group=group).select_related('name'), to_attr='fg_roles'))
@@ -199,7 +205,7 @@ def group(request, acronym, section='about'):
                        queryargs=urlencode({'q': query}))
     elif section == 'history':
         context['page'] = Paginator(group.groupevent_set.select_related('by').order_by('-time', '-pk'), 50).get_page(request.GET.get('page'))
-    elif section not in ('about', 'milestones'):
+    elif section not in ('about', 'charter', 'milestones'):
         raise Http404
     return render(request, 'fgtida/group.html', context)
 
@@ -254,13 +260,16 @@ def important_dates(request):
         'page': Paginator(records, 10).get_page(request.GET.get('page'))})
 
 
-def current_agenda(request):
+def current_agenda(request, section='agenda'):
     today = timezone.localdate()
     recent = core.meetings().filter(date__lte=today).order_by('-date').first()
     selected = recent if recent and recent.date + timedelta(days=max(recent.days, 1)-1) >= today else core.meetings().filter(date__gte=today).order_by('date').first()
     selected = selected or recent
     if not selected:
         return render(request, 'fgtida/account_form.html', {'title': 'Meeting agenda', 'message': 'No meetings have been announced yet.'})
+    if section == 'floor-plan':
+        plans = FloorPlan.objects.filter(meeting=selected).order_by('pk')
+        return render(request, 'fgtida/floor_plans.html', {'meeting': selected, 'plans': plans, 'section': 'floor-plan'})
     return redirect('fgtida:meeting', num=selected.number)
 
 
