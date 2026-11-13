@@ -86,7 +86,8 @@ def store_source(repository, key, data, filename, title, source_url, sha, catego
     if not doc:
         name = 'fg-tida-'+slugify(repository.full_name+'-'+key)[:175]+'-'+hashlib.sha256((repository.full_name+':'+key).encode()).hexdigest()[:10]
         doc = Document(name=name, group=assigned_group, type_id=kind or repository.document_type)
-    doc.title = 'New Work Item Template (NWI)' if repository.full_name.lower() == 'fg-tida/spec-template' else title
+    doc.title = {'fg-tida/spec-template': 'New Work Item Template (NWI)',
+        'fg-tida/wg-charter-template': 'Charter Template'}.get(repository.full_name.lower(), title)
     doc.group=assigned_group
     doc.abstract = data.decode('utf-8-sig')[:2000] if PurePosixPath(filename).suffix.lower() in {'.md','.txt'} else ''
     doc.external_url = source_url

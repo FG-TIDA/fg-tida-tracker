@@ -87,7 +87,7 @@ def search(request, acronym=None, incubation=False, category_slug=None):
     params.pop('page', None)
     return render(request, 'fgtida/search.html', {
         'page': Paginator(docs.distinct().order_by(ordering, '-pk'), 25).get_page(request.GET.get('page')),
-        'collection': collection, 'collection_title': {'input': 'Liaison statements inputs', 'output': 'Liaison statements outputs'}.get(collection, ''),
+        'collection': collection, 'collection_title': {'input': 'LS Inputs', 'output': 'LS Outputs'}.get(collection, ''),
         'group_collection_title': dict(core.CATEGORIES).get(category_slug, ''),
         'recent': recent, 'sort': sort,
         'query': query, 'selected_group': group, 'selected_type': kind, 'selected_category': category,
@@ -175,6 +175,8 @@ def download(request, name, rev):
     if snapshot is None or not snapshot.uploaded_filename:
         raise Http404
     file = Path(snapshot.get_file_name())
+    if doc.type_id == 'charter' and file.suffix.lower() in {'.rst', '.txt'}:
+        raise Http404
     if not file.is_file():
         raise Http404
     response = FileResponse(file.open('rb'), as_attachment=True, filename=f'{doc.name}-{public_version(doc,rev)}{file.suffix}')
@@ -384,7 +386,7 @@ def snapshot_for(name, rev):
 
 def document_text(request, name, rev):
     snapshot = snapshot_for(name, rev)
-    if snapshot.type_id == 'tida-template':
+    if snapshot.type_id in {'tida-template', 'charter'}:
         raise Http404
     path = Path(snapshot.get_file_name()).with_suffix('.txt')
     if not snapshot.uploaded_filename or not path.is_file():

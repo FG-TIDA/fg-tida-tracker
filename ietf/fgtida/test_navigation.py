@@ -29,7 +29,7 @@ class NavigationTests(TestCase):
         wg = Group.objects.get(acronym='tidawg1')
         WorkingGroupConfiguration.objects.update_or_create(group=wg, defaults={'number':1, 'topic_acronym':'cdra'})
         page = self.client.get('/')
-        for label in ['Groups', 'WG1 (CDRA)', 'No working group yet', 'Liaison statements inputs', 'Liaison statements outputs', 'Floor plan']:
+        for label in ['Groups', 'WG1 (CDRA)', 'No working group yet', 'LS Inputs', 'LS Outputs', 'Floor plan']:
             self.assertContains(page, label)
         for label in ['WGs Charters', 'Request a session', 'Session requests', 'Meeting items', 'Incubation - approval']:
             self.assertNotContains(page, label)
@@ -78,6 +78,10 @@ class NavigationTests(TestCase):
         core.save_document(charter, core.actor_for(self.user), 'RST charter',
             data=b'Scope\n=====\n\n**Clear purpose**\n\n* First item\n* Second item\n', filename='charter.rst')
         self.assertContains(self.client.get('/group/tidawg1/charter/'), '<strong>Clear purpose</strong>')
+        from .templatetags.fgtida import document_formats
+        self.assertEqual(document_formats(charter)['format_links'], [])
+        self.assertEqual(self.client.get('/doc/formatted-charter/download/0.2/').status_code, 404)
+        self.assertEqual(self.client.get('/doc/formatted-charter/text/0.2/').status_code, 404)
         template = self.document('package-template', self.root, kind='tida-template')
         template.external_url = 'https://github.com/FG-TIDA/spec-template/blob/main/src/doc/index.rst'
         core.save_document(template, core.actor_for(self.user), 'Template source')

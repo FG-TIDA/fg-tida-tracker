@@ -191,13 +191,13 @@ def document_formats(doc, alternatives_only=False, plain=False):
             links.append(('Template package', 'folder', url))
         return {'format_links': links, 'plain': plain, 'alternatives_only': alternatives_only}
     name = doc.doc.name if doc.is_dochistory() else doc.name
-    if not alternatives_only and doc.uploaded_filename and doc.rev and Path(doc.get_file_name()).is_file():
+    if not alternatives_only and doc.uploaded_filename and doc.rev and Path(doc.get_file_name()).is_file() and not (doc.type_id == 'charter' and Path(doc.uploaded_filename).suffix.lower() in {'.rst', '.txt'}):
         extension = Path(doc.uploaded_filename).suffix.lower().lstrip('.')
         icon = {'pdf': 'file-pdf', 'txt': 'file-text', 'md': 'file-text', 'xml': 'file-code',
                 'docx': 'file-word', 'pptx': 'file-slides'}.get(extension, 'file-earmark')
         from ietf.fgtida.versioning import public_version
         links.append(('Word' if extension == 'docx' else extension.upper(), icon, reverse('fgtida:download', args=[name, public_version(doc)])))
-        if extension != 'txt' and Path(doc.get_file_name()).with_suffix('.txt').is_file():
+        if doc.type_id != 'charter' and extension != 'txt' and Path(doc.get_file_name()).with_suffix('.txt').is_file():
             links.append(('Text', 'file-text', reverse('fgtida:text', args=[name, public_version(doc)])))
     original = doc.doc if doc.is_dochistory() else doc
     for alternative in original.tida_formats.all():

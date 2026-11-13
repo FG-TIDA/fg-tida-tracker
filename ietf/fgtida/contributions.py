@@ -178,7 +178,15 @@ def detail(request, pk, download=False, source=False):
                 chapters.append((name, data.decode('utf-8-sig')))
             else:
                 assets.append(name)
+    legacy_text = ''
+    if not chapters and item.content:
+        from .files import extract_text
+        try:
+            legacy_text = extract_text(bytes(item.content), item.filename)
+        except forms.ValidationError:
+            pass  # Keep the original download available when extraction is unsupported.
     return render(request, 'fgtida/contribution.html', {'submission': item, 'chapters': chapters, 'assets': assets,
+        'legacy_text': legacy_text, 'legacy_extension': Path(item.filename).suffix.lower(),
         'can_verify': item.submission_method == 'word' and item.submitter_id == request.user.pk and not item.conversion_verified_at})
 
 

@@ -97,6 +97,14 @@ class SubmissionTests(TestCase):
         return {'title': 'New specification', 'group': Group.objects.get(acronym='tidawg1').pk,
                 **self.source_submission()}
 
+    def test_legacy_contribution_full_content_preview(self):
+        item = Contribution.objects.create(submitter=self.user, group=self.root,
+            title='Legacy proposal', abstract='Short summary', filename='proposal.md',
+            content=b'# Complete proposal\n\n**Detailed content beyond the abstract.**')
+        page = self.client.get(f'/submit/{item.pk}/')
+        self.assertContains(page, 'Full contribution')
+        self.assertContains(page, '<strong>Detailed content beyond the abstract.</strong>')
+
     def test_rst_archives_source_and_preserves_notification_and_acknowledgement(self):
         from .mail import deliver
         from django.core import mail
@@ -114,7 +122,7 @@ class SubmissionTests(TestCase):
                 self.assertFalse(deliver(message.pk))
         self.assertEqual(len(mail.outbox), 2)
         self.assertEqual(mail.outbox[0].attachments[0].filename, 'proposal.zip')
-        self.assertContains(self.client.get(response.url), 'Source reading preview')
+        self.assertContains(self.client.get(response.url), 'Full contribution')
 
     def test_word_original_retained_and_only_submitter_can_verify_before_adoption(self):
         from .contributions import accept

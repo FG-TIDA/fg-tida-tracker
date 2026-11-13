@@ -27,7 +27,7 @@ class Command(BaseCommand):
             if created or group.name.strip()==f'WG{number}':
                 group.name = topic
                 if not group.description or group.description.strip() in {'WG1','WG2','WG0'}:
-                    group.description = f'FG-TIDA WG{number}: {topic}. Public source: {reference}. Charter decisions remain with FG-TIDA editors.'
+                    group.description = f'FG-TIDA WG{number}: {topic}. GitHub source: {reference}. Charter decisions remain with FG-TIDA editors.'
                 group.save()
         sources = [
             (account,'themes','tida','issues','themes','tida',[]),

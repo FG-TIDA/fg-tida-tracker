@@ -2,7 +2,7 @@
 {% block content %}
 <h1>{{ submission.title }}</h1>
 <p>{% if submission.document %}{% document_states submission.document %}{% else %}{{ submission.get_status_display }}{% endif %} · {{ submission.created }}</p>
-<p>{{ submission.abstract|linebreaksbr }}</p>
+<h2>Abstract</h2><div>{{ submission.abstract|rich_text }}</div>
 <p>Submission method: <strong>{{ submission.get_submission_method_display }}</strong></p>
 <p><a href="{% url 'fgtida:contribution-download' submission.pk %}">Download original submission ({{ submission.filename }})</a></p>
 {% if submission.source_archive %}
@@ -15,8 +15,9 @@
 {% if submission.conversion_verified_at %}Conversion checked by the contributor on {{ submission.conversion_verified_at }}.
 {% else %}<strong>Conversion needs your verification before adoption.</strong> Compare all text, tables, equations, references and figures with your Word original. Check the extracted assets below and the source package. If anything is missing or wrong, contact <a href="mailto:{{ platform_content.secretariat_email }}">the secretariat</a> before confirming.{% endif %}
 </div>{% endif %}
-{% if chapters %}<h2>Source reading preview</h2><p>This safe preview displays each RST chapter separately. It does not run submitted build configuration or Sphinx extensions. Figures are listed separately below; download the complete package for a full documentation build.</p>
+{% if chapters %}<h2>Full contribution</h2><p>Read the submitted chapters below. Supporting figures and files follow the text.</p>
 {% for name, text in chapters %}<section class="mb-4"><h3 class="h5">{{ name }}</h3>{{ text|rich_rst }}</section>{% endfor %}{% endif %}
+{% if legacy_text %}<section><h2>Full contribution</h2>{% if legacy_extension == '.rst' %}{{ legacy_text|rich_rst }}{% elif legacy_extension == '.md' %}{{ legacy_text|rich_text }}{% else %}<p>Extracted reading text. Download the original submission for its complete layout and figures.</p><pre class="text-break" style="white-space:pre-wrap">{{ legacy_text }}</pre>{% endif %}</section>{% elif not chapters %}<p>A reading preview is unavailable. Download the original submission to read the full contribution.</p>{% endif %}
 {% if assets %}<h2>Supporting files and figures</h2><ul>{% for name in assets %}<li><a href="{% url 'fgtida:contribution-asset' submission.pk name %}">{{ name }}</a></li>{% endfor %}</ul>{% endif %}
 {% if can_verify %}<form method="post" action="{% url 'fgtida:contribution-verify' submission.pk %}">{% csrf_token %}
 <label class="d-block mb-2"><input type="checkbox" name="verified" value="yes" required> I have checked the converted text and supporting figures against my Word original and confirm that they preserve my contribution.</label>
