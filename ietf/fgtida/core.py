@@ -33,6 +33,15 @@ def documents(include_uncatalogued=False):
     return records if include_uncatalogued else records.exclude(tags__slug='tida-uncatalogued')
 
 
+def template_package_url(doc):
+    from urllib.parse import urlsplit
+    url = urlsplit(doc.external_url or '')
+    parts = url.path.strip('/').split('/')
+    if url.scheme == 'https' and url.netloc.lower() == 'github.com' and len(parts) >= 2:
+        return 'https://github.com/' + '/'.join(parts[:2]) + '/tree/main'
+    return doc.external_url if url.scheme in ('https', 'http') else ''
+
+
 def meetings():
     return Meeting.objects.filter(type_id='tida')
 

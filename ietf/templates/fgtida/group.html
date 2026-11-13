@@ -9,7 +9,7 @@
 <a href="{% url 'fgtida:documents' %}?group={{ group.acronym }}">Search all group documents</a>
 <h2 class="mt-4">Mailing list and resources</h2><ul>{% if group.list_email %}<li>{{ group.list_email }}</li>{% endif %}{% if group.list_subscribe %}<li><a href="{{ group.list_subscribe }}">Subscribe to the mailing list</a></li>{% endif %}{% for resource in resources %}<li><a href="{{ resource.url }}">{{ resource.name }}</a></li>{% endfor %}</ul>
 {% elif section == 'charter' %}<h2>Charter</h2>
-{% if charter %}<p><a href="{% url 'fgtida:document' charter.name %}">{{ charter.title }}</a></p><p>{{ charter.abstract|linebreaksbr }}</p>{% else %}<p>No charter has been recorded for this working group yet.</p>{% endif %}
+{% if charter %}<p><a href="{% url 'fgtida:document' charter.name %}">{{ charter.title }}</a></p><p>{% document_formats charter %}</p>{% if charter_is_rst %}{{ charter_text|rich_rst:charter.external_url }}{% else %}{{ charter_text|rich_text:charter.external_url }}{% endif %}{% else %}<p>No charter has been recorded for this working group yet.</p>{% endif %}
 {% elif section == 'members' or section == 'photos' %}
 <h2>{% if section == 'photos' %}Member photos{% else %}Members and roles{% endif %}</h2>
 <form method="get" class="d-flex gap-2 my-3"><label for="member-query" class="visually-hidden">Find a member</label><input id="member-query" name="q" value="{{ query }}" type="search" placeholder="Find a member" class="form-control"><button type="submit" class="btn btn-primary">Search</button></form>

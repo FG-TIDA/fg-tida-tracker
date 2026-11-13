@@ -184,6 +184,12 @@ def file_type(doc):
 @register.inclusion_tag('fgtida/formats.html')
 def document_formats(doc, alternatives_only=False, plain=False):
     links = []
+    if doc.type_id == 'tida-template':
+        from ietf.fgtida.core import template_package_url
+        url = template_package_url(doc)
+        if url and not alternatives_only:
+            links.append(('Template package', 'folder', url))
+        return {'format_links': links, 'plain': plain, 'alternatives_only': alternatives_only}
     name = doc.doc.name if doc.is_dochistory() else doc.name
     if not alternatives_only and doc.uploaded_filename and doc.rev and Path(doc.get_file_name()).is_file():
         extension = Path(doc.uploaded_filename).suffix.lower().lstrip('.')

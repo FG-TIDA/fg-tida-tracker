@@ -36,7 +36,6 @@ class Command(BaseCommand):
             (account,'marketing','tida','files','','slides',['*.pptx','*.pdf']),
             (account,'spec-template','tida','files','templates','tida-template',['src/doc/index.rst']),
             (account,'wg-charter-template','tida','files','templates','tida-template',['src/doc/index.rst']),
-            (account,'wg1-ra-aai','tidawg1','workitem','','tida',['src/doc/index.rst']),
         ]
         for number, repo, path in [(1,'wg1-cdra-charter','charter.md'),(2,'wg2-ibea-charter','src/doc/index.rst')]:
             owner = GitHubAccount.objects.get(organization=f'fg-tida-wg{number}')

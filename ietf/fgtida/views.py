@@ -164,6 +164,11 @@ def history(request, name):
 
 def download(request, name, rev):
     doc = get_object_or_404(core.documents(), name=name)
+    if doc.type_id == 'tida-template':
+        url = core.template_package_url(doc)
+        if url:
+            return redirect(url)
+        raise Http404
     from .versioning import archive_revision,public_version
     rev=archive_revision(doc,rev)
     snapshot = doc if doc.rev == rev else doc.history_set.filter(rev=rev).order_by('-time', '-id').first()
@@ -195,6 +200,10 @@ def group(request, acronym, section='about'):
         context['charter'] = core.documents().filter(group=group, type_id='charter').order_by('-time').first()
         if group.charter_id:
             context['charter'] = core.documents().filter(pk=group.charter_id, group=group).first() or context['charter']
+        charter = context['charter']
+        if charter:
+            context['charter_text'] = charter.text() if charter.uploaded_filename and Path(charter.get_file_name()).is_file() else charter.abstract
+            context['charter_is_rst'] = Path(charter.uploaded_filename or '').suffix.lower() == '.rst'
     if section in ('members', 'photos'):
         people = Person.objects.filter(role__group=group).distinct().order_by('name', 'pk').prefetch_related(
             Prefetch('role_set', queryset=Role.objects.filter(group=group).select_related('name'), to_attr='fg_roles'))
@@ -375,6 +384,8 @@ def snapshot_for(name, rev):
 
 def document_text(request, name, rev):
     snapshot = snapshot_for(name, rev)
+    if snapshot.type_id == 'tida-template':
+        raise Http404
     path = Path(snapshot.get_file_name()).with_suffix('.txt')
     if not snapshot.uploaded_filename or not path.is_file():
         raise Http404
