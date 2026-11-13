@@ -5,7 +5,7 @@ from ietf.group.models import Group
 from django.db import transaction
 
 GROUPS = [
-    (0, 'Use Cases and Terminology', 'uct', 'https://github.com/fg-tida-wg0'),
+    (0, 'Use Cases and Terminology', 'uct', 'https://github.com/fg-tida-wg0/wg0-uct-charter'),
     (1, 'Continuous and Dynamic Remote Attestation for Agentic AI', 'cdra', 'https://github.com/fg-tida-wg1/wg1-cdra-charter'),
     (2, 'Identity, Behaviour and Enforcement for AI Agents', 'ibea', 'https://github.com/fg-tida-wg2/wg2-ibea-charter'),
 ]
@@ -37,7 +37,7 @@ class Command(BaseCommand):
             (account,'spec-template','tida','files','templates','tida-template',['src/doc/index.rst']),
             (account,'wg-charter-template','tida','files','templates','tida-template',['src/doc/index.rst']),
         ]
-        for number, repo, path in [(1,'wg1-cdra-charter','charter.md'),(2,'wg2-ibea-charter','src/doc/index.rst')]:
+        for number, repo, path in [(0,'wg0-uct-charter','charter.md'),(1,'wg1-cdra-charter','charter.md'),(2,'wg2-ibea-charter','src/doc/index.rst')]:
             owner = GitHubAccount.objects.get(organization=f'fg-tida-wg{number}')
             sources.append((owner,repo,f'tidawg{number}','files','','charter',[path]))
         for owner, name, acronym, mode, category, kind, paths in sources:

@@ -15,6 +15,7 @@ USE_CASES_URL = 'https://github.com/fg-tida-wg0/use-cases'
 LEGACY_USE_CASES_URL = 'https://github.com/FG-TIDA/use-cases'
 USE_CASES_RULE = ('tidawg0', 'use-cases', USE_CASES_URL, USE_CASES_URL + '#readme')
 SOURCE_RULES = {
+    'fg-tida-wg0/wg0-uct-charter': ('tidawg0', '', 'https://github.com/fg-tida-wg0/wg0-uct-charter', ''),
     'fg-tida/themes': ('tida', 'themes', '', 'https://github.com/FG-TIDA/themes#readme'),
     'fg-tida/use-cases': USE_CASES_RULE,
     'fg-tida-wg0/use-cases': USE_CASES_RULE,
