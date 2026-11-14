@@ -129,6 +129,13 @@ def rich_text(value, source_url=''):
 
 
 @register.filter
+def agenda_topics(value):
+    # A numbered agenda topic is its own line, even when pasted without
+    # Markdown paragraph breaks.
+    return rich_text(re.sub(r'(?m)(?<=\S)\n(?=\d+(?:\.\d+)+\s)', '\n\n', value))
+
+
+@register.filter
 def rich_rst(value, source_url=''):
     import hashlib
     import subprocess

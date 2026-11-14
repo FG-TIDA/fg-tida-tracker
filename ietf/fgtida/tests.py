@@ -645,6 +645,74 @@ class NativeDatatrackerTests(TestCase):
         edit = self.client.get(f'/admin/meeting/session/{assignment.session_id}/change/')
         self.assertContains(edit, 'Upload agenda document')
 
+    def test_agenda_topics_and_presenters_save_with_visible_inline_errors(self):
+        from datetime import datetime, time, timezone as dt_timezone
+        from importlib import import_module
+        from types import SimpleNamespace
+        from django.apps import apps
+        from django.db import connection
+        from django.forms.models import model_to_dict
+
+        meeting = Meeting.objects.create(number='agenda-presenters', type_id='tida',
+            date=timezone.localdate(), days=1, time_zone='UTC')
+        meeting.schedule = Schedule.objects.create(meeting=meeting, name='official', owner=core.actor_for(self.user))
+        meeting.save(update_fields=['schedule'])
+        session = Session.objects.create(meeting=meeting, group=self.root, name='High-level session',
+            purpose_id='regular', type_id='session',
+            agenda_note='1.1 Welcome by UNESCO and ITU-T\n\nLead / presenter: UNESCO\nITU/TSB\n\n'
+                        'Supporting document: TBD\n\n1.2 Opening remarks\n\nSupporting document: TBC')
+        for hour in (10, 12):
+            slot = TimeSlot.objects.create(meeting=meeting, type_id='session', name='Slot',
+                time=datetime.combine(meeting.date, time(hour), dt_timezone.utc), duration=timedelta(hours=1))
+            SchedTimeSessAssignment.objects.create(session=session, schedule=meeting.schedule, timeslot=slot)
+        migration = import_module('ietf.meeting.migrations.0025_session_agenda_presenters')
+        migration.split_agenda_notes(apps, SimpleNamespace(connection=connection))
+        session.refresh_from_db()
+        self.assertEqual(session.agenda_presenters, '1.1 UNESCO / ITU/TSB')
+        agenda = self.client.get('/meeting/agenda-presenters/agenda/', {'q': 'ITU/TSB'})
+        self.assertContains(agenda, '<th scope="col">Lead / Presenter</th>', html=True)
+        self.assertContains(agenda, '<p>1.1 Welcome by UNESCO and ITU-T</p>', html=True)
+        self.assertContains(agenda, '1.2 Opening remarks')
+        self.assertNotContains(agenda, 'Supporting document:')
+
+        path = f'/admin/meeting/session/{session.pk}/change/'
+        edit = self.client.get(path)
+        main_form = edit.context['adminform'].form
+        self.assertIsNone(main_form['agenda_start'].value())
+        data = {field.name: field.value() or '' for field in main_form}
+        data['agenda_note'] = '1.1 Updated opening topic\n' + 'Agenda details. ' * 45
+        for inline in edit.context['inline_admin_formsets']:
+            formset = inline.formset
+            for field in formset.management_form:
+                data[field.html_name] = field.value()
+            for form in formset.initial_forms:
+                values = model_to_dict(form.instance)
+                values['id'] = form.instance.pk
+                for name in form.fields:
+                    data[form[name].html_name] = values.get(name) or ''
+        pk_field = 'timeslotassignments-0-id'
+        valid_id = data[pk_field]
+        data[pk_field] = 'invalid'
+        invalid = self.client.post(path, data)
+        self.assertContains(invalid, 'What to correct before saving')
+        self.assertContains(invalid, 'Schedule assignments, row 1')
+        self.assertContains(invalid, 'Select a valid choice')
+        data[pk_field] = valid_id
+        saved = self.client.post(path, data)
+        self.assertEqual(saved.status_code, 302)
+        session.refresh_from_db()
+        self.assertEqual(session.agenda_note, data['agenda_note'].strip())
+        self.assertEqual(session.timeslotassignments.count(), 2)
+        assignment = session.timeslotassignments.first()
+        assignment_path = f'/admin/meeting/schedtimesessassignment/{assignment.pk}/change/'
+        saved_assignment = self.client.post(assignment_path, {
+            'schedule': assignment.schedule_id, 'timeslot': assignment.timeslot_id,
+            'session': session.pk, 'badness': 0, 'pinned': 'on', '_save': 'Save',
+        })
+        self.assertEqual(saved_assignment.status_code, 302)
+        assignment.refresh_from_db()
+        self.assertTrue(assignment.pinned)
+
     def test_reset_question_lockout(self):
         from django.core import signing
         from django.contrib.auth.tokens import default_token_generator

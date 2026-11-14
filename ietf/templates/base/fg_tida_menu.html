@@ -2,7 +2,7 @@
 <li class="nav-item dropdown">
     <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Groups</a>
     <ul class="dropdown-menu">
-        <li><h6 class="dropdown-header">Groups</h6></li>
+        <li><h6 class="dropdown-header">Working Groups</h6></li>
         {% for group in navigation_groups %}{% group_number group as number %}<li><a class="dropdown-item" href="{% url 'fgtida:group' group.acronym %}">{{ group|group_label }}</a></li>{% endfor %}
         <li><hr class="dropdown-divider"></li>
         <li><h6 class="dropdown-header">New work</h6></li>

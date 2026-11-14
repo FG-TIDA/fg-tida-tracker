@@ -307,7 +307,10 @@ def meeting(request, num, section='agenda'):
         query = request.GET.get('q', '').strip()[:200]
         selected_group = request.GET.get('group', '')
         if query:
-            sessions = sessions.filter(Q(name__icontains=query) | Q(group__name__icontains=query) | Q(agenda_note__icontains=query))
+            sessions = sessions.filter(
+                Q(name__icontains=query) | Q(group__name__icontains=query)
+                | Q(agenda_note__icontains=query) | Q(agenda_presenters__icontains=query)
+            )
         if selected_group:
             sessions = sessions.filter(group__acronym=selected_group)
         assignments = list(SchedTimeSessAssignment.objects.filter(schedule_id=meeting.schedule_id,

@@ -1,0 +1,33 @@
+{% extends "admin/change_form.html" %}
+
+{% block form_top %}
+    {{ block.super }}
+    {% if errors %}
+        <div class="module" role="alert" aria-label="Form validation errors">
+            <h2>What to correct before saving</h2>
+            {% for field in adminform.form %}
+                {% if field.errors %}
+                    <p><strong>{{ field.label }}</strong></p>{{ field.errors }}
+                {% endif %}
+            {% endfor %}
+            {{ adminform.form.non_field_errors }}
+            {% for inline in inline_admin_formsets %}
+                {% if inline.formset.non_form_errors %}
+                    <p><strong>{{ inline.opts.verbose_name_plural|capfirst }}</strong></p>
+                    {{ inline.formset.non_form_errors }}
+                {% endif %}
+                {% for form in inline.formset.forms %}
+                    {% if form.errors and not form.cleaned_data.DELETE %}
+                        <p><strong>{{ inline.opts.verbose_name_plural|capfirst }}, row {{ forloop.counter }}</strong></p>
+                        {{ form.non_field_errors }}
+                        {% for field in form %}
+                            {% if field.errors %}
+                                <p>{{ field.label }}</p>{{ field.errors }}
+                            {% endif %}
+                        {% endfor %}
+                    {% endif %}
+                {% endfor %}
+            {% endfor %}
+        </div>
+    {% endif %}
+{% endblock %}

@@ -1134,7 +1134,8 @@ class Session(models.Model):
     group = ForeignKey(Group)    # The group type historically determined the session type.  BOFs also need to be added as a group. Note that not all meeting requests have a natural group to associate with.
     joint_with_groups = models.ManyToManyField(Group, related_name='sessions_joint_in',blank=True)
     attendees = models.IntegerField(null=True, blank=True)
-    agenda_note = models.CharField(blank=True, max_length=512)
+    agenda_note = models.TextField(blank=True)
+    agenda_presenters = models.TextField(blank=True, db_default='')
     requested_duration = models.DurationField(default=datetime.timedelta(0))
     comments = models.TextField(blank=True)
     scheduled = models.DateTimeField(null=True, blank=True)

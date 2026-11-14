@@ -29,17 +29,14 @@
 <div class="d-flex justify-content-end gap-2 mb-2 fgtida-agenda-tools" hidden><button type="button" id="agenda-colors" class="btn btn-outline-secondary" aria-pressed="false" title="Colour sessions by group" aria-label="Colour sessions by group"><i class="bi bi-palette" aria-hidden="true"></i></button><button type="button" id="agenda-find" class="btn btn-outline-secondary" title="Search sessions" aria-label="Search sessions"><i class="bi bi-search" aria-hidden="true"></i></button></div>
 <p id="agenda-pick-empty" class="alert alert-info" hidden>No picked sessions are visible. Turn off “Picked only” to choose sessions.</p>
 {% timezone display_zone %}
-{% if days %}<div class="table-responsive"><table class="table table-bordered table-striped align-middle fgtida-agenda-table"><thead><tr><th scope="col">Time</th><th scope="col">Location</th><th scope="col">Event</th></tr></thead><tbody>
-{% for day, entries in days %}<tr id="day-{{ day|date:'Y-m-d' }}"><th colspan="3" class="text-center fgtida-day-heading">{{ day|date:"l, j F Y" }}</th></tr>
-{% for entry in entries %}<tr id="assignment-{{ entry.pk }}" data-session="{{ entry.session.pk }}" data-group="{{ entry.session.group.acronym }}"><td class="text-nowrap">{{ entry.timeslot.time|date:"H:i" }} – {{ entry.ends_at|date:"H:i" }}</td><td>{% if entry.timeslot.location %}{{ entry.timeslot.location.name }}{% else %}To be confirmed{% endif %}</td><td>
-{% session_actions entry.session %}<details class="fgtida-agenda-event"><summary>{{ entry.session.name|default:entry.session.group.name }}</summary>
-{% session_status entry.session %}
-{% if entry.session.group %}<a href="{% url 'fgtida:group' entry.session.group.acronym %}">{{ entry.session.group|group_label }}</a>{% endif %}
-{% if entry.session.agenda_note %}<div>{{ entry.session.agenda_note|rich_text }}</div>{% endif %}
+{% if days %}<div class="table-responsive"><table class="table table-bordered table-striped align-middle fgtida-agenda-table"><thead><tr><th scope="col">Time</th><th scope="col">Location</th><th scope="col">Event</th><th scope="col">Lead / Presenter</th></tr></thead><tbody>
+{% for day, entries in days %}<tr id="day-{{ day|date:'Y-m-d' }}"><th colspan="4" class="text-center fgtida-day-heading">{{ day|date:"l, j F Y" }}</th></tr>
+{% for entry in entries %}<tr id="assignment-{{ entry.pk }}" data-session="{{ entry.session.pk }}" data-group="{{ entry.session.group.acronym }}"><td class="text-nowrap">{{ entry.timeslot.time|date:"H:i" }} – {{ entry.ends_at|date:"H:i" }}</td><td>{% if entry.timeslot.location %}{{ entry.timeslot.location.name }}{% else %}To be confirmed{% endif %}</td><td class="fgtida-agenda-event-cell">
+{% session_actions entry.session %}<details class="fgtida-agenda-event"><summary>{{ entry.session.name|default:entry.session.group.name }} {% session_status entry.session %}</summary>
+{% if entry.session.agenda_note %}<div>{{ entry.session.agenda_note|agenda_topics }}</div>{% endif %}
 {% if entry.session.current_status == 'canceled' or entry.session.current_status == 'canceledpa' %}<p class="text-warning-emphasis">This session is cancelled. Its materials remain available for reference.</p>{% elif entry.session.remote_instructions %}<div><strong>Remote participation:</strong> {{ entry.session.remote_instructions|rich_text }}</div>{% endif %}
-{% for doc in entry.session.public_materials %}{% if doc.type_id != 'agenda' %}<div class="mt-2"><a href="{% url 'fgtida:document' doc.name %}">{{ doc.title }}</a> {% document_formats doc %}</div>{% endif %}{% endfor %}
-{% if perms.meeting.change_session %}<a href="{% url 'admin:meeting_session_change' entry.session.pk %}">Edit session and schedule</a>{% endif %}
-</details></td></tr>{% endfor %}{% endfor %}</tbody></table></div>
+{% if perms.meeting.change_session %}<a class="small" href="{% url 'admin:meeting_session_change' entry.session.pk %}">Edit session and schedule</a>{% endif %}
+</details></td><td class="fgtida-agenda-presenters">{{ entry.session.agenda_presenters|default:"—" }}</td></tr>{% endfor %}{% endfor %}</tbody></table></div>
 {% else %}<div class="alert alert-info">{% if filtered %}No scheduled sessions match these filters.{% else %}Agenda not published yet. Scheduled sessions and their materials will appear here when available.{% endif %}</div>{% endif %}
 {% endtimezone %}
 </div><aside class="col-lg-2" aria-label="Agenda calendar"><div class="border rounded p-3 fgtida-agenda-sidebar">

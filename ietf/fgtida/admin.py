@@ -861,8 +861,17 @@ class FgImportantDateNameAdmin(ImportantDateNameAdmin):
         return ('slug',) if obj else ()
 
 
+def meeting_pk(value):
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return None
+
+
 class AssignmentInline(admin.TabularInline):
     model = SchedTimeSessAssignment
+    fields = ['schedule', 'timeslot', 'pinned']
+    verbose_name_plural = 'Schedule assignments'
     extra = 0
 
     def get_formset(self, request, obj=None, **kwargs):
@@ -870,7 +879,7 @@ class AssignmentInline(admin.TabularInline):
         return super().get_formset(request, obj, **kwargs)
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        meeting_id = getattr(request, '_fgtida_meeting', None)
+        meeting_id = meeting_pk(getattr(request, '_fgtida_meeting', None))
         if db_field.name == 'schedule':
             kwargs['queryset'] = Schedule.objects.filter(meeting__type_id='tida', meeting_id=meeting_id)
         elif db_field.name == 'timeslot':
@@ -879,6 +888,11 @@ class AssignmentInline(admin.TabularInline):
 
 
 class FgSessionForm(forms.ModelForm):
+    schedule_fields = {'agenda_start', 'agenda_minutes', 'agenda_room'}
+    agenda_note = forms.CharField(required=False, label='Event topics', widget=forms.Textarea(attrs={'rows': 8}),
+        help_text='Enter each topic on its own line, with its agenda number if available.')
+    agenda_presenters = forms.CharField(required=False, label='Lead / Presenter', widget=forms.Textarea(attrs={'rows': 5}),
+        help_text='Enter one presenter or team per line. Include the topic number when a presenter covers a specific item.')
     agenda_start = forms.CharField(required=False, label='Agenda date and start time',
         widget=forms.DateTimeInput(attrs={'type': 'datetime-local'}),
         help_text='Enter the time in the meeting’s timezone. Saving creates the schedule entry automatically. Leave blank for an unscheduled session.')
@@ -895,15 +909,19 @@ class FgSessionForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         meeting_id = self.data.get('meeting') or self.initial.get('meeting') or self.instance.meeting_id
-        self.fields['agenda_room'].queryset = Room.objects.filter(meeting_id=meeting_id, meeting__type_id='tida')
+        self.fields['agenda_room'].queryset = Room.objects.filter(meeting_id=meeting_pk(meeting_id), meeting__type_id='tida')
         if self.instance.pk:
             from zoneinfo import ZoneInfo
-            assignment = self.instance.timeslotassignments.filter(schedule_id=self.instance.meeting.schedule_id).select_related('timeslot').first()
-            if assignment:
-                slot = assignment.timeslot
+            assignments = list(self.instance.timeslotassignments.filter(
+                schedule_id=self.instance.meeting.schedule_id,
+            ).select_related('timeslot')[:2])
+            if len(assignments) == 1:
+                slot = assignments[0].timeslot
                 self.fields['agenda_start'].initial = slot.time.astimezone(ZoneInfo(self.instance.meeting.time_zone or 'UTC')).strftime('%Y-%m-%dT%H:%M')
                 self.fields['agenda_minutes'].initial = int(slot.duration.total_seconds() / 60)
                 self.fields['agenda_room'].initial = slot.location_id
+            elif assignments:
+                self.fields['agenda_start'].help_text = 'This session has multiple times. Edit them in Schedule assignments below.'
         if self.instance.pk:
             self.fields['scheduling_status'].initial = Session.objects.with_current_status().get(pk=self.instance.pk).current_status
 
@@ -914,7 +932,9 @@ class FgSessionForm(forms.ModelForm):
         meeting = values.get('meeting')
         if self.instance.pk and meeting and meeting.pk != self.instance.meeting_id:
             self.add_error('meeting', 'Create a new session to move to another meeting; existing materials and schedules belong to this meeting.')
-        if values.get('agenda_start') and meeting:
+        if values.get('agenda_start') and meeting and (
+            not self.instance.pk or self.schedule_fields.intersection(self.changed_data)
+        ):
             try:
                 start = datetime.fromisoformat(values['agenda_start'])
                 if start.tzinfo is not None:
@@ -949,7 +969,8 @@ class SchedulingHistoryInline(admin.TabularInline):
 class FgSessionAdmin(SessionAdmin):
     form = FgSessionForm
     fields = ['meeting', 'name', 'short', 'group', 'purpose', 'type', 'scheduling_status',
-              'agenda_start', 'agenda_minutes', 'agenda_room', 'agenda_note', 'remote_instructions', 'on_agenda', 'manage_materials']
+              'agenda_start', 'agenda_minutes', 'agenda_room', 'agenda_note', 'agenda_presenters',
+              'remote_instructions', 'on_agenda', 'manage_materials']
     readonly_fields = ['manage_materials']
     raw_id_fields = []
     inlines = [AssignmentInline, SchedulingHistoryInline, SessionResourceInline]
@@ -1088,6 +1109,11 @@ def configure_admin():
             cls = type('Fg' + registered.__class__.__name__, (ScopedNativeAdmin, registered.__class__), {'scope': scope})
             if model._meta.label_lower == 'meeting.floorplan':
                 cls.form = FloorPlanForm
+            elif model is SchedTimeSessAssignment:
+                # The internal extension pointer is nullable and has no use
+                # when an editor creates a schedule assignment.
+                cls.exclude = ('extendedfrom',)
+                cls.raw_id_fields = [field for field in cls.raw_id_fields if field != 'extendedfrom']
             admin.site.unregister(model)
             admin.site.register(model, cls)
     # Preserve upstream URL names for template reversals. Deny hidden models at

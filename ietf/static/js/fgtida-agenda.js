@@ -40,7 +40,7 @@
         });
         label.append(input);
         label.hidden = true;
-        row.lastElementChild.prepend(label);
+        row.querySelector('.fgtida-agenda-event-cell').prepend(label);
     });
     document.getElementById('agenda-pick-toggle')?.addEventListener('click', event => {
         const active = event.currentTarget.getAttribute('aria-pressed') !== 'true';

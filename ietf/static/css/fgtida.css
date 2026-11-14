@@ -72,7 +72,9 @@ html { scroll-padding-top: calc(var(--fg-tida-header-height) + 24px); }
 .fgtida-agenda-table thead tr:first-child th { text-align: center; }
 .fgtida-agenda-table td { padding: .35rem .7rem; vertical-align: middle; }
 .fgtida-agenda-table th:first-child { width: 9rem; }
-.fgtida-agenda-table th:nth-child(2) { width: 23%; }
+.fgtida-agenda-table th:nth-child(2) { width: 14%; }
+.fgtida-agenda-table th:nth-child(4) { width: 25%; }
+.fgtida-agenda-table .fgtida-agenda-presenters { white-space: pre-line; vertical-align: top; }
 .fgtida-session-actions { float: right; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .22rem; margin: .1rem 0 .1rem .65rem; }
 .fgtida-resource-icon { display: inline-flex; align-items: center; justify-content: center; min-width: 1.65rem; height: 1.7rem; padding: .15rem .22rem; border-radius: .2rem; text-decoration: none; color: #0657d9; background: #edf4ff; font-size: 1rem; }
 .fgtida-resource-icon:hover, .fgtida-resource-icon:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; }
