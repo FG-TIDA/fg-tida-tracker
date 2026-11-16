@@ -38,7 +38,8 @@ class DocumentListTests(TestCase):
         self.assertEqual(listing.created.date().isoformat(), '2026-11-01')
         self.client.logout()
         response = self.client.get('/doc/?collection=input')
-        for value in ['LS Inputs', 'Word', 'FG-TIDA plenary', 'Example organization', '/doc/fg-tida-i-001/download/0.0/']:
+        for value in ['LS Inputs', 'Word', 'FG-TIDA plenary', 'Example organization',
+                      'FG-TIDA-I-001', '/doc/fg-tida-i-001/download/0.0/']:
             self.assertContains(response, value)
         self.assertNotContains(self.client.get('/doc/?collection=output'), 'Input contribution')
         download = self.client.get('/doc/fg-tida-i-001/download/0.0/')

@@ -547,8 +547,18 @@ class NativeDatatrackerTests(TestCase):
         next_item = submit('tidawg1', 'Third WG1 contribution')
         self.assertEqual(next_item.reference, 'FG-TIDA-WG1-011')
         self.assertContains(self.client.get(f'/submit/{second.pk}/'), 'FG-TIDA-WG1-004')
-        self.assertContains(self.client.get(f'/doc/{second.document.name}/'), 'FG-TIDA-WG1-004')
-        self.assertContains(self.client.get('/doc/', {'q': 'fg-tida-wg1-004'}), second.title)
+        detail = self.client.get(f'/doc/{second.document.name}/')
+        self.assertContains(detail, 'FG-TIDA-WG1-004')
+        self.assertNotContains(detail, f'{second.document.name} — 0.0')
+        listing = self.client.get('/doc/', {'q': 'fg-tida-wg1-004'})
+        self.assertContains(listing, second.title)
+        self.assertContains(listing, 'Version 0.0')
+        self.assertNotContains(listing, f'{second.document.name}-0.0')
+        from .models import DocumentListing
+        DocumentListing.objects.create(document=second.document, direction='input')
+        collection = self.client.get('/doc/', {'collection': 'input'})
+        self.assertContains(collection, '>FG-TIDA-WG1-004</a>')
+        self.assertNotContains(collection, f'>{second.document.name}</a>')
         self.assertContains(self.client.get('/admin/fgtida/contribution/', {'q': 'FG-TIDA-WG1-004'}), second.title)
 
         adopt = self.client.post(path, {'sequence_number': '4', 'decision': 'adopt',

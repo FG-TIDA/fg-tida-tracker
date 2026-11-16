@@ -1,7 +1,8 @@
 {% extends "base.html" %}{% load fgtida l10n tz %}
 {% block title %}{{ snapshot.title }} | FG-TIDA Datatracker{% endblock %}
 {% block content %}{% timezone "UTC" %}
-<h1 class="fg-document-title">{{ snapshot.title }}</h1><p class="lead text-muted">{{ doc.name }}{% if selected_version %} — {{ selected_version.version }}{% endif %}</p>
+<h1 class="fg-document-title">{{ snapshot.title }}</h1>
+{% with public_name=doc.name|public_document_name %}{% if public_name %}<p class="lead text-muted">{{ public_name }}{% if selected_version %} — {{ selected_version.version }}{% endif %}</p>{% endif %}{% endwith %}
 {% for contribution in doc.numbered_contributions %}<p class="mb-2"><strong>Contribution number</strong> {{ contribution.reference }}</p>{% endfor %}
 <ul class="nav nav-tabs mb-3"><li class="nav-item"><a class="nav-link active" href="{% url 'fgtida:document' doc.name %}">Status</a></li><li class="nav-item"><a class="nav-link" href="{% url 'fgtida:history' doc.name %}">History</a></li></ul>
 {% if revisions %}<p class="fw-bold mb-1">Versions:</p><nav aria-label="Document versions"><ul class="revision-list pagination pagination-sm text-center flex-wrap">{% for revision in revisions %}<li class="page-item {% if revision.rev == snapshot.rev %}active{% endif %}"><a class="page-link" {% if revision.rev == snapshot.rev %}aria-current="page"{% endif %} href="{% url 'fgtida:revision' doc.name revision.public_version %}" title="Version {{ revision.public_version }}, recorded {{ revision.recorded|date:'Y-m-d H:i T' }}">{{ revision.public_version }}</a></li>{% endfor %}</ul></nav>{% endif %}

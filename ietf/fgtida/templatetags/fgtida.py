@@ -10,6 +10,15 @@ from django.utils.html import format_html_join
 register = template.Library()
 
 
+@register.filter
+def public_document_name(name):
+    # Only official input/output numbers are public labels. All other stored
+    # names are link identifiers. Contributions have a separate public number.
+    if re.fullmatch(r'FG-TIDA-[IO]-[0-9]+', name, re.IGNORECASE):
+        return name.upper()
+    return ''
+
+
 @register.simple_tag(name='public_version')
 def version_tag(document,revision):
     from ietf.fgtida.versioning import labels

@@ -292,6 +292,10 @@ class GitHubWorkflowTests(TestCase):
         response=self.client.get('/doc/'+doc.name+'/')
         self.assertContains(response,'Full charter text.')
         self.assertContains(response,'aria-label="Document content"')
+        self.assertNotContains(response, f'{doc.name} — 0.0')
+        listing = self.client.get('/doc/', {'q': doc.title})
+        self.assertContains(listing, 'Version 0.0')
+        self.assertNotContains(listing, f'{doc.name}-0.0')
 
     def test_content_audit_distinguishes_missing_files_from_missing_imports(self):
         document,item=self.document()

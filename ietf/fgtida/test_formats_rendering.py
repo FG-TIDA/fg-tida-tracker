@@ -46,6 +46,25 @@ class DocumentFormatTests(TestCase):
     admin_payload = native_tests.NativeDatatrackerTests.admin_payload
     create_doc = native_tests.NativeDatatrackerTests.create_doc
 
+    def test_catalogue_hides_legacy_and_editor_assigned_document_slugs(self):
+        records = [
+            ('fg-tida-use-cases-example-42', 'Legacy use case', 'tida-use-cases', '/doc/?category=use-cases'),
+            ('fg-tida-themes-example-38', 'Legacy theme', 'tida-themes', '/doc/?category=themes'),
+            ('editor-assigned-slug', 'Editor-created document', None, '/doc/'),
+        ]
+        self.client.logout()
+        for name, title, tag, collection in records:
+            with self.subTest(name=name):
+                document = Document.objects.create(name=name, title=title, type_id='tida', group=self.root)
+                if tag:
+                    document.tags.add(tag)
+                listing = self.client.get(collection)
+                self.assertContains(listing, f'href="/doc/{name}/">{title}</a>')
+                self.assertNotContains(listing, f'>{name}</div>')
+                detail = self.client.get(f'/doc/{name}/')
+                self.assertContains(detail, title)
+                self.assertNotContains(detail, f'>{name}</p>')
+
     def pdf(self):
         from pypdf import PdfWriter
         stream = io.BytesIO()
@@ -137,7 +156,7 @@ class DocumentFormatTests(TestCase):
         self.assertContains(page, '/work/incubation/')
         response = self.client.get('/work/incubation/')
         self.assertEqual(response.status_code, 200)
-        for expected in [doc.title, 'Formats / resources', 'Updated', '/submit/?group=incubation', 'not a working group']:
+        for expected in [doc.title, 'Formats / resources', 'Updated', '/submit/?group=incubation', 'submission route for work without an assigned group']:
             self.assertContains(response, expected)
         for excluded in ['Hidden incubation item', 'Unrelated public item', 'Private submission storage', 'Private editorial feedback', self.user.email]:
             self.assertNotContains(response, excluded)
