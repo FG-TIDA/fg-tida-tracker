@@ -120,6 +120,33 @@ class NativeDatatrackerTests(TestCase):
         self.client.force_login(member)
         self.assertRedirects(self.client.get('/'), '/accounts/mfa/verify/', fetch_redirect_response=False)
 
+    @override_settings(SERVER_MODE='production', FGTIDA_REQUIRE_ADMIN_MFA=True,
+                       FGTIDA_APPROVED_PRIVILEGED_USERS=['fg-admin'])
+    def test_approved_pending_administrator_can_enroll_after_startup(self):
+        from django_otp.plugins.otp_totp.models import TOTPDevice
+        from .management.commands.check_fgtida_publication import Command
+        from .models import AdministratorApproval
+
+        output = StringIO()
+        gate = Command(stdout=output)
+        new_admin = get_user_model().objects.create_superuser(
+            'next-admin', 'new-admin@example.test', 'test-password',
+        )
+        AdministratorApproval.objects.create(user=new_admin, approved_by=self.user)
+        self.assertTrue(gate.check_administrators(allow_pending_mfa=True))
+        TOTPDevice.objects.create(user=new_admin, confirmed=False)
+        self.assertTrue(gate.check_administrators(allow_pending_mfa=True))
+        TOTPDevice.objects.create(user=self.user, confirmed=True)
+        self.assertEqual(gate.check_administrators(allow_pending_mfa=True), [])
+        self.assertIn('1 active administrator account(s)', output.getvalue())
+        self.assertTrue(gate.check_administrators(allow_pending_mfa=False))
+
+        self.client.force_login(new_admin)
+        self.assertRedirects(self.client.get('/admin/'), '/accounts/mfa/setup/', fetch_redirect_response=False)
+        AdministratorApproval.objects.filter(user=new_admin).delete()
+        self.assertIn('Privileged accounts have not been explicitly approved for production.',
+                      gate.check_administrators(allow_pending_mfa=True))
+
     def test_static_public_content_and_registration(self):
         from .content import CONTENT
         home = self.client.get('/')

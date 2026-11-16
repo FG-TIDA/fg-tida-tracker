@@ -63,7 +63,8 @@ def main():
                     time.sleep(0.1)
             else:
                 raise RuntimeError('Local cache did not become ready.')
-            check = [sys.executable, 'ietf/manage.py', 'check_fgtida_publication', '--skip-checks']
+            check = [sys.executable, 'ietf/manage.py', 'check_fgtida_publication',
+                     '--skip-checks', '--allow-pending-admin-mfa']
             if mode == 'staged':
                 check.append('--allow-deferred-smtp')
             subprocess.run(check, check=True)

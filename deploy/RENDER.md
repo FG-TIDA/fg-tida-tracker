@@ -63,16 +63,22 @@ HTTP 200 for GET/HEAD `/health/`. It loads no Django settings, records or files.
 This health response means the maintenance process is up, not that the platform
 is ready. Bootstrap is intentional and must not be announced as the live site.
 
-`staged` requires all publication checks, including administrator MFA, to pass
-except SMTP. Email stays in the database; real mail-dependent account recovery
-is unavailable. Use this mode for final preparation while ITU SMTP is pending.
+`staged` allows startup while SMTP is disabled. With SMTP disabled, email stays
+in the database and mail-dependent account recovery is unavailable.
 
-`production` is the default and requires the complete publication gate, including
-SMTP configuration. Neither normal mode bypasses MFA, HTTPS, data-scope, account
-allowlist or file checks. They start cache, check publication, collect static
+`production` is the default and requires SMTP configuration. Both web modes
+enforce MFA, HTTPS, data-scope, account allowlist and file checks.
+They start cache, check publication, collect static
 files into `/data/static`, then run Gunicorn. An unexpected cache/server exit
 stops the whole service. SIGTERM stops both children. Static files are served by
 WhiteNoise; uploaded media is never published as an unrestricted directory.
+
+Both web startup modes require at least one approved active administrator with
+a confirmed authenticator. Other approved administrators can enroll after
+startup. When they sign in, Datatracker requires enrollment before granting
+access to admin pages. The standalone publication check requires everyone to
+have enrolled unless you pass `--allow-pending-admin-mfa` to check the startup
+policy.
 
 1. Deploy in `bootstrap` mode. Check `/` is 503 and `/health/` is 200.
 2. Before the final local export, enroll the administrator's authenticator in

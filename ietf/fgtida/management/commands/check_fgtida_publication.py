@@ -19,6 +19,33 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('--allow-deferred-smtp', action='store_true',
             help='Check a private preparation environment with email disabled; not final launch approval.')
+        parser.add_argument('--allow-pending-admin-mfa', action='store_true',
+            help='Permit startup when an approved active administrator has MFA and others still need to enroll.')
+
+    def check_administrators(self, allow_pending_mfa):
+        from ietf.fgtida.models import AdministratorApproval
+        from django_otp.plugins.otp_totp.models import TOTPDevice
+
+        failures = []
+        approved = list(getattr(settings, 'FGTIDA_APPROVED_PRIVILEGED_USERS', []))
+        approved += list(AdministratorApproval.objects.values_list('user__username', flat=True))
+        privileged = get_user_model().objects.filter(is_active=True).filter(
+            Q(is_staff=True) | Q(is_superuser=True))
+        if not approved or privileged.exclude(username__in=approved).exists():
+            failures.append('Privileged accounts have not been explicitly approved for production.')
+
+        confirmed = TOTPDevice.objects.filter(confirmed=True).values('user_id')
+        if not privileged.filter(username__in=approved, pk__in=confirmed).exists():
+            failures.append('At least one approved active administrator must enroll an authenticator before startup.')
+        elif pending := privileged.exclude(pk__in=confirmed).count():
+            if allow_pending_mfa:
+                self.stdout.write(self.style.WARNING(
+                    f'{pending} active administrator account(s) still need MFA enrollment. '
+                    'These accounts must enroll before they can use administrative pages.'
+                ))
+            else:
+                failures.append('Every active administrator must enroll an authenticator before public launch.')
+        return failures
 
     def handle(self, *args, **options):
         failures = []
@@ -45,16 +72,7 @@ class Command(BaseCommand):
             failures.append('Non-FG-TIDA documents remain in the release database.')
         if Meeting.objects.exclude(type_id='tida').exists():
             failures.append('Non-FG-TIDA meetings remain in the release database.')
-        approved = getattr(settings, 'FGTIDA_APPROVED_PRIVILEGED_USERS', [])
-        from ietf.fgtida.models import AdministratorApproval
-        approved = list(approved) + list(AdministratorApproval.objects.values_list('user__username', flat=True))
-        privileged = get_user_model().objects.filter(is_active=True).filter(
-            Q(is_staff=True) | Q(is_superuser=True))
-        if not approved or privileged.exclude(username__in=approved).exists():
-            failures.append('Privileged accounts have not been explicitly approved for production.')
-        from django_otp.plugins.otp_totp.models import TOTPDevice
-        if privileged.exclude(pk__in=TOTPDevice.objects.filter(confirmed=True).values('user_id')).exists():
-            failures.append('Every active administrator must enroll an authenticator before public launch.')
+        failures.extend(self.check_administrators(options['allow_pending_admin_mfa']))
         from ietf.fgtida.models import SecurityQuestion
         if SecurityQuestion.objects.filter(active=True).count() < 3:
             failures.append('At least three security questions must be configured.')
