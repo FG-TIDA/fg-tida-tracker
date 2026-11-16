@@ -5,6 +5,7 @@ from ietf.name.models import (GroupTypeName, GroupStateName, MeetingTypeName, Do
 from ietf.group.models import Group, GroupFeatures
 from ietf.doc.models import StateType, State
 from ietf.fgtida.core import CATEGORIES, TYPE_LABELS
+from ietf.fgtida.content import INCUBATION_NAME
 
 
 class Command(BaseCommand):
@@ -42,10 +43,11 @@ class Command(BaseCommand):
             'description': 'ITU-T Focus Group on Trust and Identity for Humans and Agentic AI.'})
         for acronym, name in [('tidawg0', 'Use Cases and Terminology'),
                               ('tidawg1', 'Continuous and Dynamic Remote Attestation for Agentic AI'),
-                              ('tidawg2', 'Identity, Behaviour and Enforcement for AI Agents'), ('incubation', 'No working group yet')]:
+                              ('tidawg2', 'Identity, Behaviour and Enforcement for AI Agents'), ('incubation', INCUBATION_NAME)]:
             Group.objects.get_or_create(acronym=acronym, defaults={'name': name,
                 'parent': root, 'type_id': 'team' if acronym == 'incubation' else 'wg',
                 'state_id': 'active'})
+        Group.objects.filter(parent=root, acronym='incubation', name='No working group yet').update(name=INCUBATION_NAME)
         for slug, label in TYPE_LABELS:
             DocTypeName.objects.update_or_create(slug=slug, defaults={'name': label})
             kind, _ = StateType.objects.get_or_create(slug=slug, defaults={'label': 'Document state'})

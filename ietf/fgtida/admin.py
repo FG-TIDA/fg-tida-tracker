@@ -178,7 +178,7 @@ class SessionResourceInline(admin.TabularInline):
 class ContributionReviewForm(forms.ModelForm):
     decision = forms.ChoiceField(required=False, choices=[('','Save review note'),('adopt','Adopt into a working group'),('reject','Reject proposal')])
     adopt_into = forms.ModelChoiceField(queryset=Group.objects.filter(parent__acronym='tida',type_id='wg').exclude(state_id='conclude'),required=False,
-        help_text='For No working group yet, create the new WG and its numbered GitHub configuration first, then select it here.')
+        help_text='For an Incubation submission, create the new WG and its numbered GitHub configuration first, then select it here.')
 
     class Meta:
         model=Contribution
@@ -591,7 +591,7 @@ class ContributionRecipientAdmin(admin.ModelAdmin):
 class ContributionRecipientInline(admin.TabularInline):
     model = ContributionRecipient
     extra = 0
-    verbose_name_plural = 'Contribution notification recipients (No working group yet: FG management)'
+    verbose_name_plural = 'Contribution notification recipients (Incubation: FG management)'
 
     def has_add_permission(self, request, obj=None):
         return request.user.is_superuser

@@ -17,14 +17,23 @@ class PublicContent:
 
 
 CONTENT = PublicContent()
+INCUBATION_NAME = 'NWI for Incubation'
 
 
 def get_content(request=None):
     return CONTENT
 
 
+def get_incubation_name():
+    from ietf.group.models import Group
+    return Group.objects.filter(parent__acronym='tida', acronym='incubation').values_list(
+        'name', flat=True,
+    ).first() or INCUBATION_NAME
+
+
 def public_content(request):
     from . import core
     from django.utils.functional import SimpleLazyObject
     return {'platform_content': get_content(request),
+        'incubation_name': SimpleLazyObject(get_incubation_name),
         'navigation_groups': SimpleLazyObject(lambda: core.groups().filter(type_id='wg').exclude(state_id='conclude').order_by('tida_configuration__number', 'name'))}

@@ -31,8 +31,8 @@ class ContributionForm(forms.ModelForm):
         from .templatetags.fgtida import group_label
         self.fields['group'].label_from_instance = group_label
         self.fields['group'].queryset = self.fields['group'].queryset.exclude(state_id='conclude')
-        self.fields['group'].label = 'Working group or No working group yet'
-        self.fields['group'].help_text = 'Choose an existing wg, or No working group yet for new work that does not belong to an existing wg. No working group yet is a submission route, not a working group.'
+        self.fields['group'].label = 'Working group or Incubation'
+        self.fields['group'].help_text = 'Choose an existing working group or the Incubation submission route. Incubation is not a working group.'
         self.fields['draft_repository_url'].help_text = 'GitHub only: your public repository in your own GitHub account, not the template URL.'
         self.fields['source_commit'].help_text = 'GitHub only: copy the full 40-character commit SHA of your completed contribution.'
         self.fields['source_folder'].help_text = 'GitHub only: documentation folder relative to the repository root, normally src/doc. All referenced assets must be inside it.'

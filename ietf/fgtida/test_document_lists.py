@@ -76,7 +76,7 @@ class DocumentListTests(TestCase):
         group = Group.objects.create(acronym='tidawg42', name='Future topic', type_id='wg', state_id='active', parent=self.root)
         WorkingGroupConfiguration.objects.create(group=group, number=42)
         page = self.client.get('/')
-        for label in ['WG42 : Future topic', 'No working group yet', 'Submit a contribution', 'LS Inputs', 'LS Outputs', 'Upcoming meetings', 'Past meetings']:
+        for label in ['WG42 : Future topic', 'NWI for Incubation', 'Submit a contribution', 'LS Inputs', 'LS Outputs', 'Upcoming meetings', 'Past meetings']:
             self.assertContains(page, label)
         for removed in ['Proposed groups', 'Concluded groups', 'Meeting archive', 'Submit a proposal / contribution']:
             self.assertNotContains(page, removed)

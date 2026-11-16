@@ -156,7 +156,8 @@ class DocumentFormatTests(TestCase):
         self.assertContains(page, '/work/incubation/')
         response = self.client.get('/work/incubation/')
         self.assertEqual(response.status_code, 200)
-        for expected in [doc.title, 'Formats / resources', 'Updated', '/submit/?group=incubation', 'submission route for work without an assigned group']:
+        for expected in [doc.title, 'Formats / resources', 'Updated', '/submit/?group=incubation',
+                         '<h1>NWI for Incubation</h1>', 'submission route for work without an assigned group']:
             self.assertContains(response, expected)
         for excluded in ['Hidden incubation item', 'Unrelated public item', 'Private submission storage', 'Private editorial feedback', self.user.email]:
             self.assertNotContains(response, excluded)
@@ -165,3 +166,14 @@ class DocumentFormatTests(TestCase):
         response = self.client.get('/submit/?group=incubation')
         self.assertEqual(response.context['form'].initial['group'].acronym, 'incubation')
         self.assertContains(response, 'not a working group')
+
+        path = f'/admin/group/group/{inc.pk}/change/'
+        values = self.admin_payload(path, {'name': 'Incubation Proposals', 'acronym': inc.acronym,
+            'parent': self.root.pk, 'state': inc.state_id, 'type': inc.type_id, '_save': 'Save'})
+        self.assertEqual(self.client.post(path, values).status_code, 302)
+        Document.objects.create(name='pending-incubation-item', title='Pending Incubation item', group=inc, type_id='tida')
+        self.client.logout()
+        page = self.client.get('/work/incubation/')
+        self.assertContains(page, '<h1>Incubation Proposals</h1>')
+        self.assertContains(page, 'href="/group/incubation/about/">Incubation Proposals</a>')
+        self.assertContains(page, 'href="/work/incubation/">Incubation Proposals</a>')

@@ -8,11 +8,12 @@ def greeting(user=None):
 
 
 def confirmation(user, link, submit_url, tracker_meetings_url):
+    from .content import get_incubation_name
     greeting_text = greeting(user)
     intro = 'Thank you for your interest in contributing to the ITU-T Focus Group on Trust and Identity for Humans and Agentic AI (FG-TIDA). We share updates and ways to participate on our official FG-TIDA page and public GitHub organization.'
     activation = 'Confirm your email address to activate your Datatracker account. The confirmation link expires in 24 hours. If you did not create this account, you can ignore this message.'
     contribution = ('After activating your account, sign in to Datatracker and go to Documents → Submit a contribution. '
-                    'Choose the working group relevant to your proposal. Select No working group yet if you are proposing work that could require a new working group. '
+                    f'Choose the working group relevant to your proposal. Select {get_incubation_name()} if the work could require a new working group. '
                     'Submit a GitHub repository at a fixed commit or an RST source ZIP. Word (.docx) is an exceptional fallback with automatic RST conversion and contributor verification. '
                     'Contributions from all sectors are welcome. You do not need to belong to a working group to submit.')
     minutes = 'Please check the meetings repository for minutes and slides within a week of each meeting. We keep updates there so you can follow them without a separate notification for each publication.'

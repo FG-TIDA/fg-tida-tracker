@@ -6,7 +6,7 @@
         {% for group in navigation_groups %}{% group_number group as number %}<li><a class="dropdown-item" href="{% url 'fgtida:group' group.acronym %}">{{ group|group_label }}</a></li>{% endfor %}
         <li><hr class="dropdown-divider"></li>
         <li><h6 class="dropdown-header">Incubation</h6></li>
-        <li><a class="dropdown-item" href="{% url 'fgtida:incubation' %}">NWI for Incubation</a></li>
+        <li><a class="dropdown-item" href="{% url 'fgtida:incubation' %}">{{ incubation_name }}</a></li>
         <li><hr class="dropdown-divider"></li>
         <li><h6 class="dropdown-header">Work programme</h6></li>
         <li><a class="dropdown-item" href="{% url 'fgtida:documents' %}?category=themes">Themes</a></li>

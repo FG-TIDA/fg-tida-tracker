@@ -183,7 +183,7 @@ def group_label(group):
     if group.acronym == 'tida':
         return 'FG-TIDA (no wg assigned)'
     if group.acronym == 'incubation':
-        return 'No working group yet'
+        return group.name
     number=group_number(group)
     if number:
         acronym = group.tida_configuration.topic_acronym.upper()
