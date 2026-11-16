@@ -24,7 +24,7 @@ from .models import (EmailVerification, GitHubAccount, WorkingGroupConfiguration
     GitHubSource, WorkItem, WorkItemRelease, GitHubJob, DocumentListing, DocumentFormat)
 from .resource_files import SessionResourceForm
 from .training import TrainingVideoAdmin
-from .models import TrainingVideo
+from .models import TrainingCategory, TrainingVideo
 from django.contrib.auth.models import User
 from ietf.ietfauth.admin import CustomUserAdmin
 from django.utils.html import format_html
@@ -1102,6 +1102,8 @@ def hidden_admin_permission(request, obj=None):
 
 
 def configure_admin():
+    if not admin.site.is_registered(TrainingCategory):
+        admin.site.register(TrainingCategory)
     if not admin.site.is_registered(TrainingVideo):
         admin.site.register(TrainingVideo, TrainingVideoAdmin)
     if not admin.site.is_registered(SecurityQuestion):

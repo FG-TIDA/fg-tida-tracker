@@ -220,9 +220,30 @@ class SessionResourceChunk(models.Model):
         constraints = [models.UniqueConstraint(fields=['resource', 'position'], name='fgtida_resource_chunk_position')]
 
 
+class TrainingCategory(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name_plural = 'Training categories'
+
+    def __str__(self):
+        return self.name
+
+
 class TrainingVideo(models.Model):
+    """Training resources use the existing video table and file URLs."""
+    class Kind(models.TextChoices):
+        VIDEO = 'video', 'Video'
+        GUIDE = 'guide', 'PDF guide'
+        LINK = 'link', 'External link'
+
     title = models.CharField(max_length=160)
     description = models.TextField(blank=True)
+    category = models.ForeignKey(TrainingCategory, on_delete=models.SET_NULL, blank=True, null=True)
+    kind = models.CharField(max_length=8, choices=Kind.choices, default=Kind.VIDEO, db_default=Kind.VIDEO)
+    external_url = models.URLField(max_length=2000, blank=True, db_default='',
+                                   validators=[URLValidator(schemes=['https'])])
     published = models.BooleanField(default=False)
     filename = models.CharField(max_length=255, blank=True, editable=False)
     file_size = models.PositiveBigIntegerField(default=0, editable=False)
@@ -231,6 +252,7 @@ class TrainingVideo(models.Model):
 
     class Meta:
         ordering = ['title', 'pk']
+        verbose_name = 'training resource'
 
     def __str__(self):
         return self.title

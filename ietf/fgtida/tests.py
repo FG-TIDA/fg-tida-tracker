@@ -1,5 +1,5 @@
 from datetime import timedelta
-from io import StringIO
+from io import BytesIO, StringIO
 from pathlib import Path
 import tempfile
 import json
@@ -83,23 +83,75 @@ class NativeDatatrackerTests(TestCase):
     def test_training_admin_publish_and_video_ranges(self):
         data = b'\x00\x00\x00\x18ftypmp42' + b'training video'
         url = '/admin/fgtida/trainingvideo/add/'
-        self.assertContains(self.client.get(url), 'Video file')
-        response = self.client.post(url, {'title': 'Tracker training',
+        self.assertContains(self.client.get(url), 'Training file')
+        response = self.client.post(url, {'title': 'Tracker training', 'kind': 'video',
             'upload': SimpleUploadedFile('training.mp4', data, 'video/mp4')})
         self.assertEqual(response.status_code, 302)
         from .models import TrainingVideo
         video = TrainingVideo.objects.get()
+        player_url = f'/training/{video.pk}/'
         file_url = f'/training/{video.pk}/video/'
+        download_url = f'/training/{video.pk}/download/'
         self.client.logout()
         self.assertNotContains(self.client.get('/training/'), 'Tracker training')
-        self.assertEqual(self.client.get(file_url).status_code, 404)
+        for path in (player_url, file_url, download_url):
+            self.assertEqual(self.client.get(path).status_code, 404)
         TrainingVideo.objects.update(published=True)
-        self.assertContains(self.client.get('/training/'), file_url)
+        listing = self.client.get('/training/')
+        self.assertContains(listing, f'href="{player_url}" target="_blank" rel="noopener"')
+        self.assertNotContains(listing, '<video ')
+        player = self.client.get(player_url)
+        self.assertContains(player, '<video controls')
+        self.assertContains(player, file_url)
+        self.assertContains(player, download_url)
         part = self.client.get(file_url, HTTP_RANGE='bytes=4-7')
         self.assertEqual(part.status_code, 206)
         self.assertEqual(part['Content-Disposition'], 'inline; filename="training.mp4"')
         self.assertEqual(b''.join(part.streaming_content), b'ftyp')
         self.assertEqual(self.client.head(file_url)['Content-Length'], str(len(data)))
+        download = self.client.get(download_url)
+        self.assertEqual(download.status_code, 200)
+        self.assertEqual(download['Content-Disposition'], 'attachment; filename="training.mp4"')
+        self.assertEqual(b''.join(download.streaming_content), data)
+
+    def test_training_catalogue_supports_admin_categories_guides_and_links(self):
+        from pypdf import PdfWriter
+        from .models import TrainingCategory, TrainingVideo
+
+        self.assertEqual(self.client.post('/admin/fgtida/trainingcategory/add/',
+            {'name': 'Getting started'}).status_code, 302)
+        category = TrainingCategory.objects.get(name='Getting started')
+        path = '/admin/fgtida/trainingvideo/add/'
+        shared = {'category': category.pk, 'published': 'on'}
+        invalid = self.client.post(path, {**shared, 'title': 'Invalid link', 'kind': 'link',
+            'external_url': 'http://docs.example.test/guide'})
+        self.assertContains(invalid, 'Enter a valid URL')
+        external_url = 'https://docs.example.test/guide'
+        link_post = self.client.post(path, {**shared, 'title': 'External guide', 'kind': 'link',
+            'external_url': external_url})
+        self.assertEqual(link_post.status_code, 302)
+
+        pdf = PdfWriter()
+        pdf.add_blank_page(width=100, height=100)
+        stream = BytesIO()
+        pdf.write(stream)
+        pdf_post = self.client.post(path, {**shared, 'title': 'PDF walkthrough', 'kind': 'guide',
+            'description': 'Learn how to contribute.',
+            'upload': SimpleUploadedFile('walkthrough.pdf', stream.getvalue(), 'application/pdf')})
+        self.assertEqual(pdf_post.status_code, 302)
+        guide = TrainingVideo.objects.get(title='PDF walkthrough')
+        link = TrainingVideo.objects.get(title='External guide')
+
+        self.client.logout()
+        page = self.client.get('/training/')
+        for label in ('Getting started', 'PDF guide', 'External link', 'Learn how to contribute.'):
+            self.assertContains(page, label)
+        self.assertContains(self.client.get(f'/training/{link.pk}/'), f'href="{external_url}"')
+        self.assertEqual(self.client.get(f'/training/{link.pk}/download/').status_code, 404)
+        self.assertContains(self.client.get(f'/training/{guide.pk}/'), 'Open PDF')
+        download = self.client.get(f'/training/{guide.pk}/download/')
+        self.assertEqual(download['Content-Type'], 'application/pdf')
+        self.assertEqual(b''.join(download.streaming_content), stream.getvalue())
 
     @override_settings(DEBUG=True, SERVER_MODE='development', FGTIDA_REQUIRE_ADMIN_MFA=True,
         FGTIDA_DEV_ADMIN_MFA_PAUSED=True)

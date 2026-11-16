@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{{ resource.title }} | FG-TIDA Training{% endblock %}
+{% block content %}
+<p><a href="{% url 'fgtida:training' %}">All training resources</a></p>
+<h1>{{ resource.title }}</h1>
+{% if resource.description %}{{ resource.description|linebreaks }}{% endif %}
+{% if resource.kind == 'link' %}
+    <p><a class="btn btn-outline-primary" href="{{ resource.external_url }}" rel="noopener noreferrer">Open external resource</a></p>
+{% else %}
+    {% if resource.kind == 'video' %}
+        <video controls playsinline preload="metadata" class="w-100 fg-training-video" aria-label="{{ resource.title }}">
+            <source src="{% url 'fgtida:training-video' resource.pk %}" type="{{ resource.content_type }}">
+            Your browser does not support video playback.
+        </video>
+    {% endif %}
+    <p class="mt-3">
+        {% if resource.kind == 'guide' %}<a class="btn btn-outline-primary" href="{% url 'fgtida:training-video' resource.pk %}">Open PDF</a>{% endif %}
+        <a class="btn btn-outline-primary" href="{% url 'fgtida:training-download' resource.pk %}">
+            <i class="bi bi-download" aria-hidden="true"></i> {% if resource.kind == 'video' %}Download video{% else %}Download PDF{% endif %}
+        </a>
+    </p>
+{% endif %}
+{% endblock %}
