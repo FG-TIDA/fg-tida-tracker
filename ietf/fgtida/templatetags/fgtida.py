@@ -223,6 +223,6 @@ def document_formats(doc, alternatives_only=False, plain=False):
                 label += ' (alternative)'
             links.append((label, 'file-pdf' if alternative.kind == 'pdf' else 'file-word', reverse('fgtida:document-format', args=[alternative.pk])))
     if not alternatives_only and doc.external_url and urlsplit(doc.external_url).scheme in ('http', 'https'):
-        label, icon = ('Recording', 'camera-video') if doc.type_id == 'recording' else ('Template package', 'folder') if doc.type_id == 'tida-template' else ('External reference', 'box-arrow-up-right')
+        label, icon = ('Recording', 'camera-video') if doc.type_id == 'recording' else ('Template package', 'folder') if doc.type_id == 'tida-template' else ('GitHub references', 'box-arrow-up-right')
         links.append((label, icon, doc.external_url))
     return {'format_links': links, 'plain': plain, 'alternatives_only': alternatives_only}
