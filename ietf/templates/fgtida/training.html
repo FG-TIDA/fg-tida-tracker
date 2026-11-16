@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Training | FG-TIDA{% endblock %}
+{% block content %}
+<h1>Training</h1>
+{% if perms.fgtida.add_trainingvideo %}
+    <p><a href="{% url 'admin:fgtida_trainingvideo_add' %}">Add a training video</a></p>
+{% endif %}
+{% for video in videos %}
+    <section class="mb-4" aria-labelledby="video-{{ video.pk }}">
+        <h2 class="h4" id="video-{{ video.pk }}">{{ video.title }}</h2>
+        {% if video.description %}{{ video.description|linebreaks }}{% endif %}
+        <video controls playsinline preload="none" class="w-100 fg-training-video" aria-labelledby="video-{{ video.pk }}">
+            <source src="{% url 'fgtida:training-video' video.pk %}" type="{{ video.content_type }}">
+            Your browser does not support video playback.
+        </video>
+    </section>
+{% empty %}
+    <p>No training videos have been published yet.</p>
+{% endfor %}
+{% endblock %}

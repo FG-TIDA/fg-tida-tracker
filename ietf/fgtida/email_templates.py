@@ -56,7 +56,7 @@ def password_reset(user, link):
 
 
 def contribution(item, acknowledgement=False):
-    subject = f'FG-TIDA — contribution received: {item.title}'.replace('\r',' ').replace('\n',' ')[:255]
+    subject = f'{item.reference or "FG-TIDA"} — contribution received: {item.title}'.replace('\r',' ').replace('\n',' ')[:255]
     salutation = greeting(item.submitter) if acknowledgement else f'Dear {item.group.name} colleagues,'
     text = 'Your contribution has been received' if acknowledgement else 'A new contribution has been received'
     from .accounts import mail_origin
@@ -66,6 +66,7 @@ def contribution(item, acknowledgement=False):
     source_note = ('Word was automatically converted to RST. The contributor must verify the conversion before adoption.\n'
                    if item.submission_method == 'word' else '')
     return (subject, f'{salutation}\n\n{text} and recorded in the FG-TIDA Datatracker.\n\n'
+        f'Contribution number: {item.reference or "Pending assignment"}\n'
         f'Title: {item.title}\nGroup: {item.group.name}\nStatus: Submitted\n\n'
         f'{item.abstract}\n\nSubmission method: {item.get_submission_method_display()}\n{source_note}'
         f'Contribution and source preview (sign in): {details}\n\n'

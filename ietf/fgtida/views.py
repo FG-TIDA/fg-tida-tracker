@@ -16,6 +16,7 @@ from ietf.group.models import Role
 from ietf.person.models import Person
 from . import core
 from . import workflow
+from .models import Contribution
 
 
 def floor_plan(request, num, pk):
@@ -45,12 +46,23 @@ def incubation(request):
     return search(request, acronym='incubation', incubation=True)
 
 
+contribution_numbers = Prefetch('contribution_set',
+    queryset=Contribution.objects.filter(sequence_number__isnull=False).only(
+        'document_id', 'number_prefix', 'sequence_number',
+    ).order_by('pk'), to_attr='numbered_contributions')
+
+
 def search(request, acronym=None, incubation=False, category_slug=None):
     query = (request.GET.get('name') or request.GET.get('q') or '').strip()[:200]
-    docs = core.documents().select_related('group', 'group__tida_configuration', 'type', 'tida_listing', 'tida_listing__meeting').prefetch_related('states', 'tags', 'tida_versions').annotate(
+    docs = core.documents().select_related('group', 'group__tida_configuration', 'type', 'tida_listing', 'tida_listing__meeting').prefetch_related('states', 'tags', 'tida_versions', contribution_numbers).annotate(
         first_activity=Min('docevent__time'), latest_revision=Max('docevent__time', filter=Q(docevent__type='new_revision')))
     if query:
-        docs = docs.filter(Q(name__icontains=query) | Q(title__icontains=query) | Q(abstract__icontains=query))
+        matches = Q(name__icontains=query) | Q(title__icontains=query) | Q(abstract__icontains=query)
+        if number := Contribution.reference_parts(query):
+            matches |= Q(pk__in=Contribution.objects.filter(
+                number_prefix=number[0], sequence_number=number[1],
+            ).values('document_id'))
+        docs = docs.filter(matches)
     group = acronym or request.GET.get('group', '')
     kind = request.GET.get('type', '')
     category = category_slug or request.GET.get('category', '')
@@ -61,7 +73,6 @@ def search(request, acronym=None, incubation=False, category_slug=None):
     author = request.GET.get('author', '').strip()[:200]
     state = request.GET.get('state', '')
     if incubation:
-        from .models import Contribution
         docs = docs.filter(Q(group__acronym='incubation') | Q(pk__in=Contribution.objects.filter(group__acronym='incubation').values('document_id')))
     elif group:
         docs = docs.filter(group__acronym=group)
@@ -70,7 +81,13 @@ def search(request, acronym=None, incubation=False, category_slug=None):
     if category:
         docs = docs.filter(tags__slug='tida-' + category)
     if author:
-        docs = docs.filter(pk__in=DocumentAuthor.objects.filter(Q(person__name__icontains=author) | Q(affiliation__icontains=author)).values('document_id'))
+        from .models import GitHubSource
+        native = DocumentAuthor.objects.filter(Q(person__name__icontains=author) | Q(affiliation__icontains=author))
+        github = GitHubSource.objects.exclude(sync_mode='excluded').filter(
+            Q(source_metadata__authors__icontains=author) | Q(source_metadata__affiliations__icontains=author)
+            | Q(source_metadata__contacts__icontains=author)
+        )
+        docs = docs.filter(Q(pk__in=native.values('document_id')) | Q(pk__in=github.values('document_id')))
     if state:
         docs = docs.filter(states__slug=state)
     recent = request.GET.get('recent', '')
@@ -102,7 +119,7 @@ def search(request, acronym=None, incubation=False, category_slug=None):
 
 
 def document(request, name, rev=None):
-    doc = get_object_or_404(core.documents().select_related('group', 'type').prefetch_related('states', 'tags'), name=name)
+    doc = get_object_or_404(core.documents().select_related('group', 'type').prefetch_related('states', 'tags', contribution_numbers), name=name)
     from .versioning import archive_revision, labels
     rev=archive_revision(doc,rev)
     snapshot = doc
@@ -137,6 +154,10 @@ def document(request, name, rev=None):
         # Keep the archived source intact and let editors supply a real abstract.
         abstract=''
     file_available = bool(snapshot.uploaded_filename) and Path(snapshot.get_file_name()).is_file()
+    source_records = list(doc.github_sources.exclude(sync_mode='excluded').select_related('repository'))
+    github_authors = list(dict.fromkeys(name for source in source_records for name in source.source_metadata.get('authors', [])))
+    github_affiliations = list(dict.fromkeys(name for source in source_records for name in source.source_metadata.get('affiliations', [])))
+    github_contacts = list(dict.fromkeys(name for source in source_records for name in source.source_metadata.get('contacts', [])))
     return render(request, 'fgtida/document.html', {'doc': doc, 'snapshot': snapshot,
         'revisions': ordered, 'file_available': file_available,'display_abstract':abstract,
         'version_records':version_rows,'selected_version':version_rows.get(snapshot.rev),'selected_release':releases.get(snapshot.rev),
@@ -148,7 +169,8 @@ def document(request, name, rev=None):
         'work_item':work_item,'old_revision':bool(rev and rev!=doc.rev),'show_working':not rev,
         'events': doc.docevent_set.select_related('by')[:100],
         'authors': doc.documentauthor_set.select_related('person', 'email').order_by('order'),
-        'source_records': doc.github_sources.select_related('repository').all(),
+        'source_records': source_records, 'github_authors': github_authors, 'github_affiliations': github_affiliations,
+        'github_contacts': github_contacts,
         'sessions': doc.session_set.select_related('meeting'),
         'relationships': RelatedDocument.objects.filter(source=doc, target__in=core.documents()).select_related('target', 'relationship'),
         'incoming': RelatedDocument.objects.filter(target=doc, source__in=core.documents()).select_related('source', 'relationship'),

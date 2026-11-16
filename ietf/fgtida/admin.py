@@ -19,10 +19,12 @@ from ietf.name.admin import ImportantDateNameAdmin
 from . import core
 from . import workflow
 from .files import extract_text, MAX_BYTES
-from .models import Contribution, ContributionRecipient, SessionResource, OutgoingMail, AdministratorApproval, SecurityQuestion
+from .models import Contribution, ContributionRecipient, ContributionSequence, SessionResource, OutgoingMail, AdministratorApproval, SecurityQuestion
 from .models import (EmailVerification, GitHubAccount, WorkingGroupConfiguration, GitHubRepository,
     GitHubSource, WorkItem, WorkItemRelease, GitHubJob, DocumentListing, DocumentFormat)
 from .resource_files import SessionResourceForm
+from .training import TrainingVideoAdmin
+from .models import TrainingVideo
 from django.contrib.auth.models import User
 from ietf.ietfauth.admin import CustomUserAdmin
 from django.utils.html import format_html
@@ -180,7 +182,16 @@ class ContributionReviewForm(forms.ModelForm):
 
     class Meta:
         model=Contribution
-        fields=['review_note']
+        fields=['sequence_number', 'review_note']
+
+    def clean_sequence_number(self):
+        number = self.cleaned_data['sequence_number']
+        if 'sequence_number' in self.changed_data:
+            prefix = self.instance.number_prefix or self.instance.submission_prefix()
+            self.numbering_sequence = ContributionSequence.lock(prefix)
+            if Contribution.objects.filter(number_prefix=prefix, sequence_number=number).exclude(pk=self.instance.pk).exists():
+                raise ValidationError(f'{prefix}-{number:03d} is already assigned to another contribution.')
+        return number
 
     def clean(self):
         values=super().clean()
@@ -195,17 +206,25 @@ class ContributionReviewForm(forms.ModelForm):
 
 class ContributionAdmin(admin.ModelAdmin):
     form=ContributionReviewForm
-    list_display = ['title', 'submitter', 'group', 'created', 'status', 'notifications_queued']
+    list_display = ['reference', 'title', 'submitter', 'group', 'created', 'status', 'notifications_queued']
     list_filter = ['status', 'group']
     search_fields = ['title', 'submitter__username']
-    fields = ['title', 'submitter', 'group', 'abstract', 'submitted_file', 'source_details', 'submission_method', 'source_commit',
+    fields = ['reference', 'sequence_number', 'title', 'submitter', 'group', 'abstract', 'submitted_file', 'source_details', 'submission_method', 'source_commit',
               'source_folder', 'entry_document', 'conversion_verified_at', 'created',
               'status', 'review_note', 'decision', 'adopt_into', 'draft_repository_url', 'reviewed_by', 'reviewed_at', 'document', 'notifications_queued']
-    readonly_fields = [field for field in fields if field not in {'review_note','decision','adopt_into'}]
+    readonly_fields = [field for field in fields if field not in {'sequence_number','review_note','decision','adopt_into'}]
     actions = ['accept_contributions', 'reject_contributions']
 
     def save_model(self,request,obj,form,change):
-        super().save_model(request,obj,form,change)
+        fields = ['review_note']
+        if 'sequence_number' in form.changed_data:
+            sequence = form.numbering_sequence
+            obj.number_prefix = sequence.prefix
+            if obj.sequence_number > sequence.last_number:
+                sequence.last_number = obj.sequence_number
+                sequence.save(update_fields=['last_number'])
+            fields.extend(['number_prefix', 'sequence_number'])
+        obj.save(update_fields=fields)
         from .contributions import accept,reject
         if form.cleaned_data.get('decision')=='adopt':
             if not request.user.has_perm('doc.add_document'):
@@ -214,6 +233,16 @@ class ContributionAdmin(admin.ModelAdmin):
             accept(obj.pk,request.user,form.cleaned_data.get('adopt_into'))
         elif form.cleaned_data.get('decision')=='reject':
             reject(obj.pk,request.user)
+
+    @admin.display(description='Contribution number')
+    def reference(self, obj):
+        return obj.reference
+
+    def get_search_results(self, request, queryset, search_term):
+        number = Contribution.reference_parts(search_term)
+        if number:
+            return queryset.filter(number_prefix=number[0], sequence_number=number[1]), False
+        return super().get_search_results(request, queryset, search_term)
 
     def get_queryset(self, request):
         return super().get_queryset(request).defer('content', 'source_archive').select_related('submitter', 'group')
@@ -1073,6 +1102,8 @@ def hidden_admin_permission(request, obj=None):
 
 
 def configure_admin():
+    if not admin.site.is_registered(TrainingVideo):
+        admin.site.register(TrainingVideo, TrainingVideoAdmin)
     if not admin.site.is_registered(SecurityQuestion):
         admin.site.register(SecurityQuestion, SecurityQuestionAdmin)
     for model, cls in [(User, FgUserAdmin), (Person, FgPersonAdmin), (Contribution, ContributionAdmin), (ContributionRecipient, ContributionRecipientAdmin), (SessionResource, SessionResourceAdmin), (OutgoingMail, OutgoingMailAdmin),

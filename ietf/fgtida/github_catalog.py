@@ -1,9 +1,12 @@
 """Explicit document discovery: no source code, HOWTOs or changelogs in the catalog."""
 import fnmatch
 import hashlib
+import json
 from pathlib import PurePosixPath
 import re
 from urllib.parse import urlsplit, unquote
+import requests
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 from django.utils.text import slugify
@@ -11,6 +14,7 @@ from ietf.doc.models import Document, State
 from ietf.name.models import DocTagName
 from . import core
 from .github_client import GitHubClient
+from .github_attribution import document_attribution, rst_table_attribution, structured_attribution
 from .models import GitHubSource, WorkItem
 
 SUFFIXES = {'.md','.rst','.pdf','.pptx','.docx','.txt','.xml'}
@@ -55,14 +59,18 @@ def store_source(repository, key, data, filename, title, source_url, sha, catego
         urls.append(LEGACY_USE_CASES_URL + source_url[len(USE_CASES_URL):])
     if key=='file:src/doc/index.rst' and (repository.mode=='workitem' or repository.document_type in {'tida-template','charter'}):
         urls.extend([repository.url,repository.url+'/',f'https://{repository.account.organization.lower()}.github.io/{repository.name}/'])
-    doc = source.document if source else core.documents(include_uncatalogued=True).filter(external_url__in=urls).first()
+    linked_item = WorkItem.objects.filter(repository=repository).select_related('document').first() if repository.mode == 'workitem' else None
+    if linked_item and (linked_item.sync_mode != 'automatic' or not linked_item.document_id):
+        return 'manual/excluded'
+    linked_doc = linked_item.document if linked_item and key == 'file:src/doc/index.rst' else None
+    doc = source.document if source else linked_doc or core.documents(include_uncatalogued=True).filter(external_url__in=urls).first()
     if dry_run:
         return 'update' if doc else 'create'
     if doc:
         doc = Document.objects.select_for_update().get(pk=doc.pk)
     if not source:
         source,created = GitHubSource.objects.get_or_create(repository=repository, source_key=key, defaults={'document':doc})
-        if created and doc and doc.docevent_set.filter(by__user__isnull=False).exists():
+        if created and doc and not linked_doc and doc.docevent_set.filter(by__user__isnull=False).exists():
             source.sync_mode='manual'
             source.source_url=source_url
             source.sha=sha
@@ -76,8 +84,8 @@ def store_source(repository, key, data, filename, title, source_url, sha, catego
         return 'unchanged'
     if source.document_id and not doc:
         doc=Document.objects.select_for_update().get(pk=source.document_id)
-    if doc and doc.uploaded_filename and repository.mode=='workitem':
-        refresh(source, assigned_group, selected_category, observed)
+    if doc and repository.mode == 'workitem' and (linked_doc or doc.uploaded_filename):
+        refresh(source, assigned_group, selected_category, observed, source_url)
         # Main-branch source changes never manufacture an archived revision.
         # The authenticated PDF callback updates the working copy; tags archive it.
         source.sha,source.checksum,source.last_sync=sha,digest,timezone.now()
@@ -118,7 +126,6 @@ def sync_repository(repository, dry_run=False, client=None, metadata=None):
     if not repository.enabled or not repository.account.enabled:
         return ['disabled']
     # Enforce the public-source boundary for webhook jobs as well as CLI imports.
-    from django.core.exceptions import ValidationError
     metadata=metadata if metadata is not None else client.request('GET','/repos/'+repository.full_name)
     if not metadata or metadata.get('private') or metadata.get('visibility','public')!='public':
         raise ValidationError('Only public repositories may feed the public tracker catalog.')
@@ -131,22 +138,28 @@ def sync_repository(repository, dry_run=False, client=None, metadata=None):
         for issue in client.pages(f'/repos/{repository.full_name}/issues?state=all'):
             if 'pull_request' in issue:
                 continue
-            body = ('# '+issue['title']+'\n\n'+(issue.get('body') or '')+'\n').encode()
+            issue_body = issue.get('body') or ''
+            body = ('# '+issue['title']+'\n\n'+issue_body+'\n').encode()
+            attribution = document_attribution(issue_body)
             results.append(store_source(repository, 'issue:'+str(issue['number']), body, f'issue-{issue["number"]}.md',
                 issue['title'][:255], issue['html_url'], issue['updated_at'], dry_run=dry_run,
                 source_metadata={'labels':[label['name'] for label in issue.get('labels',[])], 'state':issue.get('state',''),
-                    'created_at':issue.get('created_at',''), 'updated_at':issue['updated_at']}))
+                    'created_at':issue.get('created_at',''), 'updated_at':issue['updated_at'], **attribution}))
             # Only explicitly linked GitHub-hosted document attachments are catalogued.
             for url in sorted(set(re.findall(r'https://github\.com/(?:user-attachments/files|[^\s/]+/[^\s/]+/files)/[^\s)<>\"\\]+',issue.get('body') or ''))):
                 path=urlsplit(url).path
                 filename=PurePosixPath(unquote(path)).name
                 if PurePosixPath(filename).suffix.lower() not in SUFFIXES:
                     continue
-                data=client.attachment(url)
+                try:
+                    data=client.attachment(url)
+                except (ValidationError, requests.RequestException):
+                    results.append('unavailable issue attachment skipped')
+                    continue
                 key='attachment:'+hashlib.sha256(url.encode()).hexdigest()
                 results.append(store_source(repository,key,data,filename,issue['title'][:200]+' — '+filename[:50],
                     url,issue['updated_at'],dry_run=dry_run,source_metadata={'labels':[label['name'] for label in issue.get('labels',[])],
-                        'state':issue.get('state',''), 'parent_issue':issue['html_url']}))
+                        'state':issue.get('state',''), 'parent_issue':issue['html_url'], **attribution}))
                 if not dry_run:
                     from ietf.doc.models import RelatedDocument
                     from ietf.name.models import DocRelationshipName
@@ -169,12 +182,29 @@ def sync_repository(repository, dry_run=False, client=None, metadata=None):
     files = [row for row in tree['tree'] if row['type']=='blob' and eligible(row['path'], repository.paths)]
     if not files:
         raise ValidationError('No document files match the configured paths. Check the repository branch and document paths in GitHub repositories administration.')
+    attribution = {}
+    metadata_path = '.tracker/metadata.json'
+    if any(row['type'] == 'blob' and row['path'] == metadata_path for row in tree['tree']):
+        try:
+            declared = json.loads(client.blob(repository, sha, metadata_path, limit=65536))
+        except (ValueError, UnicodeError):
+            declared = None
+        if isinstance(declared, dict):
+            attribution = structured_attribution(declared)
     for row in files:
         path = row['path']
         if row.get('size',0) > 10*1024*1024:
             results.append('oversized file skipped')
             continue
         data = client.blob(repository, sha, path)
+        suffix = PurePosixPath(path).suffix.lower()
+        source_metadata = attribution.copy() if len(files) == 1 or path == 'src/doc/index.rst' else {}
+        if suffix in {'.md', '.rst'}:
+            text = data.decode('utf-8-sig')
+            declared = document_attribution(text)
+            if suffix == '.rst':
+                declared.update({key: values for key, values in rst_table_attribution(text).items() if values})
+            source_metadata.update({key: values for key, values in declared.items() if values})
         # A Sphinx specification is one document, not one catalog entry per chapter.
         if path.endswith('/index.rst') and '/chapters/' not in path:
             base = str(PurePosixPath(path).parent)
@@ -186,7 +216,8 @@ def sync_repository(repository, dry_run=False, client=None, metadata=None):
                 raise ValueError('Specification exceeds the document size limit.')
         kind='minutes' if PurePosixPath(path).name.lower()=='minutes.md' else 'agenda' if PurePosixPath(path).name.lower()=='agenda.md' else repository.document_type
         result=store_source(repository, 'file:'+path, data, PurePosixPath(path).name,
-            title_for(data,path), repository.url+'/blob/'+repository.branch+'/'+path, row['sha'],kind=kind,dry_run=dry_run)
+            title_for(data,path), repository.url+'/blob/'+repository.branch+'/'+path, row['sha'],
+            kind=kind,dry_run=dry_run,source_metadata=source_metadata)
         results.append(result)
         if not dry_run and repository.name=='meetings':
             from ietf.meeting.models import Session,SessionPresentation

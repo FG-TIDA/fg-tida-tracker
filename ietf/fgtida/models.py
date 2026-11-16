@@ -1,6 +1,8 @@
+import re
+
 from django.conf import settings
-from django.core.validators import URLValidator
-from django.db import models
+from django.core.validators import MinValueValidator, URLValidator
+from django.db import models, router, transaction
 from django.utils import timezone
 
 
@@ -62,11 +64,32 @@ class OutgoingMail(models.Model):
     last_error = models.CharField(max_length=200, blank=True)
 
 
+class ContributionSequence(models.Model):
+    prefix = models.CharField(max_length=50, primary_key=True)
+    last_number = models.PositiveBigIntegerField(default=0)
+
+    @classmethod
+    def lock(cls, prefix, using=None):
+        # Older fixtures may carry contribution records without their counters.
+        def existing_maximum():
+            return Contribution.objects.using(using).filter(
+                number_prefix=prefix, sequence_number__isnull=False,
+            ).order_by('-sequence_number').values_list('sequence_number', flat=True).first() or 0
+
+        sequence, _ = cls.objects.using(using).select_for_update().get_or_create(
+            prefix=prefix, defaults={'last_number': existing_maximum},
+        )
+        return sequence
+
+
 class Contribution(models.Model):
     """Private review metadata linked to a public submitted document."""
     submitter = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
     notifications_queued = models.BooleanField(default=True, editable=False)
     group = models.ForeignKey('group.Group', on_delete=models.PROTECT)
+    number_prefix = models.CharField(max_length=50, blank=True, editable=False, db_default='')
+    sequence_number = models.PositiveBigIntegerField(null=True, validators=[MinValueValidator(1)],
+        help_text='Enter the numeric part of the contribution number. Automatic numbering continues above the highest number assigned.')
     title = models.CharField(max_length=255)
     abstract = models.TextField(blank=True)
     draft_repository_url = models.URLField(blank=True, max_length=300)
@@ -94,6 +117,44 @@ class Contribution(models.Model):
     class Meta:
         ordering = ['-created']
         indexes = [models.Index(fields=['submitter', 'status', '-created'], name='fgtida_contrib_queue_idx')]
+        constraints = [
+            models.UniqueConstraint(fields=['number_prefix', 'sequence_number'], name='fgtida_contribution_number_unique'),
+            models.CheckConstraint(condition=models.Q(sequence_number__gt=0), name='fgtida_contribution_number_positive'),
+        ]
+
+    def submission_prefix(self):
+        group = self.group
+        config = getattr(group, 'tida_configuration', None)
+        if config is not None:
+            return f'FG-TIDA-WG{config.number}'
+        if group.acronym == 'tida':
+            return 'FG-TIDA'
+        return f'FG-TIDA-{group.acronym.upper().removeprefix("TIDA")}'
+
+    @property
+    def reference(self):
+        if self.sequence_number is None:
+            return ''
+        return f'{self.number_prefix}-{self.sequence_number:03d}'
+
+    @staticmethod
+    def reference_parts(value):
+        match = re.fullmatch(r'(FG-TIDA(?:-[A-Z0-9_-]+)?)-([0-9]{1,19})', value.strip().upper())
+        if match and 0 < int(match[2]) <= 2**63 - 1:
+            return match[1], int(match[2])
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            return super().save(*args, **kwargs)
+        using = kwargs.get('using') or router.db_for_write(type(self), instance=self)
+        self.number_prefix = self.submission_prefix()
+        with transaction.atomic(using=using):
+            sequence = ContributionSequence.lock(self.number_prefix, using)
+            if self.sequence_number is None:
+                self.sequence_number = sequence.last_number + 1
+            sequence.last_number = max(sequence.last_number, self.sequence_number)
+            sequence.save(update_fields=['last_number'])
+            return super().save(*args, **kwargs)
 
     def __str__(self):
         return self.title
@@ -157,6 +218,32 @@ class SessionResourceChunk(models.Model):
     class Meta:
         ordering = ['position']
         constraints = [models.UniqueConstraint(fields=['resource', 'position'], name='fgtida_resource_chunk_position')]
+
+
+class TrainingVideo(models.Model):
+    title = models.CharField(max_length=160)
+    description = models.TextField(blank=True)
+    published = models.BooleanField(default=False)
+    filename = models.CharField(max_length=255, blank=True, editable=False)
+    file_size = models.PositiveBigIntegerField(default=0, editable=False)
+    content_type = models.CharField(max_length=100, blank=True, editable=False)
+    file_version = models.CharField(max_length=32, blank=True, editable=False)
+
+    class Meta:
+        ordering = ['title', 'pk']
+
+    def __str__(self):
+        return self.title
+
+
+class TrainingVideoChunk(models.Model):
+    resource = models.ForeignKey(TrainingVideo, on_delete=models.CASCADE, related_name='file_chunks')
+    position = models.PositiveIntegerField()
+    content = models.BinaryField()
+
+    class Meta:
+        ordering = ['position']
+        constraints = [models.UniqueConstraint(fields=['resource', 'position'], name='fgtida_training_chunk_position')]
 
 
 class EmailVerification(models.Model):

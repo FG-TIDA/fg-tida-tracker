@@ -8,7 +8,7 @@ from django.shortcuts import get_object_or_404
 from django.utils.http import content_disposition_header
 from django.views.decorators.http import require_safe
 from . import core
-from .models import SessionResource, SessionResourceChunk
+from .models import SessionResource
 
 CHUNK_SIZE = 1024 * 1024
 MEDIA_LIMIT = 100 * CHUNK_SIZE
@@ -85,7 +85,7 @@ def store_upload(resource, upload):
         size += len(data)
         if size > MEDIA_LIMIT:
             raise forms.ValidationError('Attachment exceeds 100 MB.')
-        SessionResourceChunk.objects.create(resource=resource, position=position, content=data)
+        resource.file_chunks.create(position=position, content=data)
         position += 1
     if not size:
         raise forms.ValidationError('The attachment is empty.')
@@ -93,15 +93,21 @@ def store_upload(resource, upload):
     resource.file_size = size
     resource.content_type = (MEDIA | DOCUMENTS)[Path(upload.name).suffix.lower()]
     resource.file_version = uuid.uuid4().hex
-    resource.url = ''
-    SessionResource.objects.filter(pk=resource.pk).update(filename=resource.filename,
-        file_size=size, content_type=resource.content_type, file_version=resource.file_version, url='')
+    fields = dict(filename=resource.filename, file_size=size,
+                  content_type=resource.content_type, file_version=resource.file_version)
+    if isinstance(resource, SessionResource):
+        resource.url = fields['url'] = ''
+    type(resource).objects.filter(pk=resource.pk).update(**fields)
 
 
 @require_safe
 def download(request, pk):
     resource = get_object_or_404(SessionResource, pk=pk, file_size__gt=0,
         session__meeting__type_id='tida', session__group__in=core.groups())
+    return stream_file(request, resource, attachment=resource.kind != 'recording')
+
+
+def stream_file(request, resource, *, attachment=False):
     size = resource.file_size
     etag = f'"{resource.file_version}"'
     start, end, status = 0, size - 1, 200
@@ -130,8 +136,7 @@ def download(request, pk):
     def chunks():
         # One cursor/snapshot, fetched a chunk at a time. Concurrent replacement
         # cannot mix bytes from different versions in a response.
-        records = SessionResourceChunk.objects.filter(resource_id=resource.pk,
-            resource__file_version=resource.file_version,
+        records = resource.file_chunks.filter(resource__file_version=resource.file_version,
             position__gte=start // CHUNK_SIZE, position__lte=end // CHUNK_SIZE)
         for position, part in records.values_list('position', 'content').iterator(chunk_size=1):
             low = max(0, start - position * CHUNK_SIZE)
@@ -144,7 +149,7 @@ def download(request, pk):
     response['ETag'] = etag
     response['Cache-Control'] = 'no-cache'
     response['X-Content-Type-Options'] = 'nosniff'
-    response['Content-Disposition'] = content_disposition_header(resource.kind != 'recording', resource.filename)
+    response['Content-Disposition'] = content_disposition_header(attachment, resource.filename)
     if status == 206:
         response['Content-Range'] = f'bytes {start}-{end}/{size}'
     return response

@@ -270,7 +270,7 @@ def accept(pk, user, target_group=None):
     item.status = 'accepted'
     item.reviewed_by = user
     item.reviewed_at = timezone.now()
-    item.save()
+    item.save(update_fields=['document', 'status', 'reviewed_by', 'reviewed_at'])
 
 
 @transaction.atomic

@@ -24,6 +24,7 @@ SOURCE_RULES = {
     'fg-tida/spec-template': ('tida', 'templates', '', 'https://github.com/FG-TIDA/spec-template'),
     'fg-tida/wg-charter-template': ('tida', 'templates', '', 'https://github.com/FG-TIDA/wg-charter-template'),
     'fg-tida/wg1-ra-aai': ('tidawg1', '', 'https://github.com/FG-TIDA/wg1-ra-aai#readme', ''),
+    'fg-tida-wg1/wg1-cdra-ra-aai': ('tidawg1', '', 'https://github.com/fg-tida-wg1/wg1-cdra-ra-aai', ''),
     'fg-tida-wg1/wg1-cdra-charter': ('tidawg1', '', 'https://github.com/fg-tida-wg1/wg1-cdra-charter', ''),
     'fg-tida-wg2/wg2-ibea-charter': ('tidawg2', '', 'https://github.com/fg-tida-wg2/wg2-ibea-charter', ''),
 }

@@ -8,6 +8,7 @@ from . import session_materials
 from . import mfa
 from . import github_views
 from . import document_formats
+from . import training
 
 app_name = 'fgtida'
 urlpatterns = [
@@ -46,6 +47,8 @@ urlpatterns = [
     path('', views.home, name='home'),
     path('accounts/settings/', views.preferences, name='preferences'),
     path('doc/', views.search, name='documents'),
+    path('training/', training.training, name='training'),
+    path('training/<int:pk>/video/', training.video, name='training-video'),
     path('doc/<slug:name>/', views.document, name='document'),
     path('doc/<slug:name>/history/', views.history, name='history'),
     path('doc/<slug:name>/compare/', views.compare, name='compare'),

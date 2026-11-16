@@ -38,6 +38,10 @@ class Command(BaseCommand):
                         continue
                     if GitHubRepository.objects.filter(account=group.github_account,name=repo['name']).exists():
                         continue
+                    existing = GitHubRepository.objects.filter(github_id=repo['id']).first()
+                    if existing:
+                        self.stdout.write(f'Repository moved or renamed: update {existing.full_name} to {repo["full_name"]} after verifying ownership.')
+                        continue
                     self.stdout.write('Discovered '+repo['full_name'])
                     if options['apply']:
                         charter = repo['name'].endswith('-charter')
@@ -56,8 +60,13 @@ class Command(BaseCommand):
                             document_type='charter' if charter else 'tida', group_evidence=repo['html_url'])
         records = GitHubRepository.objects.filter(enabled=True, account__enabled=True).select_related('account','group')
         if options['repository']:
-            owner, name = options['repository'].split('/',1)
+            owner, separator, name = options['repository'].partition('/')
+            if not separator or not owner or not name:
+                raise CommandError('Specify --repository as OWNER/NAME.')
             records = records.filter(account__organization__iexact=owner, name=name)
+            if not records.exists():
+                raise CommandError('No enabled mapping matches this repository. Check GitHub repositories and GitHub accounts in admin.')
+        failures = 0
         for repository in records:
             try:
                 client = GitHubClient(repository.account)
@@ -65,7 +74,9 @@ class Command(BaseCommand):
                 if not metadata or metadata.get('private'):
                     raise ValueError('Only public repositories are imported into the public catalog.')
                 if repository.github_id and repository.github_id != metadata['id']:
-                    raise ValueError('Repository identity changed; administrator review is required.')
+                    raise ValidationError('Repository identity changed; administrator review is required.')
+                if GitHubRepository.objects.filter(github_id=metadata['id']).exclude(pk=repository.pk).exists():
+                    raise ValidationError('This GitHub ID already belongs to another mapping. Review the existing mapping before importing a transferred repository.')
                 if options['apply'] and not repository.github_id:
                     repository.github_id = metadata['id']
                     repository.save(update_fields=['github_id'])
@@ -74,4 +85,12 @@ class Command(BaseCommand):
             except Exception as error:
                 # Never print tokens, request bodies or upstream response contents.
                 detail='; '.join(error.messages) if isinstance(error,ValidationError) else 'Check source configuration, GitHub permissions or rate limits.'
-                raise CommandError(f'Synchronization stopped for {repository}. {type(error).__name__}: {detail}') from None
+                message = f'Synchronization failed for {repository}. {type(error).__name__}: {detail}'
+                if options['repository']:
+                    raise CommandError(message) from None
+                self.stderr.write(message)
+                if options['apply']:
+                    GitHubRepository.objects.filter(pk=repository.pk).update(last_error=detail[:200])
+                failures += 1
+        if failures:
+            raise CommandError(f'{failures} repositories failed. Other enabled repositories were processed.')

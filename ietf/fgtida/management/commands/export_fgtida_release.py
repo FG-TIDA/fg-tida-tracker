@@ -44,6 +44,9 @@ class Command(BaseCommand):
         # Generate fresh recovery codes after moving to a new production key.
         queue.extend(AdministratorApproval.objects.filter(user_id__in=account_ids))
         queue.extend(contributions)
+        queue.extend(apps.get_model('fgtida', 'ContributionSequence').objects.filter(
+            prefix__in=contributions.order_by().values('number_prefix'),
+        ))
         # Keep durable contribution notifications and their original attachments.
         # Password-reset and other environment-specific account mail is excluded.
         queue.extend(apps.get_model('fgtida', 'OutgoingMail').objects.filter(contribution__in=contributions))

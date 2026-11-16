@@ -40,6 +40,18 @@ class Command(BaseCommand):
         for number, repo, path in [(0,'wg0-uct-charter','charter.md'),(1,'wg1-cdra-charter','charter.md'),(2,'wg2-ibea-charter','src/doc/index.rst')]:
             owner = GitHubAccount.objects.get(organization=f'fg-tida-wg{number}')
             sources.append((owner,repo,f'tidawg{number}','files','','charter',[path]))
+        moved_wg1_id = 1378915670
+        if GitHubRepository.objects.filter(github_id=moved_wg1_id).exclude(
+            account__organization__iexact='fg-tida-wg1', name='wg1-cdra-ra-aai',
+        ).exists():
+            self.stdout.write('WG1 repository ID is on an older mapping. Review and update that mapping before enabling sync.')
+        else:
+            wg1 = GitHubAccount.objects.get(organization='fg-tida-wg1')
+            GitHubRepository.objects.get_or_create(account=wg1, name='wg1-cdra-ra-aai', defaults={
+                'group': Group.objects.get(acronym='tidawg1'), 'github_id': moved_wg1_id,
+                'paths': ['src/doc/index.rst'], 'enabled': False,
+                'group_evidence': 'https://github.com/fg-tida-wg1/wg1-cdra-ra-aai',
+            })
         for owner, name, acronym, mode, category, kind, paths in sources:
             from ietf.fgtida.classification import SOURCE_RULES
             _, _, group_evidence, category_evidence = SOURCE_RULES[(owner.organization+'/'+name).lower()]

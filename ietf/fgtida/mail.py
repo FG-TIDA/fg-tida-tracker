@@ -1,4 +1,6 @@
 import smtplib
+import mimetypes
+from pathlib import PurePath
 
 from django.conf import settings
 from django.core.mail import EmailMessage, EmailMultiAlternatives
@@ -41,8 +43,7 @@ def deliver(pk):
         message = message_type(item.subject, item.body, settings.DEFAULT_FROM_EMAIL, [item.recipient])
         if item.html_body:
             message.attach_alternative(item.html_body, 'text/html')
-        if item.contribution_id:
-            import mimetypes
+        if item.contribution_id and PurePath(item.contribution.filename).suffix.lower() != '.zip':
             attachment = item.contribution
             message.attach(attachment.filename, bytes(attachment.content),
                            mimetypes.guess_type(attachment.filename)[0] or 'application/octet-stream')

@@ -16,6 +16,22 @@ from .work_items import state_of
 LABEL_COLORS = {'draft':'6c757d','review':'ffc107','published':'198754','withdrawn':'dc3545'}
 
 
+def write_client(item):
+    repository = item.repository
+    config = getattr(item.document.group, 'tida_configuration', None)
+    if (not repository.enabled or not repository.account.enabled or repository.mode != 'workitem'
+            or repository.group_id != item.document.group_id or not config
+            or config.github_account_id != repository.account_id):
+        raise ValidationError('Select an enabled versioned repository in the work item’s configured working group organization.')
+    client = GitHubClient(repository.account, write=True)
+    remote = client.request('GET', '/repos/'+repository.full_name)
+    if (not remote or not repository.github_id or remote['id'] != repository.github_id
+            or remote['full_name'].casefold() != repository.full_name.casefold()
+            or remote.get('private') or remote.get('archived') or remote.get('disabled')):
+        raise ValidationError('Verify the current public GitHub repository name and ID before writing.')
+    return client
+
+
 def update_state(item, client):
     if not item.document_id or not item.repository_id:
         return
@@ -39,7 +55,8 @@ def update_state(item, client):
 def bootstrap_repository(item, client):
     document = item.document
     repo = item.repository.full_name
-    authors = list(document.documentauthor_set.order_by('order').values_list('person__name',flat=True))
+    authors = [{'name': name, 'affiliation': affiliation} for name, affiliation in
+               document.documentauthor_set.order_by('order').values_list('person__name', 'affiliation')]
     origin = settings.SITE_URL.rstrip('/')
     metadata = {'document':document.name,'title':document.title,'authors':authors,
         'tracker_url':origin+'/doc/'+document.name+'/','group':document.group.name}
@@ -54,9 +71,14 @@ def bootstrap_repository(item, client):
         metadata['submitted_source'] = contribution.source_manifest
     serialized=json.dumps(metadata,ensure_ascii=False,indent=2)+'\n'
     main_metadata=client.request('GET','/repos/'+repo+'/contents/.tracker/metadata.json?ref='+quote(item.repository.branch,safe=''))
-    if main_metadata and base64.b64decode(main_metadata.get('content',''))==serialized.encode():
-        update_state(item,client)
-        return
+    if main_metadata:
+        published_metadata = base64.b64decode(main_metadata.get('content', ''))
+        existing = json.loads(published_metadata)
+        if not isinstance(existing, dict) or existing.get('document') != document.name:
+            raise ValidationError('GitHub metadata already links this repository to a different tracker document.')
+        if published_metadata == serialized.encode():
+            update_state(item,client)
+            return
     branch='tracker/metadata-'+str(item.pk)+'-'+hashlib.sha256(serialized.encode()).hexdigest()[:12]
     ref = client.request('GET','/repos/'+repo+'/git/ref/heads/'+item.repository.branch)
     if not ref:
@@ -64,14 +86,15 @@ def bootstrap_repository(item, client):
     if not client.request('GET','/repos/'+repo+'/git/ref/heads/'+quote(branch,safe='')):
         client.request('POST','/repos/'+repo+'/git/refs',{'ref':'refs/heads/'+branch,'sha':ref['object']['sha']})
     files = {'.tracker/metadata.json':serialized}
-    for path in ['src/doc/conf.py','src/doc/index.rst','README.md']:
+    initial_files = ['src/doc/conf.py', 'src/doc/index.rst'] if not main_metadata else []
+    for path in [*initial_files, 'README.md']:
         response = client.request('GET','/repos/'+repo+'/contents/'+path+'?ref='+quote(branch,safe=''))
         if not response:
             continue
         text = base64.b64decode(response['content']).decode('utf-8')
         if path.endswith('conf.py'):
             lines = text.splitlines(keepends=True)
-            replacements = {'project':document.title,'author':', '.join(authors)}
+            replacements = {'project':document.title,'author':', '.join(author['name'] for author in authors)}
             for node in reversed(ast.parse(text).body):
                 if isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name) and node.targets[0].id in replacements:
                     lines[node.lineno-1:node.end_lineno] = [node.targets[0].id+' = '+repr(replacements[node.targets[0].id])+'\n']
@@ -88,7 +111,7 @@ def bootstrap_repository(item, client):
             marker = '<!-- FG-TIDA tracker -->'
             text = text.split(marker)[0].rstrip()+'\n\n'+marker+'\n'+f'[![Tracker state]({origin}/work-items/{item.pk}/state.svg)]({metadata["tracker_url"]})\n'
         files[path] = text
-    if contribution and contribution.source_archive:
+    if contribution and contribution.source_archive and not main_metadata:
         from .source_packages import unpack
         # Import document content on the review branch, preserving the official
         # template's executable configuration and GitHub workflows.
@@ -119,11 +142,11 @@ def bootstrap_repository(item, client):
 
 @transaction.atomic
 def provision(item):
-    if not item.document_id or state_of(item.document) not in {'draft','review'}:
+    if not item.document_id or item.sync_mode != 'automatic' or state_of(item.document) not in {'draft','review'}:
         return
     if not item.repository_id:
-        config = item.document.group.tida_configuration
-        if not config.github_account_id:
+        config = getattr(item.document.group, 'tida_configuration', None)
+        if not config or not config.github_account_id or not config.github_account.enabled:
             raise ValidationError('Configure this WG’s GitHub organization and App installation first.')
         client = GitHubClient(config.github_account,write=True)
         name = f'wg{config.number}-{config.topic_acronym}-'+('charter' if item.document.type_id=='charter' else item.short_name)
@@ -139,7 +162,7 @@ def provision(item):
             defaults={'group':item.document.group,'github_id':repo['id'], 'group_evidence':'https://github.com/'+config.github_account.organization+'/'+name})
         item.repository=repository
         item.save(update_fields=['repository'])
-    client = GitHubClient(item.repository.account,write=True)
+    client = write_client(item)
     bootstrap_repository(item,client)
 
 
@@ -161,8 +184,8 @@ def run_jobs(limit=10):
                         sync_repository(job.repository)
                     elif job.kind=='provision':
                         provision(job.work_item)
-                    elif job.kind=='state' and job.work_item.repository_id:
-                        update_state(job.work_item,GitHubClient(job.work_item.repository.account,write=True))
+                    elif job.kind == 'state' and job.work_item.repository_id and job.work_item.document_id and job.work_item.sync_mode == 'automatic':
+                        update_state(job.work_item, write_client(job.work_item))
             except Exception as error:
                 job.last_error=f'{type(error).__name__}: operation failed; review configuration or permissions.'
                 job.available_at=timezone.now()+timedelta(minutes=min(2**job.attempts,60))

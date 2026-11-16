@@ -213,6 +213,49 @@ class GitHubWorkflowTests(TestCase):
         self.assertEqual(store_source(*args),'unchanged')
         self.assertEqual(Document.objects.get(title='Original').rev,'00')
 
+    def test_sync_backfills_issue_attribution_without_creating_a_revision(self):
+        from unittest.mock import Mock
+        from .github_catalog import sync_repository
+        self.repo.mode = 'issues'
+        self.repo.save(update_fields=['mode'])
+        issue = {'number': 1, 'title': 'Authored proposal', 'updated_at': '2026-11-01',
+            'html_url': self.repo.url + '/issues/1',
+            'body': '## Proposer(s)\n\n<!-- Name and affiliation -->\nExample Author, Example Lab, private@example.test\n\n## Summary\nText'}
+        data = ('# ' + issue['title'] + '\n\n' + issue['body'] + '\n').encode()
+        store_source(self.repo, 'issue:1', data, 'issue-1.md', issue['title'], issue['html_url'], issue['updated_at'])
+        original = GitHubSource.objects.get(repository=self.repo)
+        client = Mock()
+        client.pages.return_value = [issue]
+        sync_repository(self.repo, client=client, metadata={'id': self.repo.github_id})
+        original.refresh_from_db()
+        self.assertEqual(original.document.rev, '00')
+        self.assertEqual(original.source_metadata['authors'], ['Example Author'])
+        self.assertEqual(original.source_metadata['affiliations'], ['Example Lab'])
+        self.assertNotIn('private@example.test', str(original.source_metadata))
+        page = self.client.get('/doc/' + original.document.name + '/')
+        self.assertContains(page, 'Example Lab <span', html=False)
+        self.assertContains(self.client.get('/doc/', {'author': 'Example Lab'}), issue['title'])
+
+    def test_catalog_refresh_reuses_explicit_work_item_link(self):
+        document, item = self.document()
+        store_source(self.repo, 'file:src/doc/index.rst', b'Updated text', 'index.rst',
+            'Title from GitHub', self.repo.url + '/blob/main/src/doc/index.rst', 'new-source',
+            source_metadata={'authors': ['GitHub Author']})
+        link = GitHubSource.objects.get(repository=self.repo)
+        self.assertEqual(link.document_id, document.pk)
+        self.assertEqual(link.document.rev, '00')
+        self.assertEqual(link.source_metadata['authors'], ['GitHub Author'])
+
+    def test_rst_attribution_ignores_template_examples_and_contact_emails(self):
+        from .github_attribution import rst_table_attribution
+        self.assertEqual(rst_table_attribution(
+            'Authors\n-------\n\n.. list-table::\n   :header-rows: 1\n\n'
+            '   * - Name\n     - Affiliation\n     - Contact\n'
+            '   * - <Jane Doe>\n     - <Company>\n     - <jane@example.test>\n'
+            '   * - Working Author\n     - Working Organization\n     - author@example.test\n'
+            '\nAbstract\n--------\nText.'
+        ), {'authors': ['Working Author'], 'affiliations': ['Working Organization']})
+
     def test_legacy_work_item_without_file_gets_initial_archive(self):
         document=Document(name='fg-tida-link-only',title='Old link',rev='00',group=self.root,type_id='tida',external_url=self.repo.url+'/blob/main/doc.md')
         core.save_document(document,core.actor_for(),'Legacy external reference only')

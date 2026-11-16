@@ -8,7 +8,7 @@ from django.utils.deprecation import MiddlewareMixin
 # Native URLs remain registered for reverse() in upstream templates, but only
 # reviewed workflows are reachable. Never use a menu as an authorization boundary.
 ADMIN_MODELS = {
-    'fgtida': {'contribution', 'contributionrecipient', 'sessionresource', 'outgoingmail', 'securityquestion',
+    'fgtida': {'contribution', 'contributionrecipient', 'sessionresource', 'trainingvideo', 'outgoingmail', 'securityquestion',
         'emailverification','githubaccount','workinggroupconfiguration','githubrepository','githubsource','workitem','workitemrelease','githubjob'},
     'auth': {'user', 'group'},
     'person': {'person', 'email', 'alias'},

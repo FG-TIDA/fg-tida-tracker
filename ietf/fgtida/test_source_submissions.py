@@ -121,7 +121,9 @@ class SubmissionTests(TestCase):
                 self.assertTrue(deliver(message.pk))
                 self.assertFalse(deliver(message.pk))
         self.assertEqual(len(mail.outbox), 2)
-        self.assertEqual(mail.outbox[0].attachments[0].filename, 'proposal.zip')
+        for message in mail.outbox:
+            self.assertFalse(message.attachments)
+            self.assertIn(response.url, message.body)
         self.assertContains(self.client.get(response.url), 'Full contribution')
 
     def test_word_original_retained_and_only_submitter_can_verify_before_adoption(self):

@@ -115,10 +115,10 @@ the live database, which could overwrite newer accounts and editorial changes.
    and the Render secret file in the next step. Do not use your login password.
 6. Under **Repository permissions**, request **Contents: Read and write**,
    **Pull requests: Read and write**, **Issues: Read and write**, default
-   **Metadata: Read-only**, and **Repository creation: Write**. Repository creation
-   is an owner-approved permission; broad Administration/Workflows write is not
-   needed for this implementation. If your interface/policy does not expose the
-   creation permission, stop and review with the organization owner.
+   **Metadata: Read-only**. These are sufficient for the existing-repository
+   workflow below. If you want the tracker to create repositories from templates,
+   ask the organization owner to approve the least-privileged permission set for
+   [GitHub's template-generation endpoint](https://docs.github.com/en/rest/repos/repos#create-a-repository-using-a-template).
 7. Subscribe to **Push** and **Issues** events. Keep SSL verification enabled.
 8. For installation availability select **Any account**, because the WG
    organizations are separate accounts. This does not grant them access to your
@@ -160,9 +160,10 @@ in chat, screenshots, tickets or repository workflow files.
 
 1. In the App settings choose **Install App → FG-TIDA → Install**. Select the
    known content/template repositories: themes, meetings, marketing,
-   wg1-ra-aai, spec-template and wg-charter-template.
+   spec-template and wg-charter-template.
 2. Install in **fg-tida-wg0**, **fg-tida-wg1** and **fg-tida-wg2** too. Select their
-   official existing repositories, including `fg-tida-wg0/use-cases` for wg0.
+   official existing repositories, including `fg-tida-wg0/use-cases` for wg0
+   and `fg-tida-wg1/wg1-cdra-ra-aai` for wg1.
    The repository-creation permission, if enabled, grants
    the creating App access to newly created repositories; verify this in the
    acceptance test rather than granting access to unrelated repositories.
@@ -370,7 +371,7 @@ does not modify repositories previously created from it.
    | Repository | `pdf` input |
    | --- | --- |
    | FG-TIDA/spec-template | `target/latex/specification.pdf` |
-   | FG-TIDA/wg1-ra-aai | `target/latex/specification.pdf` |
+   | fg-tida-wg1/wg1-cdra-ra-aai | `target/latex/specification.pdf` |
    | FG-TIDA/wg-charter-template | `target/latex/wg-charter.pdf` |
    | fg-tida-wg1/wg1-cdra-charter | `target/latex/wg-charter.pdf` |
    | fg-tida-wg2/wg2-ibea-charter | `target/latex/wg-charter.pdf` |
@@ -403,7 +404,9 @@ does not modify repositories previously created from it.
    organization, then review/merge its tracker metadata PR. Incorporate the
    participant's actual draft through a reviewed PR; this content transfer is an
    editorial step. Merely pasting a personal draft-repository URL does not activate
-   sync. Never push secrets or recovery information into the source tree.
+   sync. The tracker stages an adopted contribution's source and assets on the
+   review branch during the initial connection. Review the diff before merging.
+   Later metadata refreshes use the existing GitHub source as the working copy.
 5. Set `FGTIDA_GITHUB_INGEST_ENABLED=true`, redeploy, and merge a reviewed document
    change. In **GitHub → repository → Actions**, open the build. The publisher
    should report a working-copy update; the tracker history should identify its

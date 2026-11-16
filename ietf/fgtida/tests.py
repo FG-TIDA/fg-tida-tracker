@@ -80,6 +80,27 @@ class PublicationSecurityTests(SimpleTestCase):
 
 @override_settings(FGTIDA_REQUIRE_ADMIN_MFA=False)
 class NativeDatatrackerTests(TestCase):
+    def test_training_admin_publish_and_video_ranges(self):
+        data = b'\x00\x00\x00\x18ftypmp42' + b'training video'
+        url = '/admin/fgtida/trainingvideo/add/'
+        self.assertContains(self.client.get(url), 'Video file')
+        response = self.client.post(url, {'title': 'Tracker training',
+            'upload': SimpleUploadedFile('training.mp4', data, 'video/mp4')})
+        self.assertEqual(response.status_code, 302)
+        from .models import TrainingVideo
+        video = TrainingVideo.objects.get()
+        file_url = f'/training/{video.pk}/video/'
+        self.client.logout()
+        self.assertNotContains(self.client.get('/training/'), 'Tracker training')
+        self.assertEqual(self.client.get(file_url).status_code, 404)
+        TrainingVideo.objects.update(published=True)
+        self.assertContains(self.client.get('/training/'), file_url)
+        part = self.client.get(file_url, HTTP_RANGE='bytes=4-7')
+        self.assertEqual(part.status_code, 206)
+        self.assertEqual(part['Content-Disposition'], 'inline; filename="training.mp4"')
+        self.assertEqual(b''.join(part.streaming_content), b'ftyp')
+        self.assertEqual(self.client.head(file_url)['Content-Length'], str(len(data)))
+
     @override_settings(DEBUG=True, SERVER_MODE='development', FGTIDA_REQUIRE_ADMIN_MFA=True,
         FGTIDA_DEV_ADMIN_MFA_PAUSED=True)
     def test_admin_mfa_development_pause_preserves_devices_and_production_gate(self):
@@ -468,6 +489,47 @@ class NativeDatatrackerTests(TestCase):
         self.assertEqual(item.status, 'accepted')
         self.assertEqual(Document.objects.filter(title=item.title).count(), 1)
         self.assertEqual(self.client.get(f'/doc/{item.document.name}/').status_code, 200)
+
+    def test_contribution_numbers_follow_the_original_group_and_admin_edits(self):
+        from .models import Contribution
+        groups = {group.acronym: group for group in Group.objects.filter(
+            acronym__in=['tidawg0', 'tidawg1', 'incubation'],
+        )}
+
+        def submit(group, title):
+            response = self.client.post('/submit/', {
+                'group': groups[group].pk, 'title': title, **self.source_submission(),
+            })
+            self.assertEqual(response.status_code, 302)
+            return Contribution.objects.get(title=title)
+
+        first = submit('tidawg1', 'First WG1 contribution')
+        independent = submit('tidawg0', 'First WG0 contribution')
+        second = submit('tidawg1', 'Second WG1 contribution')
+        incubation = submit('incubation', 'First Incubation contribution')
+        self.assertEqual(first.reference, 'FG-TIDA-WG1-001')
+        self.assertEqual(independent.reference, 'FG-TIDA-WG0-001')
+        self.assertEqual(second.reference, 'FG-TIDA-WG1-002')
+        self.assertEqual(incubation.reference, 'FG-TIDA-INCUBATION-001')
+
+        path = f'/admin/fgtida/contribution/{second.pk}/change/'
+        collision = self.client.post(path, {'sequence_number': '1', '_save': 'Save'})
+        self.assertContains(collision, 'FG-TIDA-WG1-001 is already assigned')
+        self.assertEqual(self.client.post(path, {'sequence_number': '10', '_save': 'Save'}).status_code, 302)
+        self.assertEqual(self.client.post(path, {'sequence_number': '4', '_save': 'Save'}).status_code, 302)
+        next_item = submit('tidawg1', 'Third WG1 contribution')
+        self.assertEqual(next_item.reference, 'FG-TIDA-WG1-011')
+        self.assertContains(self.client.get(f'/submit/{second.pk}/'), 'FG-TIDA-WG1-004')
+        self.assertContains(self.client.get(f'/doc/{second.document.name}/'), 'FG-TIDA-WG1-004')
+        self.assertContains(self.client.get('/doc/', {'q': 'fg-tida-wg1-004'}), second.title)
+        self.assertContains(self.client.get('/admin/fgtida/contribution/', {'q': 'FG-TIDA-WG1-004'}), second.title)
+
+        adopt = self.client.post(path, {'sequence_number': '4', 'decision': 'adopt',
+            'adopt_into': groups['tidawg0'].pk, '_save': 'Save'})
+        self.assertEqual(adopt.status_code, 302)
+        second.refresh_from_db()
+        self.assertEqual(second.document.group_id, groups['tidawg0'].pk)
+        self.assertEqual(second.reference, 'FG-TIDA-WG1-004')
 
     def test_contribution_requires_login_and_valid_file(self):
         self.client.logout()
@@ -878,9 +940,10 @@ class NativeDatatrackerTests(TestCase):
             self.assertTrue(deliver(notification.pk))
             self.assertFalse(deliver(notification.pk))
             self.assertEqual(mail.outbox[-1].to, [address])
-            self.assertEqual(mail.outbox[-1].attachments[0].filename, 'proposal.zip')
+            self.assertFalse(mail.outbox[-1].attachments)
+            self.assertIn(f'/submit/{item.pk}/', mail.outbox[-1].body)
             from .source_packages import unpack
-            self.assertEqual(unpack(mail.outbox[-1].attachments[0].content)['index.rst'], b'Original proposal')
+            self.assertEqual(unpack(bytes(item.content))['index.rst'], b'Original proposal')
 
     @override_settings(FGTIDA_MAIL_ENABLED=True, FGTIDA_MAIL_IMMEDIATE=False,
                        EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
