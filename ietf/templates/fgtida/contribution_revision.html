@@ -1,0 +1,8 @@
+{% extends 'base.html' %}{% load django_bootstrap5 %}
+{% block title %}Submit a new version | FG-TIDA{% endblock %}
+{% block content %}
+<h1>Submit a new version</h1>
+<p><a href="{% url 'fgtida:contribution' submission.pk %}">{{ submission.reference }} · {{ submission.title }}</a></p>
+<p>The source at this GitHub commit will be archived on the existing work item. Its reference, earlier versions and review status are preserved.</p>
+<form method="post">{% csrf_token %}{% bootstrap_form form %}<button class="btn btn-primary" type="submit">Archive version</button></form>
+{% endblock %}

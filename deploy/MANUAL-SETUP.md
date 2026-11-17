@@ -295,8 +295,11 @@ documents. For a repository containing ordinary document files:
 2. Set **Mode** to **Document files**, select its owning group, document type
    (`tida-template`, `charter` or `tida`) and category, and enter explicit document
    paths. Do not include repository support files such as HOWTO or CHANGELOG.
-3. Review/apply the import in section 7. Each changed file becomes a new archived
-   minor version; identical files do not create versions. This mode does not
+3. Review/apply the import in section 7. The importer reads an explicit X.Y
+   document version, including charter information and version-history tables.
+   A source without a declared version starts at 0.0 and subsequent changes
+   increment its minor version. Identical files do not create versions. A new
+   source archive needs a version above every existing archive. This mode does not
    interpret release tags as version numbers. For tagged `vX.Y` PDF releases,
    use **Versioned work item** and complete the authenticated build setup below.
 4. To automate file imports, complete the App/webhook and job-processing setup
@@ -311,6 +314,28 @@ documents. For a repository containing ordinary document files:
 
 Archived file bytes remain immutable. Corrections are new revisions, preserving
 links to previously cited versions.
+
+Admins can correct the current archive's displayed X.Y label in
+**Documents → select the document → Current archive version**. The earlier label
+continues to resolve to that archive. GitHub release labels follow their `vX.Y`
+tags. When a tag finalizes an imported source with the same version, the tracker
+verifies the archived source against the release and attaches the release PDF
+to that revision.
+
+To align existing source archives after deploying this change, preview and then
+apply the reconciliation on the service with access to its persistent files.
+
+```sh
+python ietf/manage.py reconcile_fgtida_versions --skip-checks
+python ietf/manage.py reconcile_fgtida_versions --apply --skip-checks
+```
+
+Review any reported version conflicts individually. To change a displayed
+document type, use **Documents → select the document → Public metadata**.
+Administrators can create additional types under **Public document types** and
+categories under **Names → Document categories**. Assign categories through the
+document's **Categories** field. Source-backed use cases and themes receive their
+corresponding default types, and submitted work items default to Contribution.
 
 ### Input and output documents
 

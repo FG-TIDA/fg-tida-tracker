@@ -4,7 +4,7 @@ from difflib import unified_diff
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from django.core.paginator import Paginator
-from django.db.models import Q, F, Value, DateField, Prefetch, Min, Max, Exists, OuterRef
+from django.db.models import Q, F, Value, DateField, Prefetch, Min, Max, Exists, OuterRef, Subquery
 from django.db.models.functions import Cast
 from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import render, get_object_or_404, redirect
@@ -16,7 +16,7 @@ from ietf.group.models import Role
 from ietf.person.models import Person
 from . import core
 from . import workflow
-from .models import Contribution
+from .models import Contribution, PublicDocumentType
 
 
 def floor_plan(request, num, pk):
@@ -30,7 +30,7 @@ def floor_plan(request, num, pk):
 
 def home(request):
     return render(request, 'fgtida/home.html', {'types': core.TYPE_LABELS,
-        'groups': core.groups(), 'categories': core.CATEGORIES})
+        'groups': core.groups().exclude(acronym='tida'), 'categories': core.categories()})
 
 
 def database_access(request):
@@ -54,7 +54,9 @@ contribution_numbers = Prefetch('contribution_set',
 
 def search(request, acronym=None, incubation=False, category_slug=None):
     query = (request.GET.get('name') or request.GET.get('q') or '').strip()[:200]
-    docs = core.documents().select_related('group', 'group__tida_configuration', 'type', 'tida_listing', 'tida_listing__meeting').prefetch_related('states', 'tags', 'tida_versions', contribution_numbers).annotate(
+    docs = core.documents().select_related('group', 'group__tida_configuration', 'type', 'tida_listing', 'tida_listing__meeting',
+        'tida_attribution__public_type').prefetch_related('states', 'tags', 'tida_versions', contribution_numbers).annotate(
+        is_contribution=Exists(Contribution.objects.filter(document_id=OuterRef('pk'))),
         first_activity=Min('docevent__time'), latest_revision=Max('docevent__time', filter=Q(docevent__type='new_revision')))
     if query:
         matches = Q(name__icontains=query) | Q(title__icontains=query) | Q(abstract__icontains=query)
@@ -76,18 +78,35 @@ def search(request, acronym=None, incubation=False, category_slug=None):
         docs = docs.filter(Q(group__acronym='incubation') | Q(pk__in=Contribution.objects.filter(group__acronym='incubation').values('document_id')))
     elif group:
         docs = docs.filter(group__acronym=group)
-    if kind:
-        docs = docs.filter(type_id=kind)
+    types = {**dict(core.TYPE_LABELS), **{f'public-{record.pk}': record.name for record in PublicDocumentType.objects.all()}}
+    default_contribution = Q(type_id='tida', is_contribution=True, tida_attribution__public_type__isnull=True)
+    default_use_cases = Q(type_id='tida', is_contribution=False, tags__slug='tida-use-cases', tida_attribution__public_type__isnull=True)
+    default_themes = Q(type_id='tida', is_contribution=False, tags__slug='tida-themes', tida_attribution__public_type__isnull=True)
+    if kind in types:
+        if kind.startswith('public-'):
+            public_type = Q(tida_attribution__public_type_id=kind.removeprefix('public-'))
+            if types[kind] == PublicDocumentType.CONTRIBUTION:
+                public_type |= default_contribution
+            elif types[kind] == 'use-cases':
+                public_type |= default_use_cases
+            elif types[kind] == 'themes':
+                public_type |= default_themes
+            docs = docs.filter(public_type)
+        else:
+            docs = docs.filter(type_id=kind, tida_attribution__public_type__isnull=True).exclude(default_contribution | default_use_cases | default_themes)
+    elif kind:
+        docs = docs.none()
     if category:
         docs = docs.filter(tags__slug='tida-' + category)
     if author:
-        from .models import GitHubSource
+        from .models import DocumentAttribution, DocumentVersion, GitHubSource
         native = DocumentAuthor.objects.filter(Q(person__name__icontains=author) | Q(affiliation__icontains=author))
-        github = GitHubSource.objects.exclude(sync_mode='excluded').filter(
-            Q(source_metadata__authors__icontains=author) | Q(source_metadata__affiliations__icontains=author)
-            | Q(source_metadata__contacts__icontains=author)
-        )
-        docs = docs.filter(Q(pk__in=native.values('document_id')) | Q(pk__in=github.values('document_id')))
+        source_credits = Q(source_metadata__authors__icontains=author) | Q(source_metadata__affiliations__icontains=author) | Q(source_metadata__contacts__icontains=author)
+        github = GitHubSource.objects.exclude(sync_mode='excluded').filter(source_credits)
+        versions = DocumentVersion.objects.filter(revision=F('document__rev')).filter(source_credits)
+        overrides = DocumentAttribution.objects.filter(Q(authors__icontains=author) | Q(affiliations__icontains=author) | Q(contacts__icontains=author))
+        docs = docs.filter(Q(pk__in=native.values('document_id')) | Q(pk__in=overrides.values('document_id')) |
+                          Q(pk__in=github.values('document_id')) | Q(pk__in=versions.values('document_id')))
     if state:
         docs = docs.filter(states__slug=state)
     recent = request.GET.get('recent', '')
@@ -100,18 +119,23 @@ def search(request, acronym=None, incubation=False, category_slug=None):
     if sort not in ('-time', 'time', 'name', 'title'):
         sort = '-time'
     ordering = '-tida_listing__created' if collection and 'sort' not in request.GET else sort
+    if incubation and request.GET.get('sort') in (None, 'position'):
+        numbered = Contribution.objects.filter(document_id=OuterRef('pk'), group__acronym='incubation').order_by('sequence_number')
+        docs = docs.annotate(submission_position=Subquery(numbered.values('sequence_number')[:1]))
+        ordering = F('submission_position').asc(nulls_last=True)
+        sort = 'position'
     params = request.GET.copy()
     params.pop('page', None)
     return render(request, 'fgtida/search.html', {
         'page': Paginator(docs.distinct().order_by(ordering, '-pk'), 25).get_page(request.GET.get('page')),
         'collection': collection, 'collection_title': {'input': 'LS Inputs', 'output': 'LS Outputs'}.get(collection, ''),
-        'group_collection_title': dict(core.CATEGORIES).get(category_slug, ''),
+        'group_collection_title': dict(core.categories()).get(category_slug, ''),
         'recent': recent, 'sort': sort,
         'query': query, 'selected_group': group, 'selected_type': kind, 'selected_category': category,
-        'author': author, 'selected_state': state, 'groups': core.groups().order_by('name'),
-        'types': core.TYPE_LABELS,
+        'author': author, 'selected_state': state, 'groups': core.groups().exclude(acronym='tida').order_by('name'),
+        'types': types.items(),
         'states': State.objects.filter(type_id__in=core.DOCUMENT_TYPES).values('slug', 'name').distinct().order_by('name'),
-        'categories': core.CATEGORIES, 'queryargs': params.urlencode(),
+        'categories': core.categories(), 'queryargs': params.urlencode(),
         'incubation': incubation,
         'group_obj': get_object_or_404(core.groups(), acronym=acronym) if acronym and not incubation else None,
         'section': category_slug or 'documents',
@@ -119,7 +143,7 @@ def search(request, acronym=None, incubation=False, category_slug=None):
 
 
 def document(request, name, rev=None):
-    doc = get_object_or_404(core.documents().select_related('group', 'type').prefetch_related('states', 'tags', contribution_numbers), name=name)
+    doc = get_object_or_404(core.documents().select_related('group', 'type', 'tida_attribution__public_type').prefetch_related('states', 'tags', contribution_numbers), name=name)
     from .versioning import archive_revision, labels
     rev=archive_revision(doc,rev)
     snapshot = doc
@@ -154,23 +178,44 @@ def document(request, name, rev=None):
         # Keep the archived source intact and let editors supply a real abstract.
         abstract=''
     file_available = bool(snapshot.uploaded_filename) and Path(snapshot.get_file_name()).is_file()
+    body = (snapshot.text() or '') if file_available else ''
+    from .rendering import without_duplicate_title
+    if abstract and body and body.lstrip().startswith(abstract.strip()):
+        abstract = ''  # The catalogue used the start of the source as its abstract.
+    abstract = without_duplicate_title(abstract, snapshot.title)
     source_records = list(doc.github_sources.exclude(sync_mode='excluded').select_related('repository'))
-    github_authors = list(dict.fromkeys(name for source in source_records for name in source.source_metadata.get('authors', [])))
-    github_affiliations = list(dict.fromkeys(name for source in source_records for name in source.source_metadata.get('affiliations', [])))
-    github_contacts = list(dict.fromkeys(name for source in source_records for name in source.source_metadata.get('contacts', [])))
+    selected_version = version_rows.get(snapshot.rev)
+    version_metadata = selected_version.source_metadata if selected_version else {}
+    authors = list(doc.documentauthor_set.select_related('person').order_by('order'))
+    override = getattr(doc, 'tida_attribution', None)
+    from .github_attribution import CREDIT_FIELDS, source_attribution
+    credits = source_attribution(body)
+    editor_credits = set()
+    for key in CREDIT_FIELDS:
+        entered = [line.strip() for line in getattr(override, key, '').splitlines() if line.strip()]
+        if entered:
+            credits[key] = entered
+            editor_credits.add(key)
+        elif not credits.get(key):
+            credits[key] = version_metadata.get(key, [])
+            if snapshot is doc and not credits[key]:
+                credits[key] = list(dict.fromkeys(value for source in source_records for value in source.source_metadata.get(key, [])))
+    if 'authors' in editor_credits or (credits.get('authors') and len(authors) == 1 and authors[0].person.user_id
+            and doc.contribution_set.filter(submitter_id=authors[0].person.user_id).exists()):
+        authors = []
     return render(request, 'fgtida/document.html', {'doc': doc, 'snapshot': snapshot,
         'revisions': ordered, 'file_available': file_available,'display_abstract':abstract,
-        'version_records':version_rows,'selected_version':version_rows.get(snapshot.rev),'selected_release':releases.get(snapshot.rev),
+        'version_records':version_rows,'selected_version':selected_version,'selected_release':releases.get(snapshot.rev),
+        'source_snapshot': version_metadata.get('snapshot'),
         'last_change':doc.docevent_set.order_by('-time','-pk').first(),
-        'text': snapshot.text() if file_available else None,
+        'text': without_duplicate_title(body, snapshot.title),
         'text_is_markdown': Path(snapshot.uploaded_filename or '').suffix.lower() in ('.md', '.markdown'),
         'text_is_rst': Path(snapshot.uploaded_filename or '').suffix.lower() == '.rst' or (Path(snapshot.uploaded_filename or '').suffix.lower() == '.zip' and not hasattr(doc, 'tida_listing')),
         'text_is_package': Path(snapshot.uploaded_filename or '').suffix.lower() == '.zip' and not hasattr(doc, 'tida_listing'),
         'work_item':work_item,'old_revision':bool(rev and rev!=doc.rev),'show_working':not rev,
         'events': doc.docevent_set.select_related('by')[:100],
-        'authors': doc.documentauthor_set.select_related('person', 'email').order_by('order'),
-        'source_records': source_records, 'github_authors': github_authors, 'github_affiliations': github_affiliations,
-        'github_contacts': github_contacts,
+        'authors': authors, 'credits': credits, 'source_records': source_records,
+        'document_metadata_rows': 5 + bool(credits.get('affiliations')) + bool(credits.get('contact_emails') or credits.get('contacts')),
         'sessions': doc.session_set.select_related('meeting'),
         'relationships': RelatedDocument.objects.filter(source=doc, target__in=core.documents()).select_related('target', 'relationship'),
         'incoming': RelatedDocument.objects.filter(target=doc, source__in=core.documents()).select_related('source', 'relationship'),
@@ -214,20 +259,29 @@ def groups(request):
 
 
 def group(request, acronym, section='about'):
-    group = get_object_or_404(core.groups().select_related('state', 'type'), acronym=acronym)
+    group = get_object_or_404(core.groups().select_related('state', 'type', 'tida_configuration__github_account'), acronym=acronym)
+    configuration = getattr(group, 'tida_configuration', None)
+    github_organization = configuration.github_account.organization if configuration and configuration.github_account else ''
+    group_documents = core.documents().filter(group=group)
+    charter = group_documents.filter(pk=group.charter_id, type_id='charter').first() if group.charter_id else None
+    if charter is None:
+        charter = group_documents.filter(type_id='charter').order_by('-time').first()
+    description = group.description
+    if github_organization:
+        import re
+        description = re.sub(r' GitHub source: https://github\.com/[^\s]+?\.(?=\s|$)', '', description, count=1)
     context = {'group': group, 'group_obj': group, 'section': section,
         'roles': group.role_set.select_related('person', 'name').order_by('name__name', 'person__name'),
-        'documents': core.documents().filter(group=group).select_related('type').order_by('-time')[:10],
+        'documents': group_documents.exclude(pk=charter.pk if charter else None).select_related('type').order_by('-time')[:10],
+        'charter': charter, 'group_description': description, 'github_organization': github_organization,
+        'wg_number': configuration.number if configuration else None,
         'milestones': group.groupmilestone_set.exclude(state_id='deleted').prefetch_related('docs').order_by('due'),
         'resources': group.groupurl_set.all()}
-    if section == 'charter':
-        context['charter'] = core.documents().filter(group=group, type_id='charter').order_by('-time').first()
-        if group.charter_id:
-            context['charter'] = core.documents().filter(pk=group.charter_id, group=group).first() or context['charter']
-        charter = context['charter']
-        if charter:
-            context['charter_text'] = charter.text() if charter.uploaded_filename and Path(charter.get_file_name()).is_file() else charter.abstract
-            context['charter_is_rst'] = Path(charter.uploaded_filename or '').suffix.lower() == '.rst'
+    if section == 'charter' and charter:
+        from .rendering import without_duplicate_title
+        text = charter.text() if charter.uploaded_filename and Path(charter.get_file_name()).is_file() else charter.abstract
+        context['charter_text'] = without_duplicate_title(text, charter.title)
+        context['charter_is_rst'] = Path(charter.uploaded_filename or '').suffix.lower() == '.rst'
     if section in ('members', 'photos'):
         people = Person.objects.filter(role__group=group).distinct().order_by('name', 'pk').prefetch_related(
             Prefetch('role_set', queryset=Role.objects.filter(group=group).select_related('name'), to_attr='fg_roles'))
@@ -513,6 +567,6 @@ def legacy(request, path=''):
     if path in ('dashboard/', 'documents/submit/'):
         return redirect('/admin/doc/document/')
     category = path.strip('/')
-    if category in dict(core.CATEGORIES):
+    if category in dict(core.categories()):
         return redirect(reverse('fgtida:documents') + '?category=' + category)
     return redirect(reverse('fgtida:documents') + ('?' + request.GET.urlencode() if request.GET else ''))

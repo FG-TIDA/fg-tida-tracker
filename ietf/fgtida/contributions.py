@@ -10,7 +10,7 @@ from django.views.decorators.http import require_POST
 from ietf.doc.models import Document, DocumentAuthor, State
 from . import core
 from .files import MAX_BYTES
-from .models import Contribution, WorkItem, GitHubJob
+from .models import Contribution, DocumentVersion, WorkItem, GitHubJob
 
 
 class ContributionForm(forms.ModelForm):
@@ -110,30 +110,42 @@ def submit(request):
             else:
                 item = form.save(commit=False)
                 item.submitter = request.user
-                item.content = form.content
-                item.notifications_queued = False
-                item.filename = form.filename
-                item.source_archive = form.source_archive
-                item.source_manifest = form.manifest
-                item.save()
-                doc = Document(name=f'fg-tida-contribution-{item.pk}', title=item.title,
-                    abstract=item.abstract, type_id='tida', group=item.group)
-                core.save_document(doc, core.actor_for(request.user), 'Work item submitted for a group decision.',
-                    data=bytes(item.source_archive),filename='source.zip',state=State.objects.get(type_id='tida',slug='submitted'))
-                DocumentAuthor.objects.create(document=doc, person=core.actor_for(request.user), order=1)
-                item.document=doc
-                item.save(update_fields=['document'])
-                from django.utils.text import slugify
-                WorkItem.objects.create(document=doc,short_name=item.work_item_acronym or slugify(item.title)[:48] or f'item-{item.pk}')
-                queue_notifications(item.pk)
-                from .email_templates import contribution
-                from .mail import enqueue
-                if request.user.email:
-                    subject, body=contribution(item,acknowledgement=True)
-                    enqueue(request.user.email,subject,body,contribution=item,purpose='submitter')
+                record_submission(item, form, request.user)
                 return redirect('fgtida:contribution', pk=item.pk)
     page = Paginator(Contribution.objects.filter(submitter=request.user).defer('content', 'source_archive'), 25).get_page(request.GET.get('page'))
     return render(request, 'fgtida/submit.html', {'form': form, 'submissions': page, 'page': page, 'queryargs': ''})
+
+
+@transaction.atomic
+def record_submission(item, form, user):
+    from django.utils.text import slugify
+    from .email_templates import contribution
+    from .github_attribution import source_attribution
+    from .mail import enqueue
+    from .source_packages import unpack
+
+    item.content = form.content
+    item.notifications_queued = False
+    item.filename = form.filename
+    item.source_archive = form.source_archive
+    item.source_manifest = form.manifest
+    item.save()
+    entry = unpack(form.source_archive)[form.manifest['entry_document']].decode('utf-8-sig')
+    credits = source_attribution(entry)
+    doc = Document(name=f'fg-tida-contribution-{item.pk}', title=item.title,
+        abstract=item.abstract, type_id='tida', group=item.group)
+    core.save_document(doc, core.actor_for(user), 'Work item submitted for a group decision.',
+        data=bytes(item.source_archive), filename='source.zip', state=State.objects.get(type_id='tida', slug='submitted'),
+        source_metadata=credits)
+    if item.submitter and not credits.get('authors') and not credits.get('contacts'):
+        DocumentAuthor.objects.create(document=doc, person=core.actor_for(item.submitter), order=1)
+    item.document = doc
+    item.save(update_fields=['document'])
+    WorkItem.objects.create(document=doc, short_name=item.work_item_acronym or slugify(item.title)[:48] or f'item-{item.pk}')
+    queue_notifications(item.pk)
+    if item.submitter and item.submitter.email:
+        subject, body = contribution(item, acknowledgement=True)
+        enqueue(item.submitter.email, subject, body, contribution=item, purpose='submitter')
 
 
 @transaction.atomic
@@ -187,7 +199,81 @@ def detail(request, pk, download=False, source=False):
             pass  # Keep the original download available when extraction is unsupported.
     return render(request, 'fgtida/contribution.html', {'submission': item, 'chapters': chapters, 'assets': assets,
         'legacy_text': legacy_text, 'legacy_extension': Path(item.filename).suffix.lower(),
+        'can_revise': can_revise(item, request.user),
         'can_verify': item.submission_method == 'word' and item.submitter_id == request.user.pk and not item.conversion_verified_at})
+
+
+def can_revise(item, user):
+    return item.status == 'pending' and bool(item.document_id) and (user is None or item.submitter_id == user.pk or (
+        user.has_perm('fgtida.change_contribution') and user.has_perm('doc.change_document')))
+
+
+class ContributionRevisionForm(forms.Form):
+    repository = forms.URLField(max_length=300, label='Public GitHub repository')
+    commit = forms.RegexField(r'\A[0-9a-fA-F]{40}\Z', min_length=40, max_length=40, label='Full commit SHA')
+    source_folder = forms.CharField(max_length=255, initial='src/doc')
+    entry_document = forms.CharField(max_length=255, initial='src/doc/index.rst')
+    version = forms.CharField(max_length=32, help_text='Use X.Y notation. The version must be higher than the latest archived version.')
+    publication_consent = forms.BooleanField(label='I confirm these source files and this revision will be public.')
+
+    def clean_version(self):
+        from .versioning import parts
+        version = self.cleaned_data['version']
+        parts(version)
+        return version
+
+
+def archive_github_revision(pk, actor, repository, commit, source_folder, entry_document, version):
+    from .github_client import repository_name
+    from .github_attribution import source_attribution
+    from .source_packages import github_snapshot, unpack
+    from .versioning import next_version
+
+    repository = 'https://github.com/' + repository_name(repository)
+    commit = commit.lower()
+    item = Contribution.objects.select_related('document').get(pk=pk)
+    if not can_revise(item, actor):
+        raise forms.ValidationError('Only the submitter or an authorized editor can revise a work item awaiting review.')
+    next_version(item.document, version)
+    archive, manifest = github_snapshot(repository, commit, source_folder, entry_document)
+    credits = source_attribution(unpack(archive)[manifest['entry_document']].decode('utf-8-sig'))
+    with transaction.atomic():
+        item = Contribution.objects.select_for_update().get(pk=pk)
+        if not can_revise(item, actor):
+            raise forms.ValidationError('This work item is no longer awaiting review.')
+        document = Document.objects.select_for_update().get(pk=item.document_id)
+        from .work_items import state_of
+        if state_of(document) != 'submitted':
+            raise forms.ValidationError('Only a work item in Submitted state can receive a revision through this form.')
+        if DocumentVersion.objects.filter(document=document, source_metadata__snapshot__commit=commit,
+                source_metadata__snapshot__sha256=manifest['sha256']).exists():
+            raise forms.ValidationError('This GitHub commit and source package are already archived for this work item.')
+        if item.source_manifest.get('commit') == commit and item.source_manifest.get('sha256') == manifest['sha256']:
+            raise forms.ValidationError('This is the original submission commit and source package.')
+        core.save_document(document, core.actor_for(actor), f'Archived work item revision {version} from {repository}/commit/{commit}.',
+            data=archive, filename='source.zip', version=version, source_metadata={**credits, 'snapshot': manifest})
+        return document
+
+
+@login_required
+def revise(request, pk):
+    item = get_object_or_404(Contribution.objects.defer('content', 'source_archive'), pk=pk)
+    if not can_revise(item, request.user):
+        raise Http404
+    form = ContributionRevisionForm(request.POST if request.method == 'POST' else None, initial={
+        'repository': item.draft_repository_url,
+        'source_folder': item.source_folder or 'src/doc',
+        'entry_document': item.entry_document if item.submission_method == 'github' else 'src/doc/index.rst',
+    })
+    if request.method == 'POST' and form.is_valid():
+        values = {key: value for key, value in form.cleaned_data.items() if key != 'publication_consent'}
+        try:
+            document = archive_github_revision(item.pk, request.user, **values)
+        except forms.ValidationError as error:
+            form.add_error(None, error)
+        else:
+            return redirect('fgtida:revision', name=document.name, rev=values['version'])
+    return render(request, 'fgtida/contribution_revision.html', {'submission': item, 'form': form})
 
 
 @login_required

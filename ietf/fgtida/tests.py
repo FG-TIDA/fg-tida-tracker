@@ -592,33 +592,119 @@ class NativeDatatrackerTests(TestCase):
         self.assertEqual(incubation.reference, 'FG-TIDA-INCUBATION-001')
 
         path = f'/admin/fgtida/contribution/{second.pk}/change/'
-        collision = self.client.post(path, {'sequence_number': '1', '_save': 'Save'})
-        self.assertContains(collision, 'FG-TIDA-WG1-001 is already assigned')
-        self.assertEqual(self.client.post(path, {'sequence_number': '10', '_save': 'Save'}).status_code, 302)
-        self.assertEqual(self.client.post(path, {'sequence_number': '4', '_save': 'Save'}).status_code, 302)
+        invalid = self.client.post(path, {'sequence_number': '4', '_save': 'Save'})
+        self.assertContains(invalid, 'Choose a position from 1 to 2.')
+        self.assertEqual(self.client.post(path, {'sequence_number': '1', '_save': 'Save'}).status_code, 302)
+        first.refresh_from_db()
+        self.assertEqual(first.reference, 'FG-TIDA-WG1-002')
         next_item = submit('tidawg1', 'Third WG1 contribution')
-        self.assertEqual(next_item.reference, 'FG-TIDA-WG1-011')
-        self.assertContains(self.client.get(f'/submit/{second.pk}/'), 'FG-TIDA-WG1-004')
+        self.assertEqual(next_item.reference, 'FG-TIDA-WG1-003')
+        self.assertContains(self.client.get(f'/submit/{second.pk}/'), 'FG-TIDA-WG1-001')
         detail = self.client.get(f'/doc/{second.document.name}/')
-        self.assertContains(detail, 'FG-TIDA-WG1-004')
+        self.assertContains(detail, 'FG-TIDA-WG1-001')
+        self.assertNotContains(detail, '<th scope="row">Type</th>')
         self.assertNotContains(detail, f'{second.document.name} — 0.0')
-        listing = self.client.get('/doc/', {'q': 'fg-tida-wg1-004'})
+        listing = self.client.get('/doc/', {'q': 'fg-tida-wg1-001'})
         self.assertContains(listing, second.title)
         self.assertContains(listing, 'Version 0.0')
         self.assertNotContains(listing, f'{second.document.name}-0.0')
         from .models import DocumentListing
         DocumentListing.objects.create(document=second.document, direction='input')
         collection = self.client.get('/doc/', {'collection': 'input'})
-        self.assertContains(collection, '>FG-TIDA-WG1-004</a>')
+        self.assertContains(collection, '>FG-TIDA-WG1-001</a>')
         self.assertNotContains(collection, f'>{second.document.name}</a>')
-        self.assertContains(self.client.get('/admin/fgtida/contribution/', {'q': 'FG-TIDA-WG1-004'}), second.title)
+        self.assertContains(self.client.get('/admin/fgtida/contribution/', {'q': 'FG-TIDA-WG1-001'}), second.title)
 
-        adopt = self.client.post(path, {'sequence_number': '4', 'decision': 'adopt',
+        adopt = self.client.post(path, {'sequence_number': '1', 'decision': 'adopt',
             'adopt_into': groups['tidawg0'].pk, '_save': 'Save'})
         self.assertEqual(adopt.status_code, 302)
         second.refresh_from_db()
         self.assertEqual(second.document.group_id, groups['tidawg0'].pk)
-        self.assertEqual(second.reference, 'FG-TIDA-WG1-004')
+        self.assertEqual(second.reference, 'FG-TIDA-WG1-001')
+
+        original_document_name = next_item.document.name
+        delete_url = f'/admin/doc/document/{first.document_id}/delete/'
+        self.assertRedirects(self.client.get(f'/admin/fgtida/contribution/{first.pk}/delete/'), delete_url)
+        confirmation = self.client.get(delete_url)
+        self.assertFalse(confirmation.context['perms_lacking'])
+        self.assertEqual(self.client.post(delete_url, {'post': 'yes'}).status_code, 302)
+        self.assertFalse(Contribution.objects.filter(pk=first.pk).exists())
+        next_item.refresh_from_db()
+        self.assertEqual(next_item.reference, 'FG-TIDA-WG1-002')
+        self.assertEqual(next_item.document.name, original_document_name)
+        self.assertEqual(submit('tidawg1', 'Fourth WG1 contribution').reference, 'FG-TIDA-WG1-003')
+
+    def test_submitter_can_archive_github_commit_as_new_version(self):
+        import base64
+        from unittest.mock import Mock, patch
+        from .github_jobs import bootstrap_repository
+        from .models import Contribution, GitHubAccount, GitHubRepository
+        from .source_packages import prepare_zip, pack
+
+        author = get_user_model().objects.create_user(username='proposal-author')
+        self.client.force_login(author)
+        group = Group.objects.get(acronym='incubation')
+        self.assertEqual(self.client.post('/submit/', {'group': group.pk, 'title': 'Proposal', **self.source_submission()}).status_code, 302)
+        item = Contribution.objects.get(title='Proposal')
+        path = f'/submit/{item.pk}/revision/'
+        package, manifest = prepare_zip(pack({'index.rst': b'Authors\n-------\n\n.. list-table::\n\n   * - New coauthor\n     - Example Research Lab\n'}), 'index.rst')
+        repository = 'https://github.com/example/proposal'
+        values = {'repository': repository, 'commit': 'a' * 40, 'source_folder': 'src/doc',
+                  'entry_document': 'src/doc/index.rst', 'version': '0.3', 'publication_consent': 'on'}
+        manifest.update(repository=repository, commit=values['commit'], source_folder='src/doc')
+        with patch('ietf.fgtida.source_packages.github_snapshot', return_value=(package, manifest)) as snapshot:
+            self.assertEqual(self.client.post(path, values).status_code, 302)
+            self.assertContains(self.client.post(path, {**values, 'version': '0.4'}), 'already archived')
+            stranger = get_user_model().objects.create_user(username='another-author')
+            self.client.force_login(stranger)
+            self.assertEqual(self.client.post(path, values).status_code, 404)
+            self.assertEqual(snapshot.call_count, 2)
+        item.refresh_from_db()
+        self.assertEqual(item.status, 'pending')
+        self.assertEqual(Contribution.objects.count(), 1)
+        self.assertCountEqual(item.document.tida_versions.values_list('version', flat=True), ['0.0', '0.3'])
+        detail = self.client.get(f'/doc/{item.document.name}/')
+        self.assertContains(detail, 'New coauthor')
+        self.assertContains(detail, repository + '/commit/' + values['commit'])
+        self.assertNotContains(detail, 'Full content — version')
+        # A future adoption must seed the repository from the revised source.
+        work_item = item.document.tida_work_item
+        account = GitHubAccount.objects.create(organization='example-wg')
+        work_item.repository = GitHubRepository.objects.create(account=account, name='proposal', group=group)
+        client = Mock()
+        client.request.side_effect = lambda method, path, *args: (
+            {'object': {'sha': 'f' * 40}} if method == 'GET' and '/git/ref/heads/main' in path else None)
+        with patch('ietf.fgtida.github_jobs.update_state'):
+            bootstrap_repository(work_item, client)
+        uploaded = {call.args[1]: base64.b64decode(call.args[2]['content']) for call in client.request.call_args_list if call.args[0] == 'PUT'}
+        self.assertIn(b'New coauthor', uploaded['/repos/example-wg/proposal/contents/src/doc/index.rst'])
+
+    def test_admin_can_add_work_item_and_assign_leadership_without_user_account(self):
+        from .models import Contribution, GitHubAccount, WorkingGroupConfiguration
+
+        group = Group.objects.get(acronym='tidawg0')
+        account = GitHubAccount.objects.create(organization='example-wg0')
+        WorkingGroupConfiguration.objects.update_or_create(group=group, defaults={
+            'number': 0, 'topic_acronym': 'example', 'github_account': account,
+        })
+        person = Person.objects.create(name='Example Leader', ascii='Example Leader')
+        self.assertIsNone(person.user_id)
+        address = Email.objects.create(address='example-leader@example.test', person=person, origin='Group administration')
+        role_response = self.client.post('/admin/group/role/add/', {
+            'group': group.pk, 'person': person.pk, 'name': 'chair', 'email': address.pk,
+        })
+        self.assertEqual(role_response.status_code, 302, getattr(role_response, 'context_data', {}).get('errors'))
+        page = self.client.get('/group/tidawg0/about/')
+        self.assertContains(page, 'Example Leader')
+        self.assertContains(page, 'WG0 GitHub Organization')
+        self.assertContains(page, 'https://github.com/example-wg0')
+        path = '/admin/fgtida/contribution/add/'
+        self.assertContains(self.client.get(path), 'How will you submit?')
+        response = self.client.post(path, {'title': 'Admin work item', 'group': group.pk, **self.source_submission()})
+        self.assertEqual(response.status_code, 302)
+        submission = Contribution.objects.get(title='Admin work item')
+        self.assertEqual(submission.reference, 'FG-TIDA-WG0-001')
+        self.assertEqual(submission.document.tida_versions.get().version, '0.0')
 
     def test_contribution_requires_login_and_valid_file(self):
         self.client.logout()

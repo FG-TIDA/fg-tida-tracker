@@ -73,7 +73,23 @@ def account_person(user):
 
 
 @register.simple_tag
-def document_type(doc):
+def document_type(doc, current=None):
+    from ietf.fgtida.models import PublicDocumentType
+    current = current or doc
+    metadata = getattr(current, 'tida_attribution', None)
+    if metadata and metadata.public_type_id:
+        return metadata.public_type.name
+    if doc.type_id == 'tida':
+        is_contribution = getattr(current, 'is_contribution', None)
+        if is_contribution is None:
+            is_contribution = current.contribution_set.exists()
+        if is_contribution:
+            return PublicDocumentType.CONTRIBUTION
+        categories = {tag.slug for tag in current.tags.all()}
+        if 'tida-use-cases' in categories:
+            return 'use-cases'
+        if 'tida-themes' in categories:
+            return 'themes'
     return dict(core.TYPE_LABELS).get(doc.type_id, doc.type.name)
 
 
@@ -104,10 +120,9 @@ def document_recency(doc):
 
 @register.simple_tag
 def document_categories(doc):
-    categories = dict(core.CATEGORIES)
     return format_html_join(' ', '<a class="badge text-bg-light" href="{}">{}</a>',
-        ((reverse('fgtida:documents') + '?category=' + tag.slug[5:], categories[tag.slug[5:]])
-         for tag in doc.tags.all() if tag.slug.startswith('tida-') and tag.slug[5:] in categories)) or 'Not classified'
+        ((reverse('fgtida:documents') + '?category=' + tag.slug[5:], tag.name)
+         for tag in doc.tags.all() if tag.slug.startswith('tida-') and tag.slug != 'tida-uncatalogued')) or ''
 
 
 @register.filter
@@ -181,7 +196,7 @@ def group_number(group):
 @register.filter
 def group_label(group):
     if group.acronym == 'tida':
-        return 'FG-TIDA (no wg assigned)'
+        return ''
     if group.acronym == 'incubation':
         return group.name
     number=group_number(group)

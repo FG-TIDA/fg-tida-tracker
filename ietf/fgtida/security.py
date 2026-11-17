@@ -8,11 +8,11 @@ from django.utils.deprecation import MiddlewareMixin
 # Native URLs remain registered for reverse() in upstream templates, but only
 # reviewed workflows are reachable. Never use a menu as an authorization boundary.
 ADMIN_MODELS = {
-    'fgtida': {'contribution', 'contributionrecipient', 'sessionresource', 'trainingvideo', 'trainingcategory', 'outgoingmail', 'securityquestion',
+    'fgtida': {'contribution', 'contributionrecipient', 'publicdocumenttype', 'sessionresource', 'trainingvideo', 'trainingcategory', 'outgoingmail', 'securityquestion',
         'emailverification','githubaccount','workinggroupconfiguration','githubrepository','githubsource','workitem','workitemrelease','githubjob'},
     'auth': {'user', 'group'},
     'person': {'person', 'email', 'alias'},
-    'name': {'importantdatename'},
+    'name': {'importantdatename', 'doctagname'},
     'doc': {'document'},
     'group': {'group', 'role', 'groupmilestone', 'groupurl'},
     'meeting': {'meeting', 'meetingcategory', 'session', 'timeslot', 'room', 'floorplan', 'schedule',
@@ -24,6 +24,7 @@ EDITOR_MODELS |= {'doc.documentauthor', 'doc.relateddocument', 'doc.documenturl'
 EDITOR_MODELS.discard('fgtida.outgoingmail')
 EDITOR_MODELS.discard('fgtida.securityquestion')
 EDITOR_MODELS.discard('fgtida.contributionrecipient')
+EDITOR_MODELS.discard('fgtida.publicdocumenttype')
 EDITOR_MODELS -= {'fgtida.'+name for name in ('emailverification','githubaccount','workinggroupconfiguration',
     'githubrepository','githubsource','workitem','workitemrelease','githubjob')}
 ACCOUNT_VIEWS = {'index', 'confirm_new_email', 'create_account', 'confirm_account',

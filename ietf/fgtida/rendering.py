@@ -1,11 +1,47 @@
 """Public document rendering with table structure and a bounded HTML allowlist."""
 from urllib.parse import urljoin, urlsplit
-from html import escape
+from html import escape, unescape
 from html.parser import HTMLParser
 import re
 import bleach
 import markdown
+from unicodedata import normalize
 from ietf.utils.html import acceptable_tags
+
+
+def without_duplicate_title(body, title):
+    """Suppress an opening title already rendered by the page template."""
+    lines = body.splitlines(keepends=True)
+    rule = re.compile(r'([=~`^"*+#-])\1+')
+    index = 0
+    while index < len(lines):
+        if lines[index].startswith('.. '):
+            index += 1
+            while index < len(lines) and (not lines[index].strip() or lines[index][0].isspace()):
+                index += 1
+        elif not lines[index].strip():
+            index += 1
+        else:
+            break
+    if index == len(lines):
+        return body
+    start = index
+    if index + 2 < len(lines) and rule.fullmatch(lines[index].strip()) and lines[index].strip() == lines[index + 2].strip():
+        # reStructuredText supports matching overlines and underlines.
+        if lines[index].strip()[0] not in '`~':
+            index += 1
+    line = re.sub(r'^#{1,6}\s+|\s+#+$', '', lines[index].strip()).strip('*_')
+
+    def title_key(value):
+        value = re.sub(r'\\([!-/:-@\[-`{-~])', r'\1', unescape(value))
+        return ' '.join(normalize('NFKC', value).casefold().split())
+
+    if title_key(line) != title_key(title):
+        return body
+    end = index + 1
+    if end < len(lines) and not lines[index].lstrip().startswith('#') and rule.fullmatch(lines[end].strip()):
+        end += 1
+    return ''.join(lines[:start] + lines[end:])
 
 
 def allowed_attribute(tag, name, value):

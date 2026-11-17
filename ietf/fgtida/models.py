@@ -52,7 +52,7 @@ class AdministratorApproval(models.Model):
 
 class OutgoingMail(models.Model):
     purpose = models.CharField(max_length=16, default='general')
-    contribution = models.ForeignKey('Contribution', null=True, blank=True, on_delete=models.PROTECT)
+    contribution = models.ForeignKey('Contribution', null=True, blank=True, on_delete=models.SET_NULL)
     recipient = models.EmailField()
     subject = models.CharField(max_length=255)
     body = models.TextField()
@@ -81,6 +81,25 @@ class ContributionSequence(models.Model):
         )
         return sequence
 
+    def reorder(self, moved=None, position=None):
+        """Compact the visible order while leaving contribution and document IDs intact."""
+        using = self._state.db
+        rows = list(Contribution.objects.using(using).filter(number_prefix=self.prefix).order_by('sequence_number', 'created', 'pk'))
+        if moved is not None:
+            rows.remove(moved)
+            rows.insert(position - 1, moved)
+        changed = []
+        for number, row in enumerate(rows, start=1):
+            if row.sequence_number != number or row == moved:
+                row.sequence_number = number
+                changed.append(row)
+        if changed:
+            records = Contribution.objects.using(using)
+            records.filter(pk__in=[row.pk for row in changed]).update(sequence_number=None)
+            records.bulk_update(changed, ['sequence_number'])
+        self.last_number = len(rows)
+        self.save(using=using, update_fields=['last_number'])
+
 
 class Contribution(models.Model):
     """Private review metadata linked to a public submitted document."""
@@ -89,7 +108,7 @@ class Contribution(models.Model):
     group = models.ForeignKey('group.Group', on_delete=models.PROTECT)
     number_prefix = models.CharField(max_length=50, blank=True, editable=False, db_default='')
     sequence_number = models.PositiveBigIntegerField(null=True, validators=[MinValueValidator(1)],
-        help_text='Enter the numeric part of the contribution number. Automatic numbering continues above the highest number assigned.')
+        help_text='Position in the submission list. Moving this item shifts the other display numbers.')
     title = models.CharField(max_length=255)
     abstract = models.TextField(blank=True)
     draft_repository_url = models.URLField(blank=True, max_length=300)
@@ -112,7 +131,7 @@ class Contribution(models.Model):
     reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
         on_delete=models.SET_NULL, related_name='reviewed_contributions')
     reviewed_at = models.DateTimeField(null=True, blank=True)
-    document = models.ForeignKey('doc.Document', null=True, blank=True, on_delete=models.SET_NULL)
+    document = models.ForeignKey('doc.Document', null=True, blank=True, on_delete=models.CASCADE)
 
     class Meta:
         ordering = ['-created']
@@ -158,6 +177,18 @@ class Contribution(models.Model):
 
     def __str__(self):
         return self.title
+
+
+def compact_contribution_numbers(sender, instance, using, **kwargs):
+    if instance.number_prefix:
+        ContributionSequence.lock(instance.number_prefix, using).reorder()
+
+
+def lock_contribution_numbers(sender, instance, using, **kwargs):
+    if instance.number_prefix:
+        ContributionSequence.lock(instance.number_prefix, using)
+    OutgoingMail.objects.using(using).filter(contribution=instance, sent__isnull=True).update(
+        expires=timezone.now(), last_error='Work item removed; notification cancelled.')
 
 
 class ContributionRecipient(models.Model):
@@ -404,10 +435,43 @@ class DocumentVersion(models.Model):
     revision = models.CharField(max_length=16)
     version = models.CharField(max_length=32)
     recorded = models.DateTimeField(default=timezone.now)
+    source_metadata = models.JSONField(default=dict, blank=True, editable=False)
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['document','revision'],name='fgtida_version_revision_unique'),
             models.UniqueConstraint(fields=['document','version'],name='fgtida_version_label_unique')]
+
+
+class DocumentVersionAlias(models.Model):
+    document = models.ForeignKey('doc.Document', on_delete=models.CASCADE)
+    version = models.CharField(max_length=32)
+    target = models.ForeignKey(DocumentVersion, on_delete=models.CASCADE)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['document', 'version'], name='fgtida_version_alias_unique')]
+
+
+class PublicDocumentType(models.Model):
+    CONTRIBUTION = 'Contribution'
+    name = models.CharField(max_length=80, unique=True)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = 'public document type'
+
+    def __str__(self):
+        return self.name
+
+
+class DocumentAttribution(models.Model):
+    """Optional editor override for the credits displayed on a document."""
+    document = models.OneToOneField('doc.Document', on_delete=models.CASCADE, related_name='tida_attribution')
+    authors = models.TextField(blank=True, help_text='One author per line. Leave empty to use the document’s assigned author profiles, if any.')
+    affiliations = models.TextField(blank=True, help_text='One organization per line.')
+    contacts = models.TextField(blank=True, help_text='One public contact name per line.')
+    contact_emails = models.TextField(blank=True, help_text='One public contact email per line. Addresses entered here appear on the public document page.')
+    public_type = models.ForeignKey(PublicDocumentType, null=True, blank=True, on_delete=models.SET_NULL,
+        help_text='Choose the type shown publicly. Leave blank to use the default from the document’s workflow.')
 
 
 class DocumentListing(models.Model):

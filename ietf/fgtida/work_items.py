@@ -65,7 +65,7 @@ def receive_build(repository, manifest, pdf, source_archive=None):
     from .files import MAX_BYTES, extract_text
     if not 0 < len(pdf) <= MAX_BYTES or not pdf.startswith(b'%PDF-'):
         raise ValidationError('Provide a PDF of at most 10 MB.')
-    extract_text(pdf, 'build.pdf')
+    pdf_text = extract_text(pdf, 'build.pdf')
     checksum = hashlib.sha256(pdf).hexdigest()
     if manifest.get('pdf_sha256') != checksum:
         raise ValidationError('PDF checksum does not match the manifest.')
@@ -83,6 +83,10 @@ def receive_build(repository, manifest, pdf, source_archive=None):
             desc=f'GitHub working copy updated to {sha}. Archived revision {document.rev} is unchanged.')
         return 'working', document.rev
     version = version_tuple(tag)
+    from .versioning import declared_version
+    stated_version = declared_version(pdf_text)
+    if stated_version and stated_version != tag.removeprefix('v'):
+        raise ValidationError('The PDF document version must match the vX.Y release tag.')
     if not source_archive or len(source_archive) > 25 * 1024 * 1024:
         raise ValidationError('A source archive of at most 25 MB is required for a release.')
     if manifest.get('source_sha256') != hashlib.sha256(source_archive).hexdigest():
@@ -96,7 +100,46 @@ def receive_build(repository, manifest, pdf, source_archive=None):
         raise ValidationError('A released tag cannot be replaced.')
     if any(tuple(release.version) >= version for release in item.releases.only('version')):
         raise ValidationError('Release tags must increase; duplicate or out-of-order tags are rejected.')
-    core.save_document(document, core.actor_for(), f'GitHub release {tag}, commit {sha}.', data=pdf, filename='release.pdf',version=tag.removeprefix('v'))
+    release_label = tag.removeprefix('v')
+    existing = document.tida_versions.filter(version=release_label).first()
+    if existing:
+        # A source import can already carry the release's declared label.
+        # Attach its authenticated PDF only after matching the archived source.
+        import io
+        import tarfile
+        import zipfile
+        from pathlib import Path
+        from .models import DocumentFormat
+        if existing.revision != document.rev:
+            raise ValidationError('A release can only finalize the current source archive.')
+        try:
+            original = Path(document.get_file_name()).read_bytes()
+            suffix = Path(document.uploaded_filename).suffix.lower()
+            snapshot = existing.source_metadata.get('snapshot', {})
+            matches = snapshot.get('commit') == sha and snapshot.get('sha256') == hashlib.sha256(original).hexdigest()
+            if not matches:
+                if zipfile.is_zipfile(io.BytesIO(source_archive)):
+                    with zipfile.ZipFile(io.BytesIO(source_archive)) as archive:
+                        matches = suffix != '.pdf' and any(
+                            Path(entry.filename).suffix.lower() == suffix and entry.file_size == len(original)
+                            and archive.read(entry) == original for entry in archive.infolist() if not entry.is_dir())
+                else:
+                    with tarfile.open(fileobj=io.BytesIO(source_archive), mode='r:*') as archive:
+                        matches = suffix != '.pdf' and any(
+                            Path(entry.name).suffix.lower() == suffix and entry.size == len(original)
+                            and archive.extractfile(entry).read() == original for entry in archive if entry.isfile())
+            if not matches:
+                raise ValidationError('This version already exists with different source. Publish a higher version or review the archived source.')
+            alternative, created = DocumentFormat.objects.get_or_create(document=document, revision=document.rev, kind='pdf',
+                defaults={'filename': 'release.pdf', 'content': pdf})
+            if not created and bytes(alternative.content) != pdf:
+                raise ValidationError('A different PDF is already attached to this revision.')
+        except (OSError, tarfile.TarError, zipfile.BadZipFile) as error:
+            raise ValidationError('The source archive for this version could not be verified.') from error
+        DocEvent.objects.create(doc=document, by=core.actor_for(), type='changed_document', rev=document.rev,
+            desc=f'GitHub release {tag} finalized the matching source archive; commit {sha}.')
+    else:
+        core.save_document(document, core.actor_for(), f'GitHub release {tag}, commit {sha}.', data=pdf, filename='release.pdf',version=release_label)
     WorkItemRelease.objects.create(work_item=item, tag=tag, version=list(version), revision=document.rev,
         commit_sha=sha, checksum=checksum, manifest=manifest, source_archive=source_archive)
     return 'released', document.rev

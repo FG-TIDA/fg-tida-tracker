@@ -19,6 +19,16 @@ from .work_items import receive_build, transition, version_tuple
 
 
 class SourceValidationTests(SimpleTestCase):
+    def test_declared_document_versions_are_distinct_from_dates_and_sections(self):
+        from .versioning import declared_version
+        for source, expected in [
+            ('|Charter version|0.9|\n|Date|2026-11-17|', '0.9'),
+            ('**Document version:** 1.2\n', '1.2'),
+            ('Version history\n---------------\n\n.. list-table::\n\n   * - Version\n     - Change\n   * - 0.1\n     - Initial\n   * - 0.3\n     - Authors\n', '0.3'),
+            ('| Version | Change |\n|---|---|\n|0.1|Initial|\n|0.9|Updated|', '0.9'),
+            ('1.2 Introduction\n2026-11-17\nSoftware version 2.0 is discussed.', None),
+        ]:
+            self.assertEqual(declared_version(source), expected)
     @override_settings(SITE_URL='https://tracker.example.test')
     def test_signed_identity_rejects_wrong_repo_workflow_ref_and_stale_commit(self):
         from jwcrypto import jwk,jwt
@@ -139,6 +149,31 @@ class GitHubWorkflowTests(TestCase):
         self.assertEqual(receive_build(self.repo,manifest,pdf),('unchanged','00'))
         self.assertFalse(WorkItemRelease.objects.exists())
 
+    def test_source_declared_version_and_release_finalization_keep_archive_identity(self):
+        from .models import DocumentFormat
+        from .versioning import public_version
+        document = Document(name='declared-charter', title='Charter', group=self.root, type_id='charter')
+        content = b'# Charter\n\n|Charter version|0.9|\n'
+        core.save_document(document, core.actor_for(), 'Source imported', data=content, filename='charter.md',
+                           state=State.objects.get(type_id='charter', slug='draft'))
+        self.assertEqual(public_version(document), '0.9')
+        item = WorkItem.objects.create(document=document, repository=self.repo, short_name='charter')
+        manifest, pdf, _ = self.artifacts('v0.9')
+        source = io.BytesIO()
+        with tarfile.open(fileobj=source, mode='w:gz') as archive:
+            entry = tarfile.TarInfo('src/doc/charter.md')
+            entry.size = len(content)
+            archive.addfile(entry, io.BytesIO(content))
+        payload = source.getvalue()
+        manifest.update(document=document.name, source_sha256=hashlib.sha256(payload).hexdigest())
+        self.assertEqual(receive_build(self.repo, manifest, pdf, payload), ('released', '00'))
+        self.assertEqual(receive_build(self.repo, manifest, pdf, payload), ('unchanged', '00'))
+        self.assertEqual(document.tida_versions.count(), 1)
+        self.assertEqual(DocumentFormat.objects.get(document=document, kind='pdf').revision, '00')
+        from .versioning import correct_version
+        with self.assertRaises(ValidationError):
+            correct_version(document.tida_versions.get(), '1.0', core.actor_for())
+
     def test_xy_versions_timeline_dates_aliases_and_manual_major_upload(self):
         from .models import DocumentVersion
         from .versioning import public_version
@@ -233,7 +268,7 @@ class GitHubWorkflowTests(TestCase):
         self.assertEqual(original.source_metadata['affiliations'], ['Example Lab'])
         self.assertNotIn('private@example.test', str(original.source_metadata))
         page = self.client.get('/doc/' + original.document.name + '/')
-        self.assertContains(page, 'Example Lab <span', html=False)
+        self.assertContains(page, '<th scope="row">Affiliation</th><td>Example Lab</td>')
         self.assertContains(self.client.get('/doc/', {'author': 'Example Lab'}), issue['title'])
 
     def test_catalog_refresh_reuses_explicit_work_item_link(self):

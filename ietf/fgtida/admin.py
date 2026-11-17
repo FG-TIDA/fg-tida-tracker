@@ -21,7 +21,9 @@ from . import workflow
 from .files import extract_text, MAX_BYTES
 from .models import Contribution, ContributionRecipient, ContributionSequence, SessionResource, OutgoingMail, AdministratorApproval, SecurityQuestion
 from .models import (EmailVerification, GitHubAccount, WorkingGroupConfiguration, GitHubRepository,
-    GitHubSource, WorkItem, WorkItemRelease, GitHubJob, DocumentListing, DocumentFormat)
+    GitHubSource, WorkItem, WorkItemRelease, GitHubJob, DocumentAttribution, DocumentListing, DocumentFormat,
+    PublicDocumentType)
+from .contributions import ContributionForm
 from .resource_files import SessionResourceForm
 from .training import TrainingVideoAdmin
 from .models import TrainingCategory, TrainingVideo
@@ -30,6 +32,7 @@ from ietf.ietfauth.admin import CustomUserAdmin
 from django.utils.html import format_html
 from django.utils import timezone
 from django.urls import reverse, NoReverseMatch
+from django.shortcuts import redirect
 from ietf.person.models import Person
 from ietf.person.admin import PersonAdmin, EmailInline, AliasInline, PersonUUIDInline
 
@@ -189,8 +192,12 @@ class ContributionReviewForm(forms.ModelForm):
         if 'sequence_number' in self.changed_data:
             prefix = self.instance.number_prefix or self.instance.submission_prefix()
             self.numbering_sequence = ContributionSequence.lock(prefix)
-            if Contribution.objects.filter(number_prefix=prefix, sequence_number=number).exclude(pk=self.instance.pk).exists():
-                raise ValidationError(f'{prefix}-{number:03d} is already assigned to another contribution.')
+            records = Contribution.objects.filter(number_prefix=prefix)
+            if not records.filter(pk=self.instance.pk).exists():
+                raise ValidationError('This work item is no longer in the list.')
+            count = records.count()
+            if number is None or not 1 <= number <= count:
+                raise ValidationError(f'Choose a position from 1 to {count}.')
         return number
 
     def clean(self):
@@ -204,6 +211,12 @@ class ContributionReviewForm(forms.ModelForm):
         return values
 
 
+class AdminContributionForm(ContributionForm):
+    class Meta(ContributionForm.Meta):
+        fields = ['submitter', *ContributionForm.Meta.fields]
+        widgets = {'submitter': admin.widgets.ForeignKeyRawIdWidget(Contribution._meta.get_field('submitter').remote_field, admin.site)}
+
+
 class ContributionAdmin(admin.ModelAdmin):
     form=ContributionReviewForm
     list_display = ['reference', 'title', 'submitter', 'group', 'created', 'status', 'notifications_queued']
@@ -214,17 +227,30 @@ class ContributionAdmin(admin.ModelAdmin):
               'status', 'review_note', 'decision', 'adopt_into', 'draft_repository_url', 'reviewed_by', 'reviewed_at', 'document', 'notifications_queued']
     readonly_fields = [field for field in fields if field not in {'sequence_number','review_note','decision','adopt_into'}]
     actions = ['accept_contributions', 'reject_contributions']
+    ordering = ['number_prefix', 'sequence_number', 'pk']
+
+    def get_fields(self, request, obj=None):
+        if obj is None:
+            return [*AdminContributionForm.Meta.fields, 'upload', 'publication_consent']
+        return super().get_fields(request, obj)
+
+    def get_readonly_fields(self, request, obj=None):
+        return self.readonly_fields if obj else []
+
+    def get_form(self, request, obj=None, **kwargs):
+        if obj is None:
+            kwargs['form'] = AdminContributionForm
+        return super().get_form(request, obj, **kwargs)
 
     def save_model(self,request,obj,form,change):
-        fields = ['review_note']
+        if not change:
+            from .contributions import record_submission
+            record_submission(obj, form, request.user)
+            return
         if 'sequence_number' in form.changed_data:
             sequence = form.numbering_sequence
-            obj.number_prefix = sequence.prefix
-            if obj.sequence_number > sequence.last_number:
-                sequence.last_number = obj.sequence_number
-                sequence.save(update_fields=['last_number'])
-            fields.extend(['number_prefix', 'sequence_number'])
-        obj.save(update_fields=fields)
+            sequence.reorder(moved=obj, position=obj.sequence_number)
+        obj.save(update_fields=['review_note'])
         from .contributions import accept,reject
         if form.cleaned_data.get('decision')=='adopt':
             if not request.user.has_perm('doc.add_document'):
@@ -248,16 +274,33 @@ class ContributionAdmin(admin.ModelAdmin):
         return super().get_queryset(request).defer('content', 'source_archive').select_related('submitter', 'group')
 
     def has_add_permission(self, request):
-        return False
+        return request.user.has_perm('doc.add_document') and super().has_add_permission(request)
 
     def has_delete_permission(self, request, obj=None):
-        return False
+        return super().has_delete_permission(request, obj) and (
+            not obj or not obj.document_id or request.user.has_perm('doc.delete_document'))
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        actions.pop('delete_selected', None)
+        return actions
+
+    def delete_view(self, request, object_id, extra_context=None):
+        obj = self.get_object(request, object_id)
+        if obj and obj.document_id:
+            if not self.has_delete_permission(request, obj):
+                raise PermissionDenied
+            return redirect('admin:doc_document_delete', obj.document_id)
+        return super().delete_view(request, object_id, extra_context)
 
     def submitted_file(self, obj):
         return format_html('<a href="{}">{}</a>', reverse('fgtida:contribution-download', args=[obj.pk]), obj.filename)
 
     def source_details(self, obj):
-        return format_html('<a href="{}">Review source preview, assets and provenance</a>', reverse('fgtida:contribution', args=[obj.pk]))
+        if obj.document_id:
+            return format_html('<a href="{}">Review submission or archive a new version</a> · <a href="{}">Manage the public work item</a>',
+                reverse('fgtida:contribution', args=[obj.pk]), reverse('admin:doc_document_change', args=[obj.document_id]))
+        return format_html('<a href="{}">Review submission</a>', reverse('fgtida:contribution', args=[obj.pk]))
 
     @admin.action(description='Accept and publish selected pending contributions', permissions=['change'])
     def accept_contributions(self, request, queryset):
@@ -302,6 +345,11 @@ class MemberRoleForm(forms.ModelForm):
         model = Role
         fields = '__all__'
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['person'].help_text = 'Select a People profile. A platform user account is optional.'
+        self.fields['email'].help_text = 'Select a contact address saved on the selected People profile.'
+
     def clean(self):
         values = super().clean()
         person, email = values.get('person'), values.get('email')
@@ -316,7 +364,7 @@ class MemberRoleInline(RoleInline):
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == 'name':
-            kwargs['queryset'] = db_field.remote_field.model.objects.filter(slug__in=['chair', 'secr', 'member'])
+            kwargs['queryset'] = db_field.remote_field.model.objects.filter(slug__in=core.GROUP_ROLES)
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
@@ -328,6 +376,12 @@ class FgRoleAdmin(admin.ModelAdmin):
     search_fields = ['person__name', 'group__name']
     list_filter = ['group', 'name']
 
+    def get_changeform_initial_data(self, request):
+        initial = super().get_changeform_initial_data(request)
+        if not str(initial.get('group', '')).isdigit() or not core.groups().filter(pk=initial['group']).exists():
+            initial.pop('group', None)
+        return initial
+
     def get_queryset(self, request):
         return super().get_queryset(request).filter(group__in=core.groups()).select_related('group', 'person', 'name')
 
@@ -335,7 +389,7 @@ class FgRoleAdmin(admin.ModelAdmin):
         if db_field.name == 'group':
             kwargs['queryset'] = core.groups()
         if db_field.name == 'name':
-            kwargs['queryset'] = db_field.remote_field.model.objects.filter(slug__in=['chair', 'secr', 'member'])
+            kwargs['queryset'] = db_field.remote_field.model.objects.filter(slug__in=core.GROUP_ROLES)
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def save_model(self, request, obj, form, change):
@@ -371,11 +425,13 @@ class FgGroupForm(GroupForm):
 
 
 class DocumentForm(forms.ModelForm):
+    current_version = forms.CharField(required=False, max_length=32, label='Current archive version',
+        help_text='Correct the X.Y label of the current archive. Existing links continue to work. GitHub release versions follow their release tags.')
     document_direction = forms.ChoiceField(required=False, label='Liaison statements', choices=[('', 'Neither'), ('input', 'Incoming liaison statement'), ('output', 'Outgoing liaison statement')], help_text='Preserve the received/sent Word, PDF or ZIP as the original. ZIPs may contain Word/PDF documents and supporting text/images. An optional PDF reading copy can be attached to the same revision.')
     document_meeting = forms.ModelChoiceField(required=False, label='Document meeting', queryset=Meeting.objects.none())
     document_source = forms.CharField(required=False, max_length=255, label='Document source', help_text='Organization, author or working group displayed in the list.')
     document_created = forms.SplitDateTimeField(required=False, label='Document creation date', widget=admin.widgets.AdminSplitDateTime, help_text='Leave blank to use the current date for a new list entry.')
-    version = forms.CharField(required=False,max_length=32,label='New file version',help_text='Optional X.Y version, e.g. 0.1 or 1.0. Without a value the minor version increases. Archived versions are immutable.')
+    version = forms.CharField(required=False,max_length=32,label='New file version',help_text='Optional X.Y version. Otherwise use the version declared in the source, or start at 0.0 and increase on subsequent uploads.')
     catalogued = forms.BooleanField(required=False, initial=True, label='Show in public catalog', help_text='Leave unchecked for repository support files or records awaiting classification. This is catalog inclusion, not confidential storage.')
     upload = forms.FileField(required=False, help_text='Upload a new revision: RST source ZIP, RST, PDF, DOCX, PPTX, TXT, Markdown or XML (up to 10 MB).')
     lifecycle_state = forms.ModelChoiceField(queryset=State.objects.none(), required=False, label='Document state')
@@ -389,12 +445,15 @@ class DocumentForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['type'].queryset = DocTypeName.objects.filter(slug__in=core.DOCUMENT_TYPES)
+        self.fields['type'].label = 'Workflow type'
+        self.fields['type'].help_text = 'Controls lifecycle states and file storage. Use Public metadata below to change the type readers see.'
         self.fields['document_meeting'].queryset = core.meetings().order_by('-date', '-pk')
         self.fields['type'].initial = 'tida'
         self.fields['group'].queryset = core.groups()
         self.fields['group'].required = True
         self.fields['group'].initial = Group.objects.filter(acronym='tida').first()
         self.fields['tags'].queryset = DocTagName.objects.filter(slug__startswith='tida-').exclude(slug='tida-uncatalogued')
+        self.fields['tags'].label = 'Categories'
         self.fields['meeting_session'].queryset = Session.objects.filter(meeting__type_id='tida', group__in=core.groups()).select_related('meeting', 'group')
         self.fields['meeting_session'].widget = admin.widgets.AutocompleteSelect(
             SessionPresentation._meta.get_field('session'), admin.site,
@@ -402,6 +461,10 @@ class DocumentForm(forms.ModelForm):
         type_id = self.data.get('type') or self.instance.type_id or 'tida'
         self.fields['lifecycle_state'].queryset = State.objects.filter(type_id=type_id, used=True)
         if self.instance.pk:
+            from .models import DocumentVersion
+            self.current_version_record = DocumentVersion.objects.filter(document=self.instance, revision=self.instance.rev).first()
+            if self.current_version_record:
+                self.fields['current_version'].initial = self.current_version_record.version
             listing = DocumentListing.objects.filter(document=self.instance).first()
             if listing:
                 for field, value in [('document_direction', listing.direction), ('document_meeting', listing.meeting_id), ('document_source', listing.source), ('document_created', listing.created)]:
@@ -426,6 +489,28 @@ class DocumentForm(forms.ModelForm):
     def clean(self):
         values = super().clean()
         self.instance._fgtida_upload_revision = bool(values.get('upload'))
+        upload = values.get('upload')
+        if upload and not values.get('version'):
+            from .versioning import declared_version, next_version
+            try:
+                detected = declared_version(extract_text(upload.read(MAX_BYTES + 1), upload.name))
+                next_version(self.instance, detected)
+            except ValidationError as error:
+                self.add_error('version', error)
+            finally:
+                upload.seek(0)
+        current = getattr(self, 'current_version_record', None)
+        if values.get('current_version') and (not current or values['current_version'] != current.version):
+            if not current:
+                self.add_error('current_version', 'Upload the first archive before setting its version.')
+            elif values.get('upload'):
+                self.add_error('current_version', 'Save the current version correction before uploading a new revision.')
+            else:
+                from .versioning import validate_correction
+                try:
+                    validate_correction(current, values['current_version'])
+                except ValidationError as error:
+                    self.add_error('current_version', error)
         if values.get('document_direction'):
             from pathlib import Path
             upload = values.get('upload')
@@ -500,19 +585,109 @@ class DocumentFormatInline(admin.TabularInline):
     has_delete_permission = has_change_permission
 
 
+class PublicDocumentMetadataForm(forms.ModelForm):
+    def clean_contact_emails(self):
+        from django.core.validators import validate_email
+        addresses = list(dict.fromkeys(address.strip() for address in self.cleaned_data['contact_emails'].splitlines() if address.strip()))
+        for address in addresses:
+            validate_email(address)
+        return '\n'.join(addresses)
+
+
+class DocumentAttributionInline(admin.StackedInline):
+    model = DocumentAttribution
+    form = PublicDocumentMetadataForm
+    verbose_name = 'Public metadata'
+    verbose_name_plural = 'Public metadata'
+    extra = 0
+
+    def has_add_permission(self, request, obj=None):
+        return request.user.has_perm('doc.change_document') or request.user.has_perm('doc.add_document')
+
+    def has_change_permission(self, request, obj=None):
+        return request.user.has_perm('doc.change_document')
+
+    has_view_permission = has_change_permission
+    has_delete_permission = has_change_permission
+
+
+class PublicDocumentTypeAdmin(admin.ModelAdmin):
+    search_fields = ['name']
+
+    def get_readonly_fields(self, request, obj=None):
+        return ['name'] if obj and obj.name == PublicDocumentType.CONTRIBUTION else []
+
+    def has_delete_permission(self, request, obj=None):
+        return (not obj or obj.name != PublicDocumentType.CONTRIBUTION) and super().has_delete_permission(request, obj)
+
+
+class DocumentCategoryForm(forms.ModelForm):
+    def clean_slug(self):
+        slug = self.cleaned_data['slug']
+        if not slug.startswith('tida-'):
+            slug = 'tida-' + slug
+        if slug == 'tida-uncatalogued':
+            raise ValidationError('Choose a public category identifier such as tida-reports.')
+        forms.SlugField(max_length=32).clean(slug)
+        if self.instance.pk and self.instance.pk != slug:
+            raise ValidationError('Keep the category identifier to preserve document assignments. You can change its display name.')
+        return slug
+
+
+class DocumentCategoryAdmin(admin.ModelAdmin):
+    form = DocumentCategoryForm
+    fields = ['slug', 'name', 'desc', 'used', 'order']
+    list_display = ['name', 'slug', 'used']
+    search_fields = ['name', 'slug']
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).filter(slug__startswith='tida-').exclude(slug='tida-uncatalogued')
+
+    def get_readonly_fields(self, request, obj=None):
+        return ['slug'] if obj else []
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
 class FgDocumentAdmin(DocumentAdmin):
     form = DocumentForm
     fields = ['name', 'title', 'type', 'group', 'abstract', 'catalogued', 'tags', 'lifecycle_state',
-              'upload', 'version', 'document_direction', 'document_meeting', 'document_source', 'document_created', 'meeting_session', 'external_url', 'comment_about_changes']
-    list_display = ['name', 'title', 'type', 'group', 'public_version', 'time']
+              'current_version', 'upload', 'version', 'document_direction', 'document_meeting', 'document_source', 'document_created', 'meeting_session', 'external_url', 'comment_about_changes']
+    list_display = ['name', 'title', 'public_document_type', 'group', 'public_version', 'time']
     search_fields = ['name', 'title', 'abstract']
-    list_filter = ['type', 'group', 'tags']
+    list_filter = ['tida_attribution__public_type', 'type', 'group', 'tags']
     raw_id_fields = []
-    inlines = [DocAuthorInline, RelatedDocumentInline, AdditionalUrlInLine, DocumentFormatInline]
+    inlines = [DocAuthorInline, DocumentAttributionInline, RelatedDocumentInline, AdditionalUrlInLine, DocumentFormatInline]
     actions = []
 
     def get_queryset(self, request):
-        return super().get_queryset(request).filter(group__in=core.groups()).prefetch_related('tida_versions')
+        from django.db.models import Exists, OuterRef
+        return (super().get_queryset(request).filter(group__in=core.groups())
+            .select_related('type', 'tida_attribution__public_type').prefetch_related('tida_versions')
+            .annotate(is_contribution=Exists(Contribution.objects.filter(document_id=OuterRef('pk')))))
+
+    @admin.display(description='Type')
+    def public_document_type(self, obj):
+        from .templatetags.fgtida import document_type
+        return document_type(obj)
+
+    def get_deleted_objects(self, objs, request):
+        # Native history and author admins are hidden, but their records can
+        # be removed as part of an authorized FG-TIDA document deletion.
+        objs = list(objs)
+        request._fgtida_deleting_document_ids = {obj.pk for obj in objs if self.has_delete_permission(request, obj)}
+        try:
+            return super().get_deleted_objects(objs, request)
+        finally:
+            del request._fgtida_deleting_document_ids
+
+    @transaction.atomic
+    def delete_queryset(self, request, queryset):
+        prefixes = Contribution.objects.filter(document__in=queryset).exclude(number_prefix='').order_by('number_prefix')
+        for prefix in prefixes.values_list('number_prefix', flat=True).distinct():
+            ContributionSequence.lock(prefix)
+        super().delete_queryset(request, queryset)
 
     @admin.display(description='Version')
     def public_version(self,obj):
@@ -522,6 +697,9 @@ class FgDocumentAdmin(DocumentAdmin):
     def save_model(self, request, obj, form, change):
         from .github_catalog import preserve_manual_document
         upload = form.cleaned_data.get('upload')
+        if change and 'current_version' in form.changed_data and form.cleaned_data.get('current_version'):
+            from .versioning import correct_version
+            correct_version(form.current_version_record, form.cleaned_data['current_version'], core.actor_for(request.user))
         state = form.cleaned_data.get('lifecycle_state') or State.objects.filter(type_id=obj.type_id, used=True).order_by('order').first()
         core.save_document(obj, core.actor_for(request.user), form.cleaned_data['comment_about_changes'],
             data=upload.read(MAX_BYTES + 1) if upload else None, filename=upload.name if upload else None, state=state,
@@ -652,7 +830,7 @@ class GitHubRepositoryAdmin(IntegrationAdmin):
     def get_form(self, request, obj=None, **kwargs):
         base = super().get_form(request, obj, **kwargs)
         class EvidenceForm(base):
-            category = forms.ChoiceField(required=False, choices=[('', 'Not specified by source')] + core.CATEGORIES)
+            category = forms.ChoiceField(required=False, choices=[('', 'Not specified by source')] + core.categories())
             def clean(self):
                 values = super().clean()
                 from .classification import public_github_url
@@ -1101,6 +1279,23 @@ def hidden_admin_permission(request, obj=None):
     return False
 
 
+def can_delete_document_child(request, obj=None):
+    document_ids = getattr(request, '_fgtida_deleting_document_ids', ())
+    if obj is None or not document_ids:
+        return False
+    from ietf.doc.models import DocEvent, DocHistory
+    for field in obj._meta.fields:
+        if not field.many_to_one:
+            continue
+        if field.related_model is Document and getattr(obj, field.attname) in document_ids:
+            return True
+        if field.related_model in (DocHistory, DocEvent):
+            parent = getattr(obj, field.name)
+            if parent and parent.doc_id in document_ids:
+                return True
+    return False
+
+
 def configure_admin():
     if not admin.site.is_registered(TrainingCategory):
         admin.site.register(TrainingCategory)
@@ -1109,6 +1304,7 @@ def configure_admin():
     if not admin.site.is_registered(SecurityQuestion):
         admin.site.register(SecurityQuestion, SecurityQuestionAdmin)
     for model, cls in [(User, FgUserAdmin), (Person, FgPersonAdmin), (Contribution, ContributionAdmin), (ContributionRecipient, ContributionRecipientAdmin), (SessionResource, SessionResourceAdmin), (OutgoingMail, OutgoingMailAdmin),
+        (PublicDocumentType, PublicDocumentTypeAdmin),
         (GitHubAccount,GitHubAccountAdmin),(WorkingGroupConfiguration,WorkingGroupConfigurationAdmin),
         (GitHubRepository,GitHubRepositoryAdmin),(GitHubSource,GitHubSourceAdmin),(WorkItem,WorkItemAdmin),
         (WorkItemRelease,WorkItemReleaseAdmin),(GitHubJob,GitHubJobAdmin),(EmailVerification,EmailVerificationAdmin)]:
@@ -1118,7 +1314,7 @@ def configure_admin():
     admin.site.site_header = 'FG-TIDA Datatracker administration'
     admin.site.site_title = 'FG-TIDA administration'
     admin.site.index_title = 'Documents, groups, meetings and participants'
-    for model, cls in [(Document, FgDocumentAdmin), (Group, FgGroupAdmin), (Role, FgRoleAdmin), (Meeting, FgMeetingAdmin), (Session, FgSessionAdmin), (ImportantDateName, FgImportantDateNameAdmin), (MeetingCategory, admin.ModelAdmin)]:
+    for model, cls in [(Document, FgDocumentAdmin), (Group, FgGroupAdmin), (Role, FgRoleAdmin), (Meeting, FgMeetingAdmin), (Session, FgSessionAdmin), (ImportantDateName, FgImportantDateNameAdmin), (DocTagName, DocumentCategoryAdmin), (MeetingCategory, admin.ModelAdmin)]:
         if model in admin.site._registry:
             admin.site.unregister(model)
         admin.site.register(model, cls)
@@ -1170,7 +1366,8 @@ def configure_admin():
             registered.has_add_permission = hidden_admin_permission
             registered.has_change_permission = hidden_admin_permission
             registered.has_delete_permission = (can_delete_account_credential
-                if opts.label_lower == 'otp_totp.totpdevice' else hidden_admin_permission)
+                if opts.label_lower == 'otp_totp.totpdevice' else
+                can_delete_document_child if opts.app_label == 'doc' else hidden_admin_permission)
             registered.has_view_permission = hidden_admin_permission
             continue
         registered.list_per_page = 50
@@ -1198,6 +1395,9 @@ def configure_admin():
         apps = original(request, app_label)
         for app in apps:
             app['models'] = [model for model in app['models'] if model['object_name'].lower() in allowed.get(app['app_label'], set())]
+            for model in app['models']:
+                if app['app_label'] == 'name' and model['object_name'] == 'DocTagName':
+                    model['name'] = 'Document categories'
         return [app for app in apps if app['models']]
 
     admin.site.get_app_list = MethodType(app_list, admin.site)

@@ -2,9 +2,11 @@
 {% block title %}{{ group.name }} | FG-TIDA{% endblock %}
 {% block content %}{% include 'fgtida/group_tabs.html' %}<p>{{ group.type.name }} · {{ group.state.name }}</p>
 {% if perms.group.change_group %}<a class="btn btn-primary mb-3" href="{% url 'admin:group_group_change' group.pk %}">Edit group</a>{% endif %}
-{% if section == 'about' %}<div>{{ group.description|rich_text }}</div>
+{% if section == 'about' %}<div>{{ group_description|rich_text }}</div>
+{% if github_organization %}<h2>WG{{ wg_number }} GitHub Organization</h2><ul><li><a href="https://github.com/{{ github_organization }}">{{ github_organization }}</a></li></ul>{% endif %}
 <h2>Leadership and roles</h2><ul>{% for role in roles %}<li>{{ role.name.name }}: <a href="{% url 'fgtida:person' role.person.pk %}">{{ role.person.name }}</a></li>{% empty %}<li>No roles have been assigned.</li>{% endfor %}</ul>
-{% if group.charter %}<p><a href="{% url 'fgtida:document' group.charter.name %}">Charter</a></p>{% endif %}
+{% if perms.group.add_role %}<p><a href="{% url 'admin:group_role_add' %}?group={{ group.pk }}">Add a role</a>{% if perms.person.add_person %} · <a href="{% url 'admin:person_person_add' %}">Create a person profile without an account</a>{% endif %}</p>{% endif %}
+<h2>Charter</h2><ul>{% if charter %}<li><a href="{% url 'fgtida:document' charter.name %}">{{ charter.title }}</a></li>{% else %}<li>No charter has been recorded.</li>{% endif %}</ul>
 <h2>Documents</h2><ul>{% for doc in documents %}<li><a href="{% url 'fgtida:document' doc.name %}">{{ doc.title }}</a></li>{% empty %}<li>No documents.</li>{% endfor %}</ul>
 <a href="{% url 'fgtida:documents' %}?group={{ group.acronym }}">Search all group documents</a>
 <h2 class="mt-4">Mailing list and resources</h2><ul>{% if group.list_email %}<li>{{ group.list_email }}</li>{% endif %}{% if group.list_subscribe %}<li><a href="{{ group.list_subscribe }}">Subscribe to the mailing list</a></li>{% endif %}{% for resource in resources %}<li><a href="{{ resource.url }}">{{ resource.name }}</a></li>{% endfor %}</ul>

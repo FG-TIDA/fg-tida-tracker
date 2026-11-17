@@ -102,8 +102,8 @@ def store_source(repository, key, data, filename, title, source_url, sha, catego
     initial = 'draft' if repository.mode == 'workitem' or doc.type_id=='charter' else 'submitted'
     state = None if doc.pk and doc.states.exists() else State.objects.filter(type_id=doc.type_id, slug=initial if doc.type_id in {'tida','charter'} else 'active').first()
     core.save_document(doc, core.actor_for(), f'Synchronized {repository.full_name}: {key} ({sha}).', data=data, filename=filename, state=state)
-    doc.tags.remove(*doc.tags.filter(slug__in=['tida-'+slug for slug, _ in core.CATEGORIES]))
-    if selected_category in dict(core.CATEGORIES):
+    doc.tags.remove(*doc.tags.filter(slug__in=['tida-'+slug for slug, _ in core.categories()]))
+    if selected_category in dict(core.categories()):
         doc.tags.add('tida-'+selected_category)
     # Update the native snapshot after categories have been attached.
     from ietf.doc.utils import save_document_in_history

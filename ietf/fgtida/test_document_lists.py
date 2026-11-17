@@ -9,7 +9,7 @@ from ietf.doc.models import Document, State
 from ietf.group.models import Group
 from ietf.meeting.models import Meeting
 from . import core
-from .models import DocumentListing, WorkingGroupConfiguration, GitHubAccount, GitHubRepository, GitHubSource
+from .models import DocumentListing, PublicDocumentType, WorkingGroupConfiguration, GitHubAccount, GitHubRepository, GitHubSource
 from . import tests as native_tests
 
 
@@ -17,6 +17,71 @@ from . import tests as native_tests
 class DocumentListTests(TestCase):
     setUp = native_tests.NativeDatatrackerTests.setUp
     admin_payload = native_tests.NativeDatatrackerTests.admin_payload
+
+    def test_source_types_custom_categories_and_corrected_versions_preserve_downloads(self):
+        from ietf.name.models import DocTagName
+        from .versioning import public_version
+
+        for category in ['use-cases', 'themes']:
+            document = Document(name='classified-' + category, title='Example ' + category, group=self.root, type_id='tida')
+            core.save_document(document, core.actor_for(), 'Initial source', data=b'Initial content', filename='source.txt')
+            document.tags.add('tida-' + category)
+            detail = self.client.get(f'/doc/{document.name}/')
+            self.assertNotContains(detail, '<th scope="row">Type</th>')
+            self.assertContains(detail, '<th scope="row">Working group / stream</th><td></td>')
+            self.assertNotContains(detail, 'wg assignment evidence')
+            self.assertNotContains(detail, 'FG-TIDA (no wg assigned)')
+            kind = PublicDocumentType.objects.get(name=category)
+            self.assertContains(self.client.get('/doc/', {'type': f'public-{kind.pk}'}), document.title)
+        response = self.client.post('/admin/name/doctagname/add/', {'slug': 'reports', 'name': 'Reports', 'used': 'on', 'order': 0})
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(DocTagName.objects.filter(slug='tida-reports').exists())
+        edit = f'/admin/doc/document/{document.pk}/change/'
+        payload = self.admin_payload(edit, {'name': document.name, 'title': document.title, 'type': document.type_id,
+            'group': self.root.pk, 'current_version': '0.9', 'tags': ['tida-reports'], 'comment_about_changes': 'Correct version and category'})
+        self.assertEqual(self.client.post(edit, payload).status_code, 302)
+        document.refresh_from_db()
+        self.assertEqual(public_version(document), '0.9')
+        for version in ['0.0', '0.9']:
+            self.assertEqual(self.client.get(f'/doc/{document.name}/download/{version}/').status_code, 200)
+        listing = self.client.get('/doc/', {'category': 'reports'})
+        self.assertContains(listing, document.title)
+        self.assertFalse(listing.context['groups'].filter(acronym='tida').exists())
+        self.assertContains(self.client.get(f'/doc/{document.name}/'), '>Reports</a>')
+
+    def test_preview_uses_one_title_and_identification_metadata_with_editor_overrides(self):
+        title = 'Example use case'
+        body = (f'# {title}\n\n## 1. Identification\n\n'
+                '**Submitting organization:** Individual expert contribution (FG-TIDA participant)\n\n'
+                '**Contact name:** Example Author\n\n'
+                '**Contact email:** [author@example.test](mailto:author@example.test).\n\n'
+                '## Technical scope\n\nKeep the rest of the document here.\n')
+        document = Document(name='preview-identification', title=title, group=self.root, type_id='tida', abstract=body)
+        core.save_document(document, core.actor_for(self.user), 'Initial content', data=body.encode(), filename='preview.md')
+        url = f'/doc/{document.name}/'
+        response = self.client.get(url)
+        self.assertContains(response, f'>{title}</h1>', count=1)
+        self.assertNotContains(response, f'>{title}</h2>')
+        self.assertContains(response, 'Keep the rest of the document here.', count=1)
+        self.assertContains(response, '<th scope="row">Authors</th><td>Example Author</td>')
+        self.assertContains(response, '<th scope="row">Affiliation</th><td>Individual expert</td>')
+        self.assertContains(response, '<th scope="row">Submission contact</th><td><a href="mailto:author@example.test">')
+
+        self.assertEqual(self.client.post('/admin/fgtida/publicdocumenttype/add/', {'name': 'Technical note'}).status_code, 302)
+        public_type = PublicDocumentType.objects.get(name='Technical note')
+        edit = f'/admin/doc/document/{document.pk}/change/'
+        values = self.admin_payload(edit, {'name': document.name, 'title': title, 'type': 'tida', 'group': self.root.pk,
+            'comment_about_changes': 'Update public metadata'})
+        values.update({'tida_attribution-TOTAL_FORMS': 1, 'tida_attribution-0-public_type': public_type.pk,
+            'tida_attribution-0-authors': 'Edited Author', 'tida_attribution-0-contact_emails': 'editor@example.test'})
+        saved = self.client.post(edit, values)
+        self.assertEqual(saved.status_code, 302)
+        detail = self.client.get(url + 'revision/0.0/')
+        self.assertNotContains(detail, '<th scope="row">Type</th>')
+        self.assertContains(detail, '<th scope="row">Authors</th><td>Edited Author</td>')
+        self.assertContains(detail, 'mailto:editor@example.test')
+        self.assertContains(self.client.get('/doc/', {'type': f'public-{public_type.pk}'}), title)
+        self.assertEqual(self.client.get(url + 'download/0.0/').status_code, 200)
 
     def word_file(self):
         data = io.BytesIO()
@@ -76,7 +141,7 @@ class DocumentListTests(TestCase):
         group = Group.objects.create(acronym='tidawg42', name='Future topic', type_id='wg', state_id='active', parent=self.root)
         WorkingGroupConfiguration.objects.create(group=group, number=42)
         page = self.client.get('/')
-        for label in ['WG42 : Future topic', 'NWI for Incubation', 'Submit a contribution', 'LS Inputs', 'LS Outputs', 'Upcoming meetings', 'Past meetings']:
+        for label in ['WG42 : Future topic', 'NWI for Incubation', 'Submit NWI(New Work Item)', 'LS Inputs', 'LS Outputs', 'Upcoming meetings', 'Past meetings']:
             self.assertContains(page, label)
         for removed in ['Proposed groups', 'Concluded groups', 'Meeting archive', 'Submit a proposal / contribution']:
             self.assertNotContains(page, removed)

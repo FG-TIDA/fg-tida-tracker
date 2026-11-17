@@ -1,7 +1,30 @@
 """Stable public versions; existing archive paths and URLs remain valid."""
 import re
 from django.core.exceptions import ValidationError
-from .models import DocumentVersion
+from django.db import transaction
+from .models import DocumentVersion, DocumentVersionAlias
+
+
+def declared_version(text):
+    """Read explicit version fields and version-history tables, never dates or section numbers."""
+    values = []
+    prefix = text[:65536]
+    field = r'(?:charter\s+|document\s+)?version'
+    for match in re.finditer(rf'(?im)^\s*(?:\|\s*|\*\*|:)?{field}\s*(?:\*\*)?\s*[:|]\s*(?:\*\*)?\s*v?(\d+\.\d+)\b', prefix):
+        values.append(match[1])
+    values.extend(re.findall(rf'(?im)^[ \t]*{field}[ \t]*:?[ \t]*\n[ \t]*v?(\d+\.\d+)[ \t]*(?:\n|$)', prefix))
+    for match in re.finditer(r'(?im)^\s*\*\s+-\s+Version\s*\n(?P<table>(?:[ \t]+[^\n]*\n|\s*\n)+)', prefix):
+        values.extend(re.findall(r'(?m)^\s*\*\s+-\s+v?(\d+\.\d+)\s*$', match['table']))
+    for match in re.finditer(r'(?im)^\s*\|\s*Version\s*\|[^\n]*\n\s*\|[- :|]+\|\s*\n(?P<table>(?:\s*\|[^\n]*\n?)+)', prefix):
+        values.extend(re.findall(r'(?m)^\s*\|\s*v?(\d+\.\d+)\s*\|', match['table']))
+    valid = []
+    for value in values:
+        try:
+            parts(value)
+        except ValidationError:
+            continue
+        valid.append(value)
+    return max(valid, key=parts) if valid else None
 
 
 def parts(value):
@@ -15,10 +38,45 @@ def next_version(document, requested=None):
     latest=max((parts(value) for value in versions),default=None)
     if requested is not None:
         value=parts(requested)
+        if document.pk and DocumentVersionAlias.objects.filter(document=document, version=requested).exists():
+            raise ValidationError('This version is reserved by a link to an earlier archive. Choose a new version.')
         if latest is not None and value<=latest:
             raise ValidationError('A new version must be greater than every archived version. Archived versions cannot be replaced.')
         return requested
     return f'{latest[0]}.{latest[1]+1}' if latest else '0.0'
+
+
+def validate_correction(record, version):
+    parts(version)
+    if record.version == version:
+        return
+    item = getattr(record.document, 'tida_work_item', None)
+    if item and item.releases.filter(revision=record.revision).exists():
+        raise ValidationError('This archive belongs to a GitHub release. Publish a new vX.Y tag to change its version.')
+    if DocumentVersion.objects.filter(document=record.document, version=version).exclude(pk=record.pk).exists():
+        raise ValidationError('This version belongs to another archived revision.')
+    if DocumentVersionAlias.objects.filter(document=record.document, version=version).exclude(target=record).exists():
+        raise ValidationError('This version is already a link to another archive.')
+    for other in DocumentVersion.objects.filter(document=record.document).exclude(pk=record.pk):
+        if (int(other.revision) < int(record.revision) and parts(other.version) >= parts(version)) or (
+                int(other.revision) > int(record.revision) and parts(other.version) <= parts(version)):
+            raise ValidationError('Keep version numbers increasing in archive order.')
+
+
+@transaction.atomic
+def correct_version(record, version, actor):
+    from ietf.doc.models import Document, DocEvent
+    document = Document.objects.select_for_update().get(pk=record.document_id)
+    record = DocumentVersion.objects.select_for_update().get(pk=record.pk)
+    validate_correction(record, version)
+    if record.version == version:
+        return
+    previous = record.version
+    DocumentVersionAlias.objects.get_or_create(document=document, version=previous, defaults={'target': record})
+    record.version = version
+    record.save(update_fields=['version'])
+    DocEvent.objects.create(doc=document, by=actor, type='changed_document', rev=record.revision,
+        desc=f'Corrected displayed version from {previous} to {version}.')
 
 
 def labels(document):
@@ -36,5 +94,9 @@ def public_version(document,revision=None):
 
 def archive_revision(document,value):
     if '.' in (value or ''):
-        return next((revision for revision,version in labels(document).items() if version==value),value)
+        mapped = next((revision for revision,version in labels(document).items() if version==value), None)
+        if mapped:
+            return mapped
+        alias = DocumentVersionAlias.objects.filter(document=document, version=value).select_related('target').first()
+        return alias.target.revision if alias else value
     return value

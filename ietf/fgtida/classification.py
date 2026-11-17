@@ -55,7 +55,7 @@ def resolve(repository, key, source_url='', metadata=None):
         else:
             group = Group.objects.get(acronym='tida')
             evidence = ''
-    category = repository.category if public_github_url(repository.category_evidence) and repository.category in dict(core.CATEGORIES) else ''
+    category = repository.category if public_github_url(repository.category_evidence) and repository.category in dict(core.categories()) else ''
     if category == 'use-cases':
         # Explicit FG-TIDA ownership policy: all use cases and their supporting
         # attachments belong to WG0, irrespective of issue topic labels.
@@ -69,7 +69,7 @@ def resolve(repository, key, source_url='', metadata=None):
 
 
 def refresh_document(doc, group, category, source_url, replacement_url=None):
-    category_tags = ['tida-'+slug for slug, _ in core.CATEGORIES]
+    category_tags = ['tida-'+slug for slug, _ in core.categories()]
     old = set(doc.tags.filter(slug__in=category_tags).values_list('slug', flat=True))
     desired = {'tida-'+category} if category else set()
     if doc.group_id == group.pk and old == desired and not replacement_url:

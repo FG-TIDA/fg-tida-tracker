@@ -13,8 +13,15 @@ TYPE_LABELS = [('tida', 'FG-TIDA document'), ('agenda', 'Agenda'), ('minutes', '
                ('slides', 'Slides'), ('charter', 'Charter'), ('tida-template', 'Template'),
                ('recording', 'Recording')]
 DOCUMENT_TYPES = [slug for slug, label in TYPE_LABELS]
+GROUP_ROLES = {'chair': 'Chair', 'cochair': 'Co-Chair', 'secr': 'Secretariat', 'editor': 'Editor', 'member': 'Member'}
 CATEGORIES = [('deliverables', 'Deliverables'), ('themes', 'Themes'), ('use-cases', 'Use cases'),
               ('templates', 'Templates'), ('resources', 'Resources')]
+
+
+def categories():
+    from ietf.name.models import DocTagName
+    return [(row.slug[5:], row.name) for row in DocTagName.objects.filter(slug__startswith='tida-')
+            .exclude(slug='tida-uncatalogued').order_by('name')]
 
 
 def groups():
@@ -56,15 +63,15 @@ def actor_for(user=None):
 
 
 @transaction.atomic
-def save_document(doc, actor, note, data=None, filename=None, state=None, session=None, version=None):
+def save_document(doc, actor, note, data=None, filename=None, state=None, session=None, version=None, source_metadata=None):
     """Use native DocEvent/DocHistory and the native document artifact paths."""
     if data is not None:
         from .files import extract_text
         text = extract_text(data, filename)
         if doc.pk:
             doc.rev = Document.objects.select_for_update().get(pk=doc.pk).rev
-        from .versioning import next_version
-        public_version = next_version(doc,version)
+        from .versioning import declared_version, next_version
+        public_version = next_version(doc, version if version is not None else declared_version(text))
         revision = int(doc.rev or '-1') + 1
         doc.rev = f'{revision:02d}'
         doc.uploaded_filename = f'{doc.name}-{doc.rev}{Path(filename).suffix.lower()}'
@@ -106,6 +113,8 @@ def save_document(doc, actor, note, data=None, filename=None, state=None, sessio
     doc.save_with_history([event])
     if data is not None:
         from .models import DocumentVersion
-        DocumentVersion.objects.create(document=doc,revision=doc.rev,version=public_version,recorded=event.time)
+        from .github_attribution import source_attribution
+        DocumentVersion.objects.create(document=doc, revision=doc.rev, version=public_version, recorded=event.time,
+            source_metadata={**source_attribution(text), **(source_metadata or {})})
         doc.__dict__.pop('_version_labels',None)
     return doc

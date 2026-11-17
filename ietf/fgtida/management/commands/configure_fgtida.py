@@ -4,7 +4,7 @@ from ietf.name.models import (GroupTypeName, GroupStateName, MeetingTypeName, Do
     AgendaTypeName, AgendaFilterTypeName, SessionPurposeName, TimeSlotTypeName, RoleName, ImportantDateName, SessionStatusName)
 from ietf.group.models import Group, GroupFeatures
 from ietf.doc.models import StateType, State
-from ietf.fgtida.core import CATEGORIES, TYPE_LABELS
+from ietf.fgtida.core import CATEGORIES, GROUP_ROLES, TYPE_LABELS
 from ietf.fgtida.content import INCUBATION_NAME
 
 
@@ -30,7 +30,7 @@ class Command(BaseCommand):
             GroupFeatures.objects.get_or_create(type=kind, defaults={'has_documents': True, 'has_meetings': True,
                 'has_session_materials': True, 'has_milestones': True, 'is_schedulable': True, 'show_on_agenda': True,
                 'acts_like_wg': slug == 'wg', 'default_used_roles': ['chair', 'secr'], 'session_purposes': ['regular']})
-        for slug, label in [('chair', 'Chair'), ('secr', 'Secretariat'), ('member', 'Member')]:
+        for slug, label in GROUP_ROLES.items():
             RoleName.objects.get_or_create(slug=slug, defaults={'name': label})
         TimeSlotTypeName.objects.get_or_create(slug='session', defaults={'name': 'Session'})
         SessionPurposeName.objects.get_or_create(slug='regular', defaults={'name': 'Regular session', 'timeslot_types': ['session']})
@@ -57,7 +57,7 @@ class Command(BaseCommand):
             for order, (code, label) in enumerate(states):
                 State.objects.get_or_create(type=kind, slug=code, defaults={'name': label, 'order': order})
         for slug, label in CATEGORIES:
-            DocTagName.objects.update_or_create(slug='tida-' + slug, defaults={'name': label})
+            DocTagName.objects.get_or_create(slug='tida-' + slug, defaults={'name': label})
         DocTagName.objects.get_or_create(slug='tida-uncatalogued', defaults={'name': 'Excluded from FG-TIDA public catalog'})
         role, _ = AuthGroup.objects.get_or_create(name='FG-TIDA Administrators')
         from django.db.models import Q

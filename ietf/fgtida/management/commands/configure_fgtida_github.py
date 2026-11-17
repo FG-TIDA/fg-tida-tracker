@@ -5,9 +5,9 @@ from ietf.group.models import Group
 from django.db import transaction
 
 GROUPS = [
-    (0, 'Use Cases and Terminology', 'uct', 'https://github.com/fg-tida-wg0/wg0-uct-charter'),
-    (1, 'Continuous and Dynamic Remote Attestation for Agentic AI', 'cdra', 'https://github.com/fg-tida-wg1/wg1-cdra-charter'),
-    (2, 'Identity, Behaviour and Enforcement for AI Agents', 'ibea', 'https://github.com/fg-tida-wg2/wg2-ibea-charter'),
+    (0, 'Use Cases and Terminology', 'uct'),
+    (1, 'Continuous and Dynamic Remote Attestation for Agentic AI', 'cdra'),
+    (2, 'Identity, Behaviour and Enforcement for AI Agents', 'ibea'),
 ]
 
 
@@ -19,7 +19,7 @@ class Command(BaseCommand):
         call_command('configure_fgtida', skip_checks=True)
         root = Group.objects.get(acronym='tida')
         account, _ = GitHubAccount.objects.get_or_create(organization='FG-TIDA')
-        for number, topic, acronym, reference in GROUPS:
+        for number, topic, acronym in GROUPS:
             group = Group.objects.get(acronym=f'tidawg{number}')
             owner, _ = GitHubAccount.objects.get_or_create(organization=f'fg-tida-wg{number}')
             config, created = WorkingGroupConfiguration.objects.get_or_create(group=group,
@@ -27,7 +27,7 @@ class Command(BaseCommand):
             if created or group.name.strip()==f'WG{number}':
                 group.name = topic
                 if not group.description or group.description.strip() in {'WG1','WG2','WG0'}:
-                    group.description = f'FG-TIDA WG{number}: {topic}. GitHub source: {reference}. Charter decisions remain with FG-TIDA editors.'
+                    group.description = f'FG-TIDA WG{number}: {topic}. Charter decisions remain with FG-TIDA editors.'
                 group.save()
         sources = [
             (account,'themes','tida','issues','themes','tida',[]),

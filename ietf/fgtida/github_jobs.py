@@ -55,20 +55,38 @@ def update_state(item, client):
 def bootstrap_repository(item, client):
     document = item.document
     repo = item.repository.full_name
-    authors = [{'name': name, 'affiliation': affiliation} for name, affiliation in
-               document.documentauthor_set.order_by('order').values_list('person__name', 'affiliation')]
-    origin = settings.SITE_URL.rstrip('/')
-    metadata = {'document':document.name,'title':document.title,'authors':authors,
-        'tracker_url':origin+'/doc/'+document.name+'/','group':document.group.name}
     from .models import Contribution
     contribution=Contribution.objects.filter(document=document).first()
+    version = document.tida_versions.filter(revision=document.rev).first() if contribution else None
+    native_authors = list(document.documentauthor_set.order_by('order').values_list('person__name', 'affiliation', 'person__user_id'))
+    authors = [{'name': name, 'affiliation': affiliation} for name, affiliation, _ in native_authors]
+    override = getattr(document, 'tida_attribution', None)
+    if override and override.authors:
+        authors = [{'name': name.strip()} for name in override.authors.splitlines() if name.strip()]
+    elif not override and version and (not authors or (len(authors) == 1 and native_authors[0][2] == contribution.submitter_id)):
+        authors = [{'name': name} for name in version.source_metadata.get('authors', [])] or authors
+    from .accounts import mail_origin
+    origin = mail_origin(None).rstrip('/')
+    metadata = {'document':document.name,'title':document.title,'authors':authors,
+        'tracker_url':origin+'/doc/'+document.name+'/','group':document.group.name}
     draft=contribution.draft_repository_url if contribution else ''
     if draft:
         metadata['original_draft_repository']=draft
-    if contribution and contribution.source_archive:
+    source_archive = bytes(contribution.source_archive) if contribution and contribution.source_archive else b''
+    source_manifest = contribution.source_manifest if contribution else {}
+    if version and version.source_metadata.get('snapshot'):
+        from pathlib import Path
+        source_manifest = version.source_metadata['snapshot']
+        try:
+            source_archive = Path(document.get_file_name()).read_bytes()
+        except OSError as error:
+            raise ValidationError('The current contribution revision archive is unavailable.') from error
+        if hashlib.sha256(source_archive).hexdigest() != source_manifest['sha256']:
+            raise ValidationError('The current contribution revision archive failed its checksum.')
+    if source_archive:
         if contribution.submission_method == 'word' and not contribution.conversion_verified_at:
             raise ValidationError('Word conversion must be verified before source import.')
-        metadata['submitted_source'] = contribution.source_manifest
+        metadata['submitted_source'] = source_manifest
     serialized=json.dumps(metadata,ensure_ascii=False,indent=2)+'\n'
     main_metadata=client.request('GET','/repos/'+repo+'/contents/.tracker/metadata.json?ref='+quote(item.repository.branch,safe=''))
     if main_metadata:
@@ -111,15 +129,15 @@ def bootstrap_repository(item, client):
             marker = '<!-- FG-TIDA tracker -->'
             text = text.split(marker)[0].rstrip()+'\n\n'+marker+'\n'+f'[![Tracker state]({origin}/work-items/{item.pk}/state.svg)]({metadata["tracker_url"]})\n'
         files[path] = text
-    if contribution and contribution.source_archive and not main_metadata:
+    if source_archive and not main_metadata:
         from .source_packages import unpack
         # Import document content on the review branch, preserving the official
         # template's executable configuration and GitHub workflows.
-        for name, content in unpack(bytes(contribution.source_archive)).items():
+        for name, content in unpack(source_archive).items():
             if name == 'conf.py' or name.endswith('.py'):
                 continue
             files['src/doc/' + name] = content
-        entry = contribution.source_manifest['entry_document']
+        entry = source_manifest['entry_document']
         if entry != 'index.rst':
             files['src/doc/index.rst'] = '.. include:: ' + entry + '\n'
     for path, text in files.items():
