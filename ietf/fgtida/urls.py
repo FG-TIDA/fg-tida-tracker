@@ -58,6 +58,7 @@ urlpatterns = [
     path('doc/<slug:name>/revision/<str:rev>/', views.document, name='revision'),
     path('doc/<slug:name>/download/<str:rev>/', views.download, name='download'),
     path('doc/<slug:name>/text/<str:rev>/', views.document_text, name='text'),
+    path('doc/<slug:name>/images/<str:rev>/<path:path>', views.document_image, name='document-image'),
     path('group/fg-tida/', views.groups, name='groups'),
     path('group/<slug:acronym>/about/', views.group, name='group'),
     path('group/<slug:acronym>/documents/', views.search, name='group-documents'),

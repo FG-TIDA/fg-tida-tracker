@@ -104,6 +104,27 @@ If the scanner fails, restore its private connection, memory or signature
 updates while keeping required scanning enabled. Public GitHub references lead
 to external repositories, whose own downloads are controlled by GitHub.
 
+## Images in source ZIP previews
+
+Scanned RST ZIP packages display referenced PNG, JPEG, GIF and SVG images
+inline, including images extracted during Word conversion. Use RST `image`
+or `figure` directives with paths relative to the chapter containing them.
+Nested folders and image substitutions are supported. On smaller screens,
+images scale to fit the page.
+
+Images are read from the checked ZIP through protected application URLs;
+the ZIP is not extracted into a public directory. Public document URLs pin
+the image to a document revision. Private contribution previews keep their
+existing submitter/admin access restrictions. Each image request rechecks the
+archive's scan status, so an unchecked or subsequently blocked archive cannot
+be accessed using an earlier image URL. SVG responses use a sandboxed content
+security policy and cannot run scripts or fetch external resources.
+
+Remote images are not loaded. Draw.io, Mermaid and PlantUML source files are
+preserved as supporting files but are not executed. Export a diagram to PNG,
+JPEG or SVG and reference that image in the RST source for an inline preview.
+Existing scanned ZIPs need no re-upload and no new database migration.
+
 ## References
 
 - [OWASP upload guidance](https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html)

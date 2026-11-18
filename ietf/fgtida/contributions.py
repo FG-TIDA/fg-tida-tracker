@@ -192,10 +192,12 @@ def detail(request, pk, download=False, source=False):
     security_pending = bool(item.source_archive) and not allowed(bytes(item.source_archive), 'source.zip')
     if item.source_archive and not security_pending:
         from .source_packages import unpack
+        from .package_previews import chapters as package_chapters
+        from django.urls import reverse
+        chapters = package_chapters(bytes(item.source_archive),
+            lambda path: reverse('fgtida:contribution-asset', args=[item.pk, path]))
         for name, data in unpack(bytes(item.source_archive)).items():
-            if name.endswith('.rst'):
-                chapters.append((name, data.decode('utf-8-sig')))
-            else:
+            if not name.endswith('.rst'):
                 assets.append(name)
     legacy_text = ''
     if not chapters and item.content and allowed(bytes(item.content), item.filename):
@@ -316,6 +318,9 @@ def asset(request, pk, path):
         raise Http404
     from .file_safety import require_clean
     require_clean(bytes(item.source_archive), 'source.zip')
+    from .package_previews import IMAGE_TYPES, image_response
+    if Path(path).suffix.lower() in IMAGE_TYPES:
+        return image_response(bytes(item.source_archive), path)
     from .source_packages import unpack
     data = unpack(bytes(item.source_archive)).get(path)
     if data is None:

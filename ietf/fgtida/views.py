@@ -185,7 +185,21 @@ def document(request, name, rev=None):
     scanned_text = safe_document_text(snapshot) if file_available else ''
     security_pending = scanned_text is None
     body = scanned_text or ''
+    package_chapters = []
+    if body and Path(snapshot.uploaded_filename or '').suffix.lower() == '.zip' and not hasattr(doc, 'tida_listing'):
+        from .package_previews import chapters
+        from django.urls import reverse
+        from .file_safety import allowed
+        data = Path(snapshot.get_file_name()).read_bytes()
+        if allowed(data, snapshot.uploaded_filename):
+            package_chapters = chapters(data,
+                lambda path: reverse('fgtida:document-image', args=[doc.name, snapshot.rev, path]))
+        else:
+            security_pending, body = True, ''
     from .rendering import without_duplicate_title
+    package_chapters = [(name, without_duplicate_title(text, snapshot.title),
+                         context | {'source_url': snapshot.external_url})
+                        for name, text, context in package_chapters]
     if abstract and body and body.lstrip().startswith(abstract.strip()):
         abstract = ''  # The catalogue used the start of the source as its abstract.
     abstract = without_duplicate_title(abstract, snapshot.title)
@@ -212,6 +226,7 @@ def document(request, name, rev=None):
     return render(request, 'fgtida/document.html', {'doc': doc, 'snapshot': snapshot,
         'revisions': ordered, 'file_available': file_available,'display_abstract':abstract,
         'security_pending': security_pending,
+        'package_chapters': package_chapters,
         'version_records':version_rows,'selected_version':selected_version,'selected_release':releases.get(snapshot.rev),
         'source_snapshot': version_metadata.get('snapshot'),
         'last_change':doc.docevent_set.order_by('-time','-pk').first(),
@@ -477,6 +492,20 @@ def snapshot_for(name, rev):
     if snapshot is None:
         raise Http404
     return snapshot
+
+
+def document_image(request, name, rev, path):
+    snapshot = snapshot_for(name, rev)
+    if Path(snapshot.uploaded_filename or '').suffix.lower() != '.zip':
+        raise Http404
+    filename = Path(snapshot.get_file_name())
+    if not filename.is_file():
+        raise Http404
+    data = filename.read_bytes()
+    from .file_safety import require_clean
+    require_clean(data, snapshot.uploaded_filename)
+    from .package_previews import image_response
+    return image_response(data, path)
 
 
 def document_text(request, name, rev):

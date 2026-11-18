@@ -173,22 +173,28 @@ def rich_rst(value, source_url=''):
     from django.core.cache import cache
     from django.utils.safestring import mark_safe
     text=str(value or '')
+    image_urls = ()
+    if isinstance(source_url, dict):
+        image_urls = source_url.get('image_urls', ())
+        source_url = source_url.get('source_url', '')
     if len(text.encode())>500000:
         return format_html('<pre>{}</pre>',text)
     from ietf.fgtida.rendering import clean_fragment
-    key='fgtida:rst:v2:'+hashlib.sha256(text.encode()).hexdigest()
+    key='fgtida:rst:v3:'+hashlib.sha256(text.encode()).hexdigest()
     rendered=cache.get(key)
     if rendered is None:
         try:
             from ietf.fgtida.parser_process import environment
             result=subprocess.run([sys.executable,'-m','ietf.fgtida.rst_worker'],input=text.encode(),
                 capture_output=True,check=True,timeout=15,env=environment())
-            rendered=clean_fragment(result.stdout.decode())
+            # Cache parser output, then sanitize for this exact package context.
+            # Sanitizing first would discard the image source attributes.
+            rendered=result.stdout.decode()
             if len(rendered.encode())<500000:
                 cache.set(key,rendered,3600)
         except (subprocess.SubprocessError,UnicodeError):
             return format_html('<pre>{}</pre>',text)
-    return format_html('<div class="fg-tida-rich-text">{}</div>',mark_safe(clean_fragment(rendered, source_url)))
+    return format_html('<div class="fg-tida-rich-text">{}</div>',mark_safe(clean_fragment(rendered, source_url, image_urls)))
 
 
 @register.simple_tag

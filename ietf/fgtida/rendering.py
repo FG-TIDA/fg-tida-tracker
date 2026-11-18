@@ -60,9 +60,19 @@ def allowed_attribute(tag, name, value):
     return False
 
 
-def clean_fragment(fragment, source_url=''):
-    cleaner = bleach.Cleaner(tags=acceptable_tags - {'style', 'head', 'body', 'html', 'title', 'font'},
-        attributes=allowed_attribute, protocols={'http', 'https', 'mailto'}, strip=True)
+def clean_fragment(fragment, source_url='', image_urls=()):
+    # Only package URLs constructed by the server may load inline images.
+    # Ordinary Markdown/RST still cannot load remote tracking images.
+    permitted_images = frozenset(image_urls)
+    def attributes(tag, name, value):
+        if tag == 'img':
+            return (name == 'src' and value in permitted_images) or name in {'alt', 'title'}
+        return allowed_attribute(tag, name, value)
+    tags = acceptable_tags - {'style', 'head', 'body', 'html', 'title', 'font'}
+    if permitted_images:
+        tags = tags | {'img', 'figure', 'figcaption'}
+    cleaner = bleach.Cleaner(tags=tags,
+        attributes=attributes, protocols={'http', 'https', 'mailto'}, strip=True)
     fragment = cleaner.clean(fragment)
     def resolve(attrs, new=False):
         href = attrs.get((None, 'href'), '')

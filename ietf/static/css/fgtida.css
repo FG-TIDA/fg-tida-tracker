@@ -178,6 +178,9 @@ html { scroll-padding-top: calc(var(--fg-tida-header-height) + 24px); }
     footer > div > * { margin: 0 !important; }
 }
 
+.fg-tida-rich-text img { max-width: 100%; height: auto; }
+.fg-tida-rich-text figure { max-width: 100%; margin: 1rem 0; }
+
 @media (max-width: 374.98px) {
     #fg-tida-navbar .navbar-brand { font-size: 1rem; }
     #fg-tida-navbar .navbar-brand img { width: 32px; height: 32px; }
