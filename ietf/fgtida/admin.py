@@ -4,6 +4,8 @@ from django import forms
 from django.contrib import admin
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
+from django.utils.decorators import method_decorator
+from django.views.decorators.debug import sensitive_post_parameters
 from urllib.parse import urlsplit
 
 from ietf.doc.admin import DocumentAdmin, DocAuthorInline, RelatedDocumentInline, AdditionalUrlInLine
@@ -23,7 +25,7 @@ from .models import Contribution, ContributionRecipient, ContributionSequence, S
 from .models import (EmailVerification, GitHubAccount, WorkingGroupConfiguration, GitHubRepository,
     GitHubSource, WorkItem, WorkItemRelease, GitHubJob, DocumentAttribution, DocumentListing, DocumentFormat,
     PublicDocumentType)
-from .models import FileScan, FileScanEvent
+from .models import FileScan, FileScanEvent, FileScanException
 from .contributions import ContributionForm
 from .resource_files import SessionResourceForm
 from .training import TrainingVideoAdmin
@@ -641,14 +643,43 @@ class FileScanReviewForm(forms.Form):
         help_text='Explain the suspected false positive or corrected scanner problem. Do not include credentials or document content.')
 
 
+class FalsePositiveForm(forms.Form):
+    review_token = forms.CharField(widget=forms.HiddenInput)
+    reason = forms.CharField(min_length=20, max_length=400, widget=forms.Textarea(attrs={'rows': 4}),
+        help_text='Record how you investigated this particular finding and why you consider it a false positive. Knowing the sender alone is not a file safety check.')
+    password = forms.CharField(strip=False, widget=forms.PasswordInput(attrs={'autocomplete': 'current-password'}),
+        label='Confirm your administrator password')
+    accept_risk = forms.BooleanField(label='I understand that this exception can make the exact file publicly readable and downloadable, despite the antivirus finding.')
+
+    def __init__(self, user, *args, **kwargs):
+        self.user = user
+        super().__init__(*args, **kwargs)
+
+    def clean_password(self):
+        value = self.cleaned_data['password']
+        if not self.user.check_password(value):
+            raise ValidationError('The administrator password could not be confirmed.')
+        return value
+
+
+class FileScanExceptionInline(FileScanEventInline):
+    model = FileScanException
+    fields = ['format', 'detection', 'approved_at', 'approved_by', 'reason', 'revoked_at']
+    readonly_fields = fields
+
+
 class FileScanAdmin(admin.ModelAdmin):
-    list_display = ['filename', 'status', 'size', 'checked', 'attempts']
+    list_display = ['filename', 'status', 'manual_exception', 'size', 'checked', 'attempts']
     list_filter = ['status']
     search_fields = ['sha256', 'filename']
     fields = ['sha256', 'filename', 'size', 'status', 'formats', 'rejected_formats', 'created', 'checked', 'attempts', 'engine', 'detail']
     readonly_fields = fields
-    actions = ['retry_checks', 'discard_private_uploads']
-    inlines = [FileScanEventInline]
+    actions = ['retry_checks', 'approve_exception', 'revoke_exception', 'discard_private_uploads']
+    inlines = [FileScanExceptionInline, FileScanEventInline]
+
+    @admin.display(boolean=True, description='Active manual exception')
+    def manual_exception(self, obj):
+        return obj.status == 'rejected' and obj.exceptions.filter(detection=obj.detail, revoked_at__isnull=True).exclude(format__in=obj.rejected_formats).exists()
 
     def has_module_permission(self, request):
         return request.user.is_superuser
@@ -664,6 +695,69 @@ class FileScanAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+    @admin.action(description='Approve a reviewed antivirus false positive (one file)')
+    @method_decorator(sensitive_post_parameters('password', 'review_token'))
+    def approve_exception(self, request, queryset):
+        return self._approve_exception(request, queryset)
+
+    def _approve_exception(self, request, queryset):
+        from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
+        from django.core import signing
+        if not request.user.is_active or not request.user.is_superuser:
+            raise PermissionDenied
+        if queryset.count() != 1:
+            self.message_user(request, 'Select exactly one file for a reviewed exception.', level='error')
+            return
+        record = queryset.first()
+        confirmed = request.POST.get('confirm_exception') == 'yes'
+        form = FalsePositiveForm(request.user, request.POST if confirmed else None, initial={
+            'review_token': signing.dumps([record.pk, record.detail], salt='fgtida-scan-exception')})
+        if confirmed and form.is_valid():
+            try:
+                reviewed = signing.loads(form.cleaned_data['review_token'], salt='fgtida-scan-exception', max_age=600)
+                if reviewed != [record.pk, record.detail]:
+                    raise signing.BadSignature
+            except signing.BadSignature:
+                form.add_error(None, 'The review expired or the finding changed. Reopen the action and review the current finding.')
+            else:
+                return self._complete_exception(request, record, form)
+        return self._exception_form_response(request, record, form, ACTION_CHECKBOX_NAME)
+
+    def _complete_exception(self, request, record, form):
+        from .file_safety import approve_false_positive
+        from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
+        try:
+            granted = approve_false_positive(record.pk, request.user, form.cleaned_data['reason'], expected_detection=record.detail)
+        except ValidationError as error:
+            form.add_error(None, error)
+            record.refresh_from_db()
+        else:
+            self.log_change(request, record, 'False-positive review: ' + form.cleaned_data['reason'])
+            self.message_user(request, 'Exact-file antivirus exception approved. Structural protections remain enforced.' if granted
+                else 'The new scan passed. No manual exception was needed.')
+            return
+        return self._exception_form_response(request, record, form, ACTION_CHECKBOX_NAME)
+
+    def _exception_form_response(self, request, record, form, checkbox_name):
+        from django.template.response import TemplateResponse
+        return TemplateResponse(request, 'fgtida/admin/approve_file_exception.html', {
+            **self.admin_site.each_context(request), 'title': 'Review one antivirus false positive',
+            'form': form, 'record': record, 'action_checkbox_name': checkbox_name, 'opts': self.model._meta,
+        })
+
+    @admin.action(description='Revoke manual antivirus exceptions for selected files')
+    def revoke_exception(self, request, queryset):
+        from .file_safety import revoke_exceptions
+        if not request.user.is_active or not request.user.is_superuser:
+            raise PermissionDenied
+        count = 0
+        for record in queryset:
+            changed = revoke_exceptions(record, actor=request.user)
+            count += changed
+            if changed:
+                self.log_change(request, record, 'Manual antivirus exception revoked.')
+        self.message_user(request, f'Revoked {count} manual exception(s). Files with antivirus findings are blocked again.')
 
     @admin.action(description='Review and retry checks for selected files')
     def retry_checks(self, request, queryset):
@@ -708,9 +802,7 @@ class FileScanAdmin(admin.ModelAdmin):
         removed = 0
         for record in queryset.exclude(status='clean'):
             quarantine_path(record.sha256).unlink(missing_ok=True)
-            record.detail = 'Private upload removed by an administrator.'
-            record.save(update_fields=['detail'])
-            record_event(record, 'discard', actor=request.user)
+            record_event(record, 'discard', actor=request.user, detail='Private upload removed by an administrator; scanner verdict retained.')
             self.log_change(request, record, 'Held bytes removed; scan decision retained.')
             removed += 1
         self.message_user(request, f'Removed {removed} held file(s). Scan audit records were preserved.')

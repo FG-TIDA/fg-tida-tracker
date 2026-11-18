@@ -1,0 +1,20 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<p>This authorizes only the exact file and antivirus finding shown below. It does not approve other files from the same sender,
+edited revisions, other formats, or other antivirus findings. Structural protections cannot be overridden.</p>
+<dl>
+<dt>File</dt><dd>{{ record.filename }}</dd>
+<dt>SHA-256</dt><dd>{{ record.sha256 }}</dd>
+<dt>Current result</dt><dd>{{ record.get_status_display }}</dd>
+<dt>Detection</dt><dd>{{ record.detail }}</dd>
+</dl>
+<p>A fresh scan must reproduce this finding with a working scanner and up-to-date definitions.
+The original bytes must still be held privately and must pass structural validation. This action does not open the file for review.</p>
+<form method="post">{% csrf_token %}
+{{ form.as_p }}
+<input type="hidden" name="{{ action_checkbox_name }}" value="{{ record.pk }}">
+<input type="hidden" name="action" value="approve_exception">
+<input type="hidden" name="confirm_exception" value="yes">
+<button type="submit" class="default">Approve this exact-file exception</button>
+</form>
+{% endblock %}

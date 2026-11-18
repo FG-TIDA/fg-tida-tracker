@@ -17,7 +17,7 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.utils import timezone
 
-from .models import FileScan, FileScanEvent
+from .models import FileScan, FileScanEvent, FileScanException
 
 log = logging.getLogger(__name__)
 MAX_SCAN_BYTES = 100 * 1024 * 1024
@@ -162,6 +162,81 @@ def record_event(record, operation, *, kind='', actor=None, detail=None):
         format=kind, engine=record.engine, detail=(record.detail if detail is None else detail)[:500], actor=actor)
 
 
+def has_exception(record, kind):
+    return bool(record.status == 'rejected' and kind not in record.rejected_formats
+        and record.exceptions.filter(format=kind, detection=record.detail, revoked_at__isnull=True).exists())
+
+
+@transaction.atomic
+def revoke_exceptions(record, *, actor=None, reason='Administrator revoked the exception.'):
+    FileScan.objects.select_for_update().get(pk=record.pk)
+    count = record.exceptions.filter(revoked_at__isnull=True).update(revoked_at=timezone.now())
+    if count:
+        record_event(record, 'revoke', actor=actor, detail=reason)
+    return count
+
+
+def approve_false_positive(digest, user, reason, *, expected_detection):
+    """Authorize one known finding for these exact bytes after privileged review.
+
+    The caller must reauthenticate the superuser. There is no blanket filename,
+    uploader or signature allowlist, and structural checks cannot be waived.
+    """
+    if not user.is_active or not user.is_superuser:
+        raise PermissionDenied
+    reason = reason.strip()
+    if not 20 <= len(reason) <= 400:
+        raise ValidationError('Enter an investigation reason of 20 to 400 characters.')
+    record = FileScan.objects.get(pk=digest)
+    if record.detail != expected_detection:
+        raise ValidationError('The finding changed. Review the current finding before granting an exception.')
+    if record.status != 'rejected':
+        raise ValidationError('Only a specific antivirus finding can receive an exception. Scanner errors and structural rejections cannot.')
+    finding = record.detail
+    if finding.startswith(('Heuristics.Limits.', 'Heuristics.Encrypted.')):
+        raise ValidationError('Scanning limits and encrypted content cannot be overridden.')
+    path = quarantine_path(digest)
+    try:
+        data = path.read_bytes()
+    except OSError as error:
+        raise ValidationError('The original is no longer held. Rescan the existing archive or ask the contributor to resubmit, then review again.') from error
+    if hashlib.sha256(data).hexdigest() != digest:
+        raise ValidationError('The held bytes do not match this record. No exception was granted.')
+    # Refresh the real verdict with a working, up-to-date scanner first.
+    previous_attempts = record.attempts
+    try:
+        validate_file(data, record.filename, force=True)
+    except ValidationError:
+        pass
+    with transaction.atomic():
+        record = FileScan.objects.select_for_update().get(pk=digest)
+        if record.attempts <= previous_attempts:
+            raise ValidationError('A fresh scanner check did not complete. No exception was granted.')
+        if record.status == 'clean':
+            record_event(record, 'review', actor=user, detail='No exception needed after rescan. ' + reason)
+            return False
+        if record.status != 'rejected' or record.detail != finding:
+            raise ValidationError('The scanner result changed or is unavailable. Review the new result before trying again.')
+        kind = format_key(record.filename)
+        try:
+            inspect_file(data, kind)
+        except ValidationError:
+            record.rejected_formats = sorted(set(record.rejected_formats) | {kind})
+            record.save(update_fields=['rejected_formats'])
+            record_event(record, 'denied', kind=kind, actor=user, detail='Exception denied: structural checks failed. ' + reason)
+            failure = True
+        else:
+            failure = False
+            record.rejected_formats = [item for item in record.rejected_formats if item != kind]
+            record.save(update_fields=['rejected_formats'])
+            FileScanException.objects.update_or_create(scan=record, format=kind, defaults={
+                'detection': finding, 'reason': reason, 'approved_by': user, 'revoked_at': None})
+            record_event(record, 'exception', kind=kind, actor=user, detail=reason)
+    if failure:
+        raise ValidationError('Structural checks failed. This file remains blocked; an antivirus exception cannot waive those checks.')
+    return True
+
+
 def validate_file(data, filename, *, force=False):
     if not required():
         return
@@ -171,7 +246,7 @@ def validate_file(data, filename, *, force=False):
     record, _ = FileScan.objects.get_or_create(sha256=digest, defaults={
         'filename': Path(filename).name[:255], 'size': len(data)})
     kind = format_key(filename)
-    if record.status == 'clean' and kind in record.formats and kind not in record.rejected_formats and not force:
+    if not force and ((record.status == 'clean' and kind in record.formats and kind not in record.rejected_formats) or has_exception(record, kind)):
         return
     if (record.status == 'rejected' or kind in record.rejected_formats) and not force:
         raise ValidationError('This file was rejected by the security checks.')
@@ -181,7 +256,7 @@ def validate_file(data, filename, *, force=False):
         raise ValidationError('The private file-check queue is temporarily unavailable. Please try again later.') from error
     with transaction.atomic():
         record = FileScan.objects.select_for_update().get(pk=digest)
-        if record.status == 'clean' and kind in record.formats and kind not in record.rejected_formats and not force:
+        if not force and ((record.status == 'clean' and kind in record.formats and kind not in record.rejected_formats) or has_exception(record, kind)):
             return
         structure_error = None
         try:
@@ -193,9 +268,19 @@ def validate_file(data, filename, *, force=False):
         else:
             record.engine = engine
             record.detail = detection
+            # A cleared or changed finding must not inherit an earlier waiver.
+            if record.exceptions.filter(revoked_at__isnull=True).exclude(detection=detection).exists():
+                revoke_exceptions(record, reason='Scanner finding changed or cleared; review is required for any new finding.')
             if detection:
                 record.status = 'rejected'
                 record.formats = []
+                if has_exception(record, kind):
+                    try:
+                        inspect_file(data, kind)
+                    except ValidationError as error:
+                        structure_error = error
+                        record.rejected_formats = sorted(set(record.rejected_formats) | {kind})
+                        revoke_exceptions(record, reason='Structural validation failed during rescan.')
             else:
                 try:
                     inspect_file(data, kind)
@@ -218,7 +303,7 @@ def validate_file(data, filename, *, force=False):
     log.info('File security check sha256=%s status=%s', digest, record.status)
     if structure_error:
         raise structure_error
-    if record.status != 'clean':
+    if record.status != 'clean' and not has_exception(record, kind):
         raise ValidationError('This file was rejected by the security checks.' if record.status == 'rejected' else
                               'Your file is held privately while scanning is unavailable. Please retry your submission after scanning is restored.')
 
@@ -241,8 +326,10 @@ def allowed(data, filename):
 def allowed_digest(digest, filename):
     if not required():
         return True
-    record = FileScan.objects.filter(sha256=digest, status='clean').first() if digest else None
-    return bool(record and format_key(filename) in record.formats and format_key(filename) not in record.rejected_formats)
+    record = FileScan.objects.filter(sha256=digest).first() if digest else None
+    kind = format_key(filename)
+    return bool(record and ((record.status == 'clean' and kind in record.formats and kind not in record.rejected_formats)
+                            or has_exception(record, kind)))
 
 
 def snapshot_allowed(snapshot):

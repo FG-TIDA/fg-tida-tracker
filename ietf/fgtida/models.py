@@ -536,3 +536,16 @@ class FileScanEvent(models.Model):
 
     class Meta:
         ordering = ['-created', '-pk']
+
+
+class FileScanException(models.Model):
+    scan = models.ForeignKey(FileScan, on_delete=models.PROTECT, related_name='exceptions')
+    format = models.CharField(max_length=16)
+    detection = models.CharField(max_length=255)
+    reason = models.CharField(max_length=400)
+    approved_at = models.DateTimeField(auto_now=True)
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['scan', 'format'], name='fgtida_scan_exception_format_unique')]

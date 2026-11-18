@@ -3,7 +3,9 @@
 Uploads pass structural checks and a private ClamAV scan before conversion or
 publication. Documents, source packages and hosted media are covered. Existing
 originals, alternative formats, GitHub artifacts and session archives require a
-successful scan before download. Contribution emails contain links only.
+successful scan before download, unless a superuser has approved the specific
+antivirus finding for those exact bytes as described below. Structural checks
+always apply. Contribution emails contain links only.
 Accounts can make up to 20 submission or revision attempts per 15 minutes to
 limit repeated expensive file checks.
 
@@ -100,7 +102,8 @@ through the collection.
 It also runs the detection/control health command approximately every 15
 minutes. On failure it logs `SECURITY: scanner self-test failed; file maintenance
 is held.` and retries on a later cycle. Previously checked files retain their
-recorded decisions; a newly rejected checksum immediately loses public access.
+recorded decisions; a newly rejected checksum loses public access unless a
+reviewed exception covers that exact file, format and unchanged finding.
 Enable Render service failure notifications and review both services' logs.
 If you use a log-alert service, alert on this `SECURITY:` failure message and
 FreshClam update failures, not on the expected EICAR test detections. No
@@ -112,6 +115,9 @@ external log-alert service is configured automatically by this repository.
 scan status, attempts, engine and reason. Administrators can retry quarantined
 files or remove held files while retaining their audit records. Scan results
 cannot be marked clean manually.
+An explicit superuser false-positive exception can allow access while retaining
+the scanner's rejected verdict. It is shown separately in the admin list and
+the record's read-only exception details; it never changes the verdict to clean.
 Open a record to see its read-only history of scans, reviewer notes, results,
 engine versions, removal and expiry. Only superusers can view or review these
 records. This is an application audit trail, not tamper-proof storage against
@@ -136,7 +142,8 @@ For a suspected false positive:
    characters) and click **Run security checks again**. Review at most ten
    files at a time. The action preserves the prior result and records the
    reviewer, time and reason. Retained originals are rescanned; no override to
-   clean is offered. If the new scan still reports an issue, it stays blocked.
+   clean is offered. If the new scan still reports an issue, it stays blocked
+   unless the explicit exact-file exception procedure below is completed.
 4. If held bytes expired, ask the contributor to retry after this reviewed
    action. For an existing archived file, an operator can instead run a
    targeted rescan below. Replace the placeholder with the record's full
@@ -154,6 +161,44 @@ python ietf/manage.py scan_fgtida_files --sha256 CHECKSUM_FROM_ADMIN --force --r
 Use **Remove selected held files from private quarantine** to discard retained
 upload bytes; the blocked decision and the history remain. Quarantine expiry
 also preserves the scan decision and history.
+
+## Approve or revoke a reviewed false-positive exception
+
+Use this only after investigating the exact file. Knowing the sender does not
+prove that their device, account or attachment is safe. The superuser accepts
+responsibility for allowing access despite the antivirus finding.
+
+1. Open **Admin → File scans** and select **one** record with a rejected
+   antivirus finding. Choose **Approve a reviewed antivirus false positive
+   (one file)**, then **Go**.
+2. Review the displayed filename, SHA-256 and detection. Enter a 20–400 character
+   investigation reason, confirm your administrator password, and check the
+   explicit acknowledgment that the file may become readable/downloadable.
+   Complete the review within ten minutes; a changed finding requires reopening
+   the action. A superuser using only external sign-in must configure a usable
+   local password before using this action.
+3. Click **Approve this exact-file exception**. A fresh scan must reproduce the
+   reviewed finding with working self-tests and fresh signatures. The held
+   bytes must match the checksum and pass structural validation. Scanner errors,
+   limits, encryption, active documents and other structural rejections cannot
+   be overridden. If the fresh scan is clean, no exception is needed.
+4. Check **Active manual exception** and the read-only history. An exception
+   applies only to the exact checksum, inspected format and finding. It is not
+   an uploader, filename or signature allowlist. Different bytes, edited revisions,
+   additional formats or converted source packages require their own checks.
+   No failed submission form is automatically created by approval; contributors
+   must resubmit it when necessary.
+5. To withdraw approval, select the record and choose **Revoke manual antivirus
+   exceptions for selected files**, then **Go**. The reviewer and revocation are
+   recorded, and subsequent application requests are blocked if the rejected
+   finding remains. Already downloaded copies cannot be recalled.
+
+Approved exceptions continue through periodic rescanning. A changed finding,
+new structural failure, or a true clean verdict revokes the earlier exception.
+Quarantine expiry/removal preserves the scanner verdict, exception and history;
+it removes only privately held bytes. If originals have expired before approval,
+rescan the archived file or ask the contributor to resubmit so the exact bytes
+can be checked. Blocked files are not exposed for browser review before approval.
 
 To rescan the whole collection during planned maintenance, use the following.
 

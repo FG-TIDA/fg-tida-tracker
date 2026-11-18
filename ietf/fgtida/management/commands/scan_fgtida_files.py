@@ -10,7 +10,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from ietf.fgtida import core
-from ietf.fgtida.file_safety import allowed, format_key, quarantine_path, required, scanner_version, scan_stream, validate_file, record_event, scanner_test_pattern
+from ietf.fgtida.file_safety import allowed, format_key, quarantine_path, required, scanner_version, scan_stream, validate_file, record_event, scanner_test_pattern, has_exception
 from ietf.fgtida.models import (Contribution, DocumentFormat, DocumentVersion, FileScan,
     SessionResource, TrainingVideo, WorkItem, WorkItemRelease)
 
@@ -127,9 +127,7 @@ class Command(BaseCommand):
                 if re.fullmatch(r'[0-9a-f]{64}', path.name) and path.is_file() and time.time() - path.stat().st_mtime > 7 * 86400:
                     path.unlink(missing_ok=True)
                     for record in FileScan.objects.filter(pk=path.name).exclude(status='clean'):
-                        record.detail = 'Private upload expired. Submit the file again.'
-                        record.save(update_fields=['detail'])
-                        record_event(record, 'expired')
+                        record_event(record, 'expired', detail='Private upload expired; scanner verdict retained. Resubmit if the original is needed.')
         except OSError as error:
             raise CommandError('The private quarantine directory is unavailable.') from error
 
@@ -149,7 +147,8 @@ class Command(BaseCommand):
         refresh = bool(known and known.checked and known.checked < timezone.now() - timedelta(days=1))
         if not self.force and not refresh and allowed(data, filename):
             return True
-        if not self.force and known and (known.status == 'rejected' or format_key(filename) in known.rejected_formats):
+        if not self.force and known and ((known.status == 'rejected' and not has_exception(known, format_key(filename)))
+                                       or format_key(filename) in known.rejected_formats):
             self.failed += 1
             return False
         if self.attempted >= self.limit:
