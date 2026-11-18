@@ -1,3 +1,3 @@
 <span class="d-inline-flex flex-wrap gap-1">
-{% for label,icon,url in format_links %}<a {% if not plain %}class="btn btn-sm btn-outline-primary"{% endif %} href="{{ url }}" title="{{ label }}">{% if not plain %}<i class="bi bi-{{ icon }}" aria-hidden="true"></i> {% endif %}{{ label }}</a>{% empty %}{% if not alternatives_only %}<span class="text-body-secondary small">No file uploaded</span>{% endif %}{% endfor %}
+{% for label,icon,url in format_links %}<a {% if not plain %}class="btn btn-sm btn-outline-primary"{% endif %} href="{{ url }}" title="{{ label }}">{% if not plain %}<i class="bi bi-{{ icon }}" aria-hidden="true"></i> {% endif %}{{ label }}</a>{% empty %}{% if not alternatives_only %}<span class="text-body-secondary small">{{ unavailable_message|default:'No downloadable file available' }}</span>{% endif %}{% endfor %}
 </span>

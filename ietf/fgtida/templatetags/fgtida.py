@@ -228,6 +228,7 @@ def file_type(doc):
 @register.inclusion_tag('fgtida/formats.html')
 def document_formats(doc, alternatives_only=False, plain=False):
     links = []
+    unavailable_message = 'No file uploaded'
     from ietf.fgtida.file_safety import allowed_digest, snapshot_allowed
     checked = snapshot_allowed(doc)
     if doc.type_id == 'tida-template':
@@ -235,9 +236,16 @@ def document_formats(doc, alternatives_only=False, plain=False):
         url = template_package_url(doc)
         if url and not alternatives_only:
             links.append(('Template package', 'folder', url))
-        return {'format_links': links, 'plain': plain, 'alternatives_only': alternatives_only}
+        return {'format_links': links, 'plain': plain, 'alternatives_only': alternatives_only,
+                'unavailable_message': 'No template package linked'}
     name = doc.doc.name if doc.is_dochistory() else doc.name
-    if checked and not alternatives_only and doc.uploaded_filename and doc.rev and Path(doc.get_file_name()).is_file() and not (doc.type_id == 'charter' and Path(doc.uploaded_filename).suffix.lower() in {'.rst', '.txt'}):
+    original_exists = bool(doc.uploaded_filename) and Path(doc.get_file_name()).is_file()
+    if doc.uploaded_filename:
+        unavailable_message = ('Uploaded file is unavailable on the server' if not original_exists
+            else 'File awaiting security checks or review' if not checked
+            else 'Reading preview available' if doc.type_id == 'charter' and Path(doc.uploaded_filename).suffix.lower() in {'.rst', '.txt'}
+            else 'File version unavailable')
+    if checked and not alternatives_only and original_exists and doc.rev and not (doc.type_id == 'charter' and Path(doc.uploaded_filename).suffix.lower() in {'.rst', '.txt'}):
         extension = Path(doc.uploaded_filename).suffix.lower().lstrip('.')
         icon = {'pdf': 'file-pdf', 'txt': 'file-text', 'md': 'file-text', 'xml': 'file-code',
                 'docx': 'file-word', 'pptx': 'file-slides'}.get(extension, 'file-earmark')
@@ -247,6 +255,8 @@ def document_formats(doc, alternatives_only=False, plain=False):
             links.append(('Text', 'file-text', reverse('fgtida:text', args=[name, public_version(doc)])))
     original = doc.doc if doc.is_dochistory() else doc
     for alternative in original.tida_formats.all():
+        if alternative.revision == doc.rev and not doc.uploaded_filename:
+            unavailable_message = 'File awaiting security checks or review'
         if alternative.revision == doc.rev and allowed_digest(alternative.sha256, alternative.filename):
             label = alternative.get_kind_display()
             if Path(doc.uploaded_filename or '').suffix == '.' + alternative.kind:
@@ -255,7 +265,8 @@ def document_formats(doc, alternatives_only=False, plain=False):
     if not alternatives_only and doc.external_url and urlsplit(doc.external_url).scheme in ('http', 'https'):
         label, icon = ('Recording', 'camera-video') if doc.type_id == 'recording' else ('Template package', 'folder') if doc.type_id == 'tida-template' else ('GitHub reference', 'box-arrow-up-right')
         links.append((label, icon, doc.external_url))
-    return {'format_links': links, 'plain': plain, 'alternatives_only': alternatives_only}
+    return {'format_links': links, 'plain': plain, 'alternatives_only': alternatives_only,
+            'unavailable_message': unavailable_message}
 
 
 @register.simple_tag

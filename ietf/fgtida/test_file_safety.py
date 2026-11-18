@@ -148,6 +148,8 @@ class FileSafetyTests(TestCase):
         with tempfile.TemporaryDirectory() as root, override_settings(FGTIDA_UPLOAD_SCAN_REQUIRED=True, FGTIDA_QUARANTINE_DIR=root):
             detail = self.client.get(f'/doc/{document.name}/')
             self.assertContains(detail, 'awaiting security checks')
+            self.assertNotContains(detail, 'No file uploaded')
+            self.assertContains(detail, 'File awaiting security checks or review')
             for path in [f'/doc/{document.name}/download/{version}/', f'/doc/{document.name}/text/{version}/',
                          f'/document-formats/{alternative.pk}/download/', f'/session/{session.pk}/materials.tar']:
                 self.assertEqual(self.client.get(path).status_code, 403)
