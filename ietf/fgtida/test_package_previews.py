@@ -50,7 +50,7 @@ class PackageRenderingTests(SimpleTestCase):
 
     def test_relative_figures_substitutions_and_captions(self):
         rows = chapters(source(), lambda path: '/safe-images/00/' + path)
-        name, text, context = rows[0]
+        name, text, context = next(row for row in rows if row[0] == 'chapters/detail.rst')
         self.assertEqual(name, 'chapters/detail.rst')
         rendered = str(rich_rst(text, context))
         self.assertIn('src="/safe-images/00/figures/a.png"', rendered)

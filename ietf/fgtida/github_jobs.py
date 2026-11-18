@@ -133,11 +133,16 @@ def bootstrap_repository(item, client):
         files[path] = text
     if source_archive and not main_metadata:
         from .source_packages import unpack
+        from .word_scaffold import PROFILE, scaffold
+        template_files = scaffold()[1]
         # Import document content on the review branch, preserving the official
         # template's executable configuration and GitHub workflows.
         for name, content in unpack(source_archive).items():
             if name == 'conf.py' or name.endswith('.py'):
                 continue
+            if template_files.get(name) == content or (source_manifest.get('package_profile') == PROFILE
+                    and name in {'requirements.txt', 'LICENSE.txt', 'README.md', 'conversion.json'}):
+                continue  # Keep the official repository's build scaffold and licensing.
             files['src/doc/' + name] = content
         entry = source_manifest['entry_document']
         if entry != 'index.rst':

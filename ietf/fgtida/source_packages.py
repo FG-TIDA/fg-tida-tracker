@@ -64,13 +64,14 @@ def pack(files):
 
 
 def validate_sources(files, entry):
+    from .word_scaffold import approved_static_file
     safe_path(entry)
     if entry not in files or not entry.endswith('.rst'):
         raise ValidationError('The entry document must name an RST file inside the package.')
     for name, data in files.items():
         path = PurePosixPath(name)
         if (any(part.startswith('.') for part in path.parts) or
-                (path.suffix.lower() not in SOURCE_SUFFIXES and path.name != 'conf.py')):
+                (path.suffix.lower() not in SOURCE_SUFFIXES and path.name != 'conf.py' and not approved_static_file(name, data))):
             raise ValidationError(f'Unsupported source file: {name}. Include documentation and assets only; remove hidden files, programs and installed environments.')
         if path.suffix == '.rst':
             try:
@@ -152,7 +153,10 @@ def convert_word(data):
                                 input=data, capture_output=True, check=True, timeout=35, env=environment())
         from .file_safety import trust_admin_derivative
         trust_admin_derivative(result.stdout, 'source.zip', data, 'submission.docx')
-        return prepare_zip(result.stdout, 'index.rst')
+        archive, manifest = prepare_zip(result.stdout, 'index.rst')
+        from .word_scaffold import PROFILE, scaffold
+        manifest.update(package_profile=PROFILE, template_commit=scaffold()[0])
+        return archive, manifest
     except (subprocess.SubprocessError, OSError) as error:
         raise ValidationError('Word conversion failed. Resolve tracked changes, use embedded images and standard Word headings, then retry. Contact the secretariat if conversion still fails.') from error
 
@@ -161,4 +165,18 @@ def package_text(data):
     files = unpack(data)
     entry = next((name for name in files if name.endswith('.rst')), '')
     validate_sources(files, entry)
-    return '\n\n'.join(value.decode('utf-8-sig') for name, value in sorted(files.items()) if name.endswith('.rst'))[:2000000]
+    return '\n\n'.join(text for name, text in rst_chapters(files))[:2000000]
+
+
+def rst_chapters(files):
+    """Keep a navigation-only index from duplicating its first chapter's title."""
+    names = sorted(name for name in files if name.endswith('.rst'))
+    names.sort(key=lambda name: name != 'index.rst')
+    for name in names:
+        text = files[name].decode('utf-8-sig')
+        if name == 'index.rst' and len(names) > 1:
+            body = re.sub(r'(?m)^\.\. toctree::[^\n]*\n(?:(?:[ \t]+[^\n]*)?\n)*', '', text)
+            lines = [line.strip() for line in body.splitlines() if line.strip()]
+            if len(lines) == 2 and re.fullmatch(r'([=~^+#*-])\1{2,}', lines[1]):
+                continue
+        yield name, text

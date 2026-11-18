@@ -6,7 +6,7 @@ from pathlib import PurePosixPath
 from django.http import Http404, HttpResponse
 from django.utils.http import content_disposition_header
 
-from .source_packages import unpack
+from .source_packages import unpack, rst_chapters
 
 IMAGE_TYPES = {'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
                '.gif': 'image/gif', '.svg': 'image/svg+xml'}
@@ -21,9 +21,7 @@ def chapters(data, asset_url):
     """
     files = unpack(data)
     result = []
-    for name, content in sorted(files.items()):
-        if not name.endswith('.rst'):
-            continue
+    for name, content in rst_chapters(files):
         image_urls = set()
         def replace(match):
             target = match[2].strip()
@@ -34,7 +32,7 @@ def chapters(data, asset_url):
             url = asset_url(path)
             image_urls.add(url)
             return match[1] + url
-        text = IMAGE_DIRECTIVE.sub(replace, content.decode('utf-8-sig'))
+        text = IMAGE_DIRECTIVE.sub(replace, content)
         result.append((name, text, {'image_urls': image_urls}))
     return result
 

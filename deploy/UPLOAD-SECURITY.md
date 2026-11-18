@@ -255,6 +255,13 @@ Existing scanned ZIPs need no re-upload and no new database migration.
 
 ## References
 
+Word conversions include a pinned, reviewed specification-template scaffold.
+The validator allows its sidebar JavaScript and HTML layout only at their exact
+approved paths and with byte-for-byte matching content. Modified or additional
+JavaScript/HTML remains prohibited. These build assets and `conf.py` are stored
+as source files and never executed or served inline by tracker previews. The
+archive still follows the normal scanning or explicit administrator-trust policy.
+
 - [OWASP upload guidance](https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html)
 - [ClamAV Docker operation and memory](https://docs.clamav.net/manual/Installing/Docker.html)
 - [ClamAV support policy](https://docs.clamav.net/faq/faq-eol.html)

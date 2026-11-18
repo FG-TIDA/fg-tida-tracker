@@ -78,7 +78,7 @@ class AdminContributionTests(TestCase):
         self.assertEqual(response.status_code, 302, response.context and response.context['adminform'].form.errors)
         item = Contribution.objects.get()
         self.assertEqual(bytes(item.content), word)
-        self.assertIn(b'preserved paragraph', unpack(bytes(item.source_archive))['index.rst'])
+        self.assertIn(b'preserved paragraph', unpack(bytes(item.source_archive))['chapters/01_contribution.rst'])
         self.assertTrue(allowed(word, item.filename))
         self.assertTrue(allowed(bytes(item.source_archive), 'source.zip'))
         record = FileScan.objects.get(pk=hashlib.sha256(word).hexdigest())

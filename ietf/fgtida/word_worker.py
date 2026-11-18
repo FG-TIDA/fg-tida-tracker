@@ -32,10 +32,12 @@ def main():
         subprocess.run(['pandoc', '--sandbox', '--from=docx', '--to=rst', '--standalone', '--wrap=none',
                         '--extract-media=media', '--output=index.rst', 'input.docx'],
                        cwd=root, check=True, timeout=25, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        output = {'index.rst': (root / 'index.rst').read_bytes()}
+        media = {}
         for path in (root / 'media').rglob('*'):
             if path.is_file():
-                output[path.relative_to(root).as_posix()] = path.read_bytes()
+                media[path.relative_to(root).as_posix()] = path.read_bytes()
+        from .word_scaffold import wrap_word_source
+        output = wrap_word_source((root / 'index.rst').read_text(encoding='utf-8'), media)
         sys.stdout.buffer.write(pack(output))
 
 

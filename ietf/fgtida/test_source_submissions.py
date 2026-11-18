@@ -63,7 +63,7 @@ class PackageTests(SimpleTestCase):
     def test_real_pandoc_word_conversion_and_tracked_changes_rejection(self):
         word = subprocess.run(['pandoc', '-f', 'rst', '-t', 'docx'], input=b'Example\n=======\n\nA **normative** paragraph.\n', capture_output=True, check=True).stdout
         source, manifest = convert_word(word)
-        self.assertIn(b'normative', unpack(source)['index.rst'])
+        self.assertIn(b'normative', unpack(source)['chapters/01_contribution.rst'])
         self.assertIn(b'Example', unpack(source)['index.rst'])
         self.assertEqual(manifest['entry_document'], 'index.rst')
         files = unpack(word)
@@ -81,7 +81,7 @@ class PackageTests(SimpleTestCase):
         source, manifest = convert_word(word)
         files = unpack(source)
         self.assertTrue(any(value == image for value in files.values()))
-        self.assertIn(b'image::', files['index.rst'])
+        self.assertIn(b'image::', files['chapters/01_contribution.rst'])
         files = unpack(word)
         files['word/_rels/document.xml.rels'] = b'<Relationships><Relationship TargetMode="External" Type="image" Target="http://127.0.0.1/private"/></Relationships>'
         with self.assertRaises(ValidationError):
@@ -178,12 +178,24 @@ class SubmissionTests(TestCase):
 
     @override_settings(SITE_URL='https://tracker.example.test')
     def test_adoption_pr_imports_source_assets_but_not_submitted_configuration(self):
+        self.check_adoption_import()
+
+    @override_settings(SITE_URL='https://tracker.example.test')
+    def test_adoption_keeps_official_build_scaffold_for_converted_word(self):
+        self.check_adoption_import(full_package=True)
+
+    def check_adoption_import(self, full_package=False):
         from .github_jobs import bootstrap_repository
         from .models import GitHubAccount, GitHubRepository, WorkItem
         self.assertEqual(self.client.post('/submit/', self.payload()).status_code, 302)
         contribution = Contribution.objects.get()
         contribution.source_archive, contribution.source_manifest = prepare_zip(pack({
             'index.rst': b'Reviewed proposal', 'figures/diagram.svg': b'<svg/>', 'conf.py': b'raise RuntimeError()'}), 'index.rst')
+        if full_package:
+            from .word_scaffold import PROFILE, wrap_word_source
+            contribution.source_archive, contribution.source_manifest = prepare_zip(pack(
+                wrap_word_source('Reviewed proposal\n=================\n\nBody.', {})), 'index.rst')
+            contribution.source_manifest['package_profile'] = PROFILE
         contribution.save()
         account = GitHubAccount.objects.create(organization='fg-tida-wg1')
         repo = GitHubRepository.objects.create(account=account, group=contribution.group, name='wg1-topic-proposal')
@@ -202,7 +214,12 @@ class SubmissionTests(TestCase):
             bootstrap_repository(item, client)
         writes = {call.args[1]: call.args[2] for call in client.request.call_args_list if call.args[0] == 'PUT'}
         prefix = '/repos/fg-tida-wg1/wg1-topic-proposal/contents/'
-        self.assertEqual(base64.b64decode(writes[prefix+'src/doc/index.rst']['content']), b'Reviewed proposal')
-        self.assertEqual(base64.b64decode(writes[prefix+'src/doc/figures/diagram.svg']['content']), b'<svg/>')
+        if full_package:
+            self.assertIn(prefix+'src/doc/chapters/01_contribution.rst', writes)
+            for name in ['_templates/page.html', '_static/osia-sidebar.js', 'requirements.txt', 'LICENSE.txt', 'README.md']:
+                self.assertNotIn(prefix+'src/doc/'+name, writes)
+        else:
+            self.assertEqual(base64.b64decode(writes[prefix+'src/doc/index.rst']['content']), b'Reviewed proposal')
+            self.assertEqual(base64.b64decode(writes[prefix+'src/doc/figures/diagram.svg']['content']), b'<svg/>')
         self.assertNotIn(b'RuntimeError', base64.b64decode(writes[prefix+'src/doc/conf.py']['content']))
         self.assertTrue(all(value['branch'].startswith('tracker/') for value in writes.values()))

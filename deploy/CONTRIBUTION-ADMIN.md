@@ -33,6 +33,34 @@ references, figures and diagrams with it. Conversion preserves extracted media
 but cannot guarantee that every Word-native drawing or complex layout survives.
 Export missing diagrams as images and correct the RST package if necessary.
 
+The ZIP now includes the reviewed specification-template documentation scaffold:
+`index.rst`, the converted `chapters/01_contribution.rst`, `images/` (including
+extracted Word media), `_static/`, `_templates/`, `conf.py`, the dependency list
+and template license. Example chapters are replaced by the actual contribution.
+`conversion.json` records the pinned template commit; conversion does not fetch
+or execute GitHub code. This is a documentation source package, not a copy of
+the repository's GitHub Actions or development environment. Review its metadata
+before building or publishing. Official repository build files remain in place
+when the contribution is adopted into a repository.
+
+### Upgrade an earlier minimal Word conversion
+
+After deployment, existing ZIPs are retained unchanged. To upgrade one:
+
+1. Open **Admin → Contributions**, select up to ten earlier Word conversions,
+   choose **Rebuild Word packages with the specification template**, then **Go**.
+2. Read the confirmation, enter a review reason and acknowledge the rebuild.
+3. A new package version is archived. Earlier archives, the original Word file,
+   contribution identity and public number are retained. No notifications are
+   sent and approval is unchanged. Conversion verification is reset.
+4. Compare the new package and preview with the original before verifying it.
+
+The action refuses to replace a package when the current document has later
+source edits or its recorded checksum no longer matches. Already upgraded
+packages are skipped. For Word-only records without a source ZIP, use the
+conversion action below instead; that first conversion retains the existing
+document version.
+
 ## Convert existing Word-only contributions
 
 1. In **Admin → Contributions**, select up to ten Word-only contributions.

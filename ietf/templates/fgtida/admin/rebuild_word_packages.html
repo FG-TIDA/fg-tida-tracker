@@ -1,0 +1,14 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<p>This rebuilds older automatic Word conversions using the reviewed specification-template scaffold.
+The original Word file and earlier archived packages are preserved. A new package version is recorded,
+and any previous conversion verification is reset. This does not approve a work item or send notifications.</p>
+<p>Review the source first. Later edited work-item content will not be replaced by this action.</p>
+<form method="post">{% csrf_token %}{{ form.as_p }}
+<ul>{% for record in records %}<li>{{ record.reference }} — {{ record.title }}
+<input type="hidden" name="{{ action_checkbox_name }}" value="{{ record.pk }}"></li>{% endfor %}</ul>
+<input type="hidden" name="action" value="rebuild_word_packages">
+<input type="hidden" name="confirm_rebuild" value="yes">
+<button type="submit" class="default">Rebuild reviewed Word packages</button>
+</form>
+{% endblock %}

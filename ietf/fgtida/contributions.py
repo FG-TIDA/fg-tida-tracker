@@ -126,7 +126,7 @@ def record_submission(item, form, user):
     from .email_templates import contribution
     from .github_attribution import source_attribution
     from .mail import enqueue
-    from .source_packages import unpack
+    from .source_packages import package_text
 
     item.content = form.content
     item.notifications_queued = False
@@ -134,8 +134,7 @@ def record_submission(item, form, user):
     item.source_archive = form.source_archive
     item.source_manifest = form.manifest
     item.save()
-    entry = unpack(form.source_archive)[form.manifest['entry_document']].decode('utf-8-sig')
-    credits = source_attribution(entry)
+    credits = source_attribution(package_text(form.source_archive))
     if item.contact_name:
         credits.update(authors=list(dict.fromkeys([*credits.get('authors', []), item.contact_name])), contacts=[item.contact_name])
     if item.contact_affiliation:
@@ -184,16 +183,28 @@ def sync_contact_metadata(item, clear=False, previous=None):
 
 
 @transaction.atomic
-def convert_existing_word(pk, user):
+def convert_existing_word(pk, user, *, rebuild=False, reason=''):
     """Archive a maintained source package without duplicating the work item."""
     item = Contribution.objects.select_for_update().get(pk=pk)
-    if item.source_archive:
+    previous_package = bytes(item.source_archive)
+    if previous_package and not rebuild:
         return False
+    from .word_scaffold import PROFILE
+    if previous_package and item.source_manifest.get('package_profile') == PROFILE:
+        return False
+    if previous_package and (item.submission_method != 'word' or len(reason.strip()) < 10):
+        raise forms.ValidationError('Rebuilding an existing conversion requires an explicit administrator review reason.')
     if Path(item.filename).suffix.lower() != '.docx':
         raise forms.ValidationError('Only DOCX submissions can be converted automatically. Save older DOC files as DOCX first.')
     from .source_packages import convert_word
     from .models import DocumentFormat
     import hashlib
+    if previous_package:
+        from .file_safety import preview_source
+        if not item.document_id or preview_source(item.document)[0] != previous_package:
+            raise forms.ValidationError('The current document differs from this conversion. Review later revisions instead of replacing edited content.')
+        if item.source_manifest.get('sha256') != hashlib.sha256(previous_package).hexdigest():
+            raise forms.ValidationError('The previous source package was modified. Review it before rebuilding from Word.')
     archive, manifest = convert_word(bytes(item.content))
     item.source_archive = archive
     item.source_manifest = {**manifest, 'original_sha256': hashlib.sha256(bytes(item.content)).hexdigest(), 'method': 'word'}
@@ -203,7 +214,15 @@ def convert_existing_word(pk, user):
     item.conversion_verified_by = None
     doc = item.document or Document(name=f'fg-tida-contribution-{item.pk}', title=item.title,
         abstract=item.abstract, type_id='tida', group=item.group)
-    if doc.pk and doc.uploaded_filename:
+    if previous_package:
+        from .versioning import next_version
+        core.save_document(doc, core.actor_for(user),
+            'Word source package rebuilt with specification scaffold; verification reset. ' + reason.strip(),
+            data=archive, filename='source.zip', version=next_version(doc))
+        DocumentFormat.objects.get_or_create(document=doc, revision=doc.rev, kind='docx', defaults={
+            'filename': item.filename, 'content': bytes(item.content),
+            'sha256': hashlib.sha256(bytes(item.content)).hexdigest()})
+    elif doc.pk and doc.uploaded_filename:
         current = Path(doc.get_file_name())
         if not current.is_file() or current.read_bytes() != bytes(item.content):
             raise forms.ValidationError('The current document differs from the original Word submission. Review its revisions before converting an older original.')

@@ -243,7 +243,7 @@ class ContributionAdmin(admin.ModelAdmin):
               'source_folder', 'entry_document', 'conversion_verified_at', 'conversion_verified_by', 'verify_conversion', 'created',
               'status', 'review_note', 'decision', 'adopt_into', 'draft_repository_url', 'reviewed_by', 'reviewed_at', 'document', 'notifications_queued']
     readonly_fields = [field for field in fields if field not in {'sequence_number','review_note','decision','adopt_into', 'verify_conversion', 'contact_name', 'contact_email', 'contact_affiliation'}]
-    actions = ['accept_contributions', 'reject_contributions', 'convert_word_contributions']
+    actions = ['accept_contributions', 'reject_contributions', 'convert_word_contributions', 'rebuild_word_packages']
     ordering = ['number_prefix', 'sequence_number', 'pk']
 
     def get_fields(self, request, obj=None):
@@ -367,6 +367,34 @@ class ContributionAdmin(admin.ModelAdmin):
                     converted += 1
                     self.log_change(request, item, 'Word converted to RST ZIP; original retained and verification required.')
         self.message_user(request, f'Converted {converted} contribution(s). Numbers and work-item IDs were preserved. Check each conversion before marking it verified. No notifications were sent.')
+
+    @admin.action(description='Rebuild Word packages with the specification template', permissions=['change'])
+    def rebuild_word_packages(self, request, queryset):
+        if not request.user.has_perm('doc.change_document'):
+            raise PermissionDenied
+        from django.template.response import TemplateResponse
+        from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
+        confirmed = request.POST.get('confirm_rebuild') == 'yes'
+        class RebuildForm(forms.Form):
+            reason = forms.CharField(min_length=10, max_length=400, widget=forms.Textarea(attrs={'rows': 3}))
+            acknowledge = forms.BooleanField(label='I understand this regenerates content from the original Word file, archives a new package version and resets conversion verification.')
+        form = RebuildForm(request.POST if confirmed else None)
+        if not confirmed or not form.is_valid():
+            return TemplateResponse(request, 'fgtida/admin/rebuild_word_packages.html', {
+                **self.admin_site.each_context(request), 'title': 'Rebuild Word source packages',
+                'form': form, 'records': queryset[:10], 'action_checkbox_name': ACTION_CHECKBOX_NAME})
+        from .contributions import convert_existing_word
+        count = 0
+        for item in queryset[:10]:
+            try:
+                changed = convert_existing_word(item.pk, request.user, rebuild=True, reason=form.cleaned_data['reason'])
+            except ValidationError as error:
+                self.message_user(request, f'{item.reference}: ' + '; '.join(error.messages), level='error')
+            else:
+                if changed:
+                    count += 1
+                    self.log_change(request, item, 'Word source package rebuilt: ' + form.cleaned_data['reason'])
+        self.message_user(request, f'Rebuilt {count} package(s). Earlier archives were preserved; review the new conversion before verifying it. No notifications were sent.')
 
 
 class SessionResourceAdmin(admin.ModelAdmin):
