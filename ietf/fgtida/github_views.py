@@ -130,6 +130,8 @@ def working_pdf(request,pk):
     if not item.working_pdf:
         from django.http import Http404
         raise Http404
+    from .file_safety import require_clean
+    require_clean(bytes(item.working_pdf), 'working.pdf')
     return FileResponse(io.BytesIO(bytes(item.working_pdf)),content_type='application/pdf',filename=item.document.name+'-working.pdf',headers={'Cache-Control':'no-cache','X-Content-Type-Options':'nosniff'})
 
 
@@ -143,8 +145,10 @@ def release_artifact(request,pk,revision,kind):
     elif kind=='source':
         data=bytes(release.source_archive)
         mime,extension='application/gzip','.tar.gz'
+        from .file_safety import require_clean
+        require_clean(data, 'source.tar.gz')
     else:
         from django.http import Http404
         raise Http404
     from .versioning import public_version
-    return FileResponse(io.BytesIO(data),as_attachment=True,filename=item.document.name+'-'+public_version(item.document,revision)+extension,content_type=mime,headers={'X-Content-Type-Options':'nosniff'})
+    return FileResponse(io.BytesIO(data),as_attachment=True,filename=item.document.name+'-'+public_version(item.document,revision)+extension,content_type=mime,headers={'X-Content-Type-Options':'nosniff', 'Cache-Control': 'no-store'})

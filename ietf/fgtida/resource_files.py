@@ -43,6 +43,14 @@ class SessionResourceForm(forms.ModelForm):
                     '.wav': header[:4] == b'RIFF' and header[8:12] == b'WAVE'}
                 if suffix not in MEDIA or not valid.get(suffix) or not 0 < upload.size <= MEDIA_LIMIT:
                     self.add_error('upload', 'Upload a supported recording with a matching file signature, between 1 byte and 100 MB.')
+                else:
+                    from .file_safety import validate_file
+                    try:
+                        validate_file(upload.read(MEDIA_LIMIT + 1), upload.name)
+                    except forms.ValidationError as error:
+                        self.add_error('upload', error)
+                    finally:
+                        upload.seek(0)
             elif suffix not in DOCUMENTS:
                 self.add_error('upload', 'Upload PDF, DOCX, PPTX, TXT or Markdown.')
             else:
@@ -77,12 +85,18 @@ class SessionResourceForm(forms.ModelForm):
 def store_upload(resource, upload):
     # Called within SessionResource.save's transaction; a failed replacement
     # leaves the previous attachment intact. Read one bounded chunk at a time.
+    from .file_safety import validate_file
+    upload.seek(0)
+    validate_file(upload.read(MEDIA_LIMIT + 1), upload.name)
     resource.file_chunks.all().delete()
     upload.seek(0)
+    import hashlib
+    digest = hashlib.sha256()
     size = 0
     position = 0
     while data := upload.read(CHUNK_SIZE):
         size += len(data)
+        digest.update(data)
         if size > MEDIA_LIMIT:
             raise forms.ValidationError('Attachment exceeds 100 MB.')
         resource.file_chunks.create(position=position, content=data)
@@ -93,8 +107,9 @@ def store_upload(resource, upload):
     resource.file_size = size
     resource.content_type = (MEDIA | DOCUMENTS)[Path(upload.name).suffix.lower()]
     resource.file_version = uuid.uuid4().hex
+    resource.sha256 = digest.hexdigest()
     fields = dict(filename=resource.filename, file_size=size,
-                  content_type=resource.content_type, file_version=resource.file_version)
+                  content_type=resource.content_type, file_version=resource.file_version, sha256=resource.sha256)
     if isinstance(resource, SessionResource):
         resource.url = fields['url'] = ''
     type(resource).objects.filter(pk=resource.pk).update(**fields)
@@ -108,6 +123,8 @@ def download(request, pk):
 
 
 def stream_file(request, resource, *, attachment=False):
+    from .file_safety import require_clean_digest
+    require_clean_digest(resource.sha256, resource.filename)
     size = resource.file_size
     etag = f'"{resource.file_version}"'
     start, end, status = 0, size - 1, 200

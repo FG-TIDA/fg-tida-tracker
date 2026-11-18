@@ -23,6 +23,9 @@ def floor_plan(request, num, pk):
     plan = get_object_or_404(FloorPlan, pk=pk, meeting__number=num, meeting__type_id='tida')
     if not plan.image or not plan.image.storage.exists(plan.image.name):
         raise Http404
+    from .file_safety import require_clean
+    with plan.image.open('rb') as source:
+        require_clean(source.read(), plan.image.name)
     response = FileResponse(plan.image.open('rb'), filename=Path(plan.image.name).name)
     response['X-Content-Type-Options'] = 'nosniff'
     return response
@@ -178,7 +181,10 @@ def document(request, name, rev=None):
         # Keep the archived source intact and let editors supply a real abstract.
         abstract=''
     file_available = bool(snapshot.uploaded_filename) and Path(snapshot.get_file_name()).is_file()
-    body = (snapshot.text() or '') if file_available else ''
+    from .file_safety import safe_document_text
+    scanned_text = safe_document_text(snapshot) if file_available else ''
+    security_pending = scanned_text is None
+    body = scanned_text or ''
     from .rendering import without_duplicate_title
     if abstract and body and body.lstrip().startswith(abstract.strip()):
         abstract = ''  # The catalogue used the start of the source as its abstract.
@@ -205,6 +211,7 @@ def document(request, name, rev=None):
         authors = []
     return render(request, 'fgtida/document.html', {'doc': doc, 'snapshot': snapshot,
         'revisions': ordered, 'file_available': file_available,'display_abstract':abstract,
+        'security_pending': security_pending,
         'version_records':version_rows,'selected_version':selected_version,'selected_release':releases.get(snapshot.rev),
         'source_snapshot': version_metadata.get('snapshot'),
         'last_change':doc.docevent_set.order_by('-time','-pk').first(),
@@ -246,8 +253,14 @@ def download(request, name, rev):
         raise Http404
     if not file.is_file():
         raise Http404
-    response = FileResponse(file.open('rb'), as_attachment=True, filename=f'{doc.name}-{public_version(doc,rev)}{file.suffix}')
+    from .file_safety import require_clean
+    import io
+    data = file.read_bytes()
+    require_clean(data, snapshot.uploaded_filename)
+    response = FileResponse(io.BytesIO(data), as_attachment=True, filename=f'{doc.name}-{public_version(doc,rev)}{file.suffix}')
     response['X-Content-Type-Options'] = 'nosniff'
+    response['Cache-Control'] = 'no-store'
+    response['Content-Security-Policy'] = "default-src 'none'; sandbox"
     return response
 
 
@@ -279,7 +292,10 @@ def group(request, acronym, section='about'):
         'resources': group.groupurl_set.all()}
     if section == 'charter' and charter:
         from .rendering import without_duplicate_title
-        text = charter.text() if charter.uploaded_filename and Path(charter.get_file_name()).is_file() else charter.abstract
+        from .file_safety import safe_document_text
+        text = safe_document_text(charter) if charter.uploaded_filename else charter.abstract
+        context['security_pending'] = text is None
+        text = text or ''
         context['charter_text'] = without_duplicate_title(text, charter.title)
         context['charter_is_rst'] = Path(charter.uploaded_filename or '').suffix.lower() == '.rst'
     if section in ('members', 'photos'):
@@ -470,8 +486,16 @@ def document_text(request, name, rev):
     path = Path(snapshot.get_file_name()).with_suffix('.txt')
     if not snapshot.uploaded_filename or not path.is_file():
         raise Http404
-    response = FileResponse(path.open('rb'), content_type='text/plain; charset=utf-8', as_attachment=True, filename=f'{name}-{rev}.txt')
+    from .file_safety import safe_document_text
+    text = safe_document_text(snapshot)
+    if text is None:
+        from django.core.exceptions import PermissionDenied
+        raise PermissionDenied('Document text is awaiting security checks.')
+    from django.utils.http import content_disposition_header
+    response = HttpResponse(text, content_type='text/plain; charset=utf-8')
+    response['Content-Disposition'] = content_disposition_header(True, f'{name}-{rev}.txt')
     response['X-Content-Type-Options'] = 'nosniff'
+    response['Cache-Control'] = 'no-store'
     return response
 
 
@@ -484,8 +508,8 @@ def compare(request, name):
     texts = []
     for rev in (before, after):
         snapshot = snapshot_for(name, rev)
-        path = Path(snapshot.get_file_name()).with_suffix('.txt')
-        texts.append(path.read_text(encoding='utf-8', errors='replace') if snapshot.uploaded_filename and path.is_file() else None)
+        from .file_safety import safe_document_text
+        texts.append(safe_document_text(snapshot) if snapshot.uploaded_filename else None)
     diff = None
     # Bound the synchronous comparison to keep large files from monopolizing a worker.
     if all(text is not None and len(text) <= 100000 and len(text.splitlines()) <= 3000 for text in texts):

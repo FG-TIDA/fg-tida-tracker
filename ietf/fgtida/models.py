@@ -204,6 +204,7 @@ class ContributionRecipient(models.Model):
 
 
 class SessionResource(models.Model):
+    sha256 = models.CharField(max_length=64, blank=True, editable=False)
     session = models.ForeignKey('meeting.Session', on_delete=models.CASCADE, related_name='tida_resources')
     kind = models.CharField(max_length=16, choices=[('recording', 'Recording'), ('notes', 'Notes'),
         ('wiki', 'Wiki'), ('materials', 'Materials / PDF'), ('login', 'Remote participation / login')])
@@ -263,6 +264,7 @@ class TrainingCategory(models.Model):
 
 
 class TrainingVideo(models.Model):
+    sha256 = models.CharField(max_length=64, blank=True, editable=False)
     """Training resources use the existing video table and file URLs."""
     class Kind(models.TextChoices):
         VIDEO = 'video', 'Video'
@@ -495,8 +497,28 @@ class DocumentFormat(models.Model):
     kind = models.CharField(max_length=4, choices=[('pdf', 'PDF'), ('docx', 'Word')])
     filename = models.CharField(max_length=255, editable=False)
     content = models.BinaryField(editable=False)
+    sha256 = models.CharField(max_length=64, blank=True, editable=False)
     updated = models.DateTimeField(auto_now=True)
     objects = DocumentFormatManager()
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['document', 'revision', 'kind'], name='fgtida_document_format_unique')]
+
+
+class FileScan(models.Model):
+    sha256 = models.CharField(max_length=64, primary_key=True)
+    filename = models.CharField(max_length=255)
+    size = models.PositiveBigIntegerField()
+    status = models.CharField(max_length=12, default='pending', choices=[
+        ('pending', 'Quarantined'), ('clean', 'Passed checks'), ('rejected', 'Malware rejected'),
+        ('blocked', 'Unsafe document structure'), ('error', 'Scanner unavailable')])
+    created = models.DateTimeField(auto_now_add=True)
+    checked = models.DateTimeField(null=True, blank=True)
+    attempts = models.PositiveIntegerField(default=0)
+    engine = models.CharField(max_length=255, blank=True)
+    detail = models.CharField(max_length=255, blank=True)
+    formats = models.JSONField(default=list, blank=True)
+    rejected_formats = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        ordering = ['-created']

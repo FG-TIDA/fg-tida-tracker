@@ -15,7 +15,7 @@ def file_chunks(path):
 
 
 def attachment_chunks(resource):
-    for content in resource.file_chunks.order_by('position').values_list('content', flat=True).iterator(chunk_size=1):
+    for content in resource.file_chunks.filter(resource__file_version=resource.file_version).order_by('position').values_list('content', flat=True).iterator(chunk_size=1):
         yield bytes(content)
 
 
@@ -23,15 +23,18 @@ def attachment_chunks(resource):
 def archive(request, pk):
     session = get_object_or_404(Session, pk=pk, meeting__type_id='tida', group__in=core.groups())
     files, links = [], []
+    from .file_safety import require_clean, require_clean_digest
     for doc in core.documents().filter(session=session).distinct():
         if doc.uploaded_filename:
             path = Path(doc.get_file_name())
             if path.is_file():
+                require_clean(path.read_bytes(), doc.uploaded_filename)
                 files.append((f'documents/{doc.pk}-{path.name}', path.stat().st_size, lambda p=path: file_chunks(p)))
         if doc.external_url:
             links.append(f'{doc.title}: {doc.external_url}')
     for resource in session.tida_resources.all():
         if resource.file_size:
+            require_clean_digest(resource.sha256, resource.filename)
             files.append((f'resources/{resource.pk}-{Path(resource.filename).name}', resource.file_size,
                 lambda r=resource: attachment_chunks(r)))
         elif resource.url:

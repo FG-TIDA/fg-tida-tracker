@@ -22,5 +22,11 @@ else:
     FGTIDA_GITHUB_WEBHOOK_SECRET = ''
 
 FGTIDA_MAIL_ENABLED = os.environ.get('FGTIDA_MAIL_ENABLED', '').lower() == 'true'
+FGTIDA_UPLOAD_SCAN_REQUIRED = os.environ.get('FGTIDA_UPLOAD_SCAN_REQUIRED',
+    'true' if os.environ.get('FGTIDA_ENV') == 'production' else 'false').lower() == 'true'
+FGTIDA_CLAMAV_HOST = os.environ.get('FGTIDA_CLAMAV_HOST', '')
+FGTIDA_CLAMAV_PORT = int(os.environ.get('FGTIDA_CLAMAV_PORT', '3310'))
+FGTIDA_QUARANTINE_DIR = os.environ.get('FGTIDA_QUARANTINE_DIR',
+    os.path.join(os.environ.get('FGTIDA_DATA_DIR', '/tmp/fgtida-private'), 'quarantine'))
 DEFAULT_FROM_EMAIL = os.environ.get('FGTIDA_FROM_EMAIL', 'FG-TIDA Secretariat <tsbfgtida@itu.int>')
 SECRETARIAT_SUPPORT_EMAIL = 'tsbfgtida@itu.int'

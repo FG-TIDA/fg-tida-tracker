@@ -34,6 +34,8 @@ def document_version(document):
 @register.inclusion_tag('fgtida/session_actions.html')
 def session_actions(session):
     groups = {key: [] for key in ('notes', 'recording', 'pdf', 'pptx', 'other')}
+    from ietf.fgtida.file_safety import allowed_digest, snapshot_allowed
+    archive_ready = True
     docs = getattr(session, 'public_materials', None)
     if docs is None:
         docs = core.documents().filter(session=session)
@@ -44,21 +46,25 @@ def session_actions(session):
             groups['notes'].append((doc.title, reverse('fgtida:document', args=[doc.name])))
         if doc.type_id == 'recording' and doc.external_url:
             groups['recording'].append((doc.title, doc.external_url))
-        if doc.uploaded_filename and Path(doc.get_file_name()).is_file():
+        checked = not doc.uploaded_filename or snapshot_allowed(doc)
+        archive_ready = archive_ready and checked
+        if checked and doc.uploaded_filename and Path(doc.get_file_name()).is_file():
             suffix = Path(doc.uploaded_filename).suffix.lower()
             key = {'.pdf': 'pdf', '.pptx': 'pptx', '.ppt': 'pptx'}.get(suffix, 'other')
             groups[key].append((doc.title, reverse('fgtida:download', args=[doc.name, doc.rev])))
     for resource in session.tida_resources.all():
+        checked = not resource.file_size or allowed_digest(resource.sha256, resource.filename)
+        archive_ready = archive_ready and checked
         suffix = Path(resource.filename).suffix.lower()
         key = resource.kind if resource.kind in ('notes', 'recording') else {'.pdf': 'pdf', '.pptx': 'pptx', '.ppt': 'pptx'}.get(suffix, 'other')
-        if resource.kind != 'login':
+        if checked and resource.kind != 'login':
             groups[key].append((resource.title, resource.resource_url))
     categories = [('notes', 'Session notes / summary', 'chat-left-text'),
         ('recording', 'Session recording', 'camera-video'), ('pdf', 'PDF materials', 'file-earmark-pdf'),
         ('pptx', 'PowerPoint presentations', 'file-earmark-ppt'), ('other', 'Other materials', 'file-earmark-text')]
     actions = [{'key': key, 'label': label, 'icon': icon, 'links': groups[key]} for key, label, icon in categories
         if key != 'other' or groups[key]]
-    return {'actions': actions, 'session': session}
+    return {'actions': actions, 'session': session, 'archive_ready': archive_ready}
 
 
 @register.simple_tag
@@ -174,8 +180,9 @@ def rich_rst(value, source_url=''):
     rendered=cache.get(key)
     if rendered is None:
         try:
+            from ietf.fgtida.parser_process import environment
             result=subprocess.run([sys.executable,'-m','ietf.fgtida.rst_worker'],input=text.encode(),
-                capture_output=True,check=True,timeout=15)
+                capture_output=True,check=True,timeout=15,env=environment())
             rendered=clean_fragment(result.stdout.decode())
             if len(rendered.encode())<500000:
                 cache.set(key,rendered,3600)
@@ -215,6 +222,8 @@ def file_type(doc):
 @register.inclusion_tag('fgtida/formats.html')
 def document_formats(doc, alternatives_only=False, plain=False):
     links = []
+    from ietf.fgtida.file_safety import allowed_digest, snapshot_allowed
+    checked = snapshot_allowed(doc)
     if doc.type_id == 'tida-template':
         from ietf.fgtida.core import template_package_url
         url = template_package_url(doc)
@@ -222,7 +231,7 @@ def document_formats(doc, alternatives_only=False, plain=False):
             links.append(('Template package', 'folder', url))
         return {'format_links': links, 'plain': plain, 'alternatives_only': alternatives_only}
     name = doc.doc.name if doc.is_dochistory() else doc.name
-    if not alternatives_only and doc.uploaded_filename and doc.rev and Path(doc.get_file_name()).is_file() and not (doc.type_id == 'charter' and Path(doc.uploaded_filename).suffix.lower() in {'.rst', '.txt'}):
+    if checked and not alternatives_only and doc.uploaded_filename and doc.rev and Path(doc.get_file_name()).is_file() and not (doc.type_id == 'charter' and Path(doc.uploaded_filename).suffix.lower() in {'.rst', '.txt'}):
         extension = Path(doc.uploaded_filename).suffix.lower().lstrip('.')
         icon = {'pdf': 'file-pdf', 'txt': 'file-text', 'md': 'file-text', 'xml': 'file-code',
                 'docx': 'file-word', 'pptx': 'file-slides'}.get(extension, 'file-earmark')
@@ -232,7 +241,7 @@ def document_formats(doc, alternatives_only=False, plain=False):
             links.append(('Text', 'file-text', reverse('fgtida:text', args=[name, public_version(doc)])))
     original = doc.doc if doc.is_dochistory() else doc
     for alternative in original.tida_formats.all():
-        if alternative.revision == doc.rev:
+        if alternative.revision == doc.rev and allowed_digest(alternative.sha256, alternative.filename):
             label = alternative.get_kind_display()
             if Path(doc.uploaded_filename or '').suffix == '.' + alternative.kind:
                 label += ' (alternative)'
@@ -241,3 +250,12 @@ def document_formats(doc, alternatives_only=False, plain=False):
         label, icon = ('Recording', 'camera-video') if doc.type_id == 'recording' else ('Template package', 'folder') if doc.type_id == 'tida-template' else ('GitHub reference', 'box-arrow-up-right')
         links.append((label, icon, doc.external_url))
     return {'format_links': links, 'plain': plain, 'alternatives_only': alternatives_only}
+
+
+@register.simple_tag
+def document_download_url(doc):
+    from ietf.fgtida.file_safety import snapshot_allowed
+    from ietf.fgtida.versioning import public_version
+    if not snapshot_allowed(doc):
+        return reverse('fgtida:document', args=[doc.name])
+    return reverse('fgtida:download', args=[doc.name, public_version(doc)])

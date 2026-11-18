@@ -80,6 +80,8 @@ def main():
                 children.append(subprocess.Popen([sys.executable, 'deploy/maintenance.py', 'github']))
             if mail_schedule.lower() == 'true' and os.environ.get('FGTIDA_MAIL_ENABLED', '').lower() == 'true':
                 children.append(subprocess.Popen([sys.executable, 'deploy/maintenance.py', 'mail']))
+            if os.environ.get('FGTIDA_UPLOAD_SCAN_REQUIRED', 'true').lower() == 'true' and os.environ.get('FGTIDA_CLAMAV_HOST'):
+                children.append(subprocess.Popen([sys.executable, 'deploy/maintenance.py', 'files']))
         while all(child.poll() is None for child in children):
             time.sleep(0.5)
         return next((child.returncode or 1 for child in children if child.poll() is not None), 1)

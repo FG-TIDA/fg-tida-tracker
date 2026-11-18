@@ -13,7 +13,8 @@ def main():
     from defusedxml import ElementTree
     from .source_packages import unpack, pack, MAX_UPLOAD
     data = sys.stdin.buffer.read(MAX_UPLOAD + 1)
-    files = unpack(data)
+    from .file_validation import validate_office
+    files = validate_office(data, '.docx')
     if 'word/document.xml' not in files:
         raise ValueError('A DOCX document is required')
     for name, value in files.items():

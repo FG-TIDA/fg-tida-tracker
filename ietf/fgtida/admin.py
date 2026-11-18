@@ -23,6 +23,7 @@ from .models import Contribution, ContributionRecipient, ContributionSequence, S
 from .models import (EmailVerification, GitHubAccount, WorkingGroupConfiguration, GitHubRepository,
     GitHubSource, WorkItem, WorkItemRelease, GitHubJob, DocumentAttribution, DocumentListing, DocumentFormat,
     PublicDocumentType)
+from .models import FileScan
 from .contributions import ContributionForm
 from .resource_files import SessionResourceForm
 from .training import TrainingVideoAdmin
@@ -621,6 +622,66 @@ class PublicDocumentTypeAdmin(admin.ModelAdmin):
         return (not obj or obj.name != PublicDocumentType.CONTRIBUTION) and super().has_delete_permission(request, obj)
 
 
+class FileScanAdmin(admin.ModelAdmin):
+    list_display = ['filename', 'status', 'size', 'checked', 'attempts']
+    list_filter = ['status']
+    search_fields = ['sha256', 'filename']
+    fields = ['sha256', 'filename', 'size', 'status', 'formats', 'rejected_formats', 'created', 'checked', 'attempts', 'engine', 'detail']
+    readonly_fields = fields
+    actions = ['retry_checks', 'discard_private_uploads']
+
+    def has_module_permission(self, request):
+        return request.user.is_superuser
+
+    def has_view_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    @admin.action(description='Retry checks for selected quarantined files')
+    def retry_checks(self, request, queryset):
+        from .file_safety import quarantine_path, validate_file
+        checked = 0
+        for record in queryset.exclude(status='clean')[:10]:
+            path = quarantine_path(record.sha256)
+            if not path.is_file():
+                record.status = 'pending'
+                record.formats = []
+                record.rejected_formats = []
+                record.detail = 'Another scan requested. Submit the original file again, or run the existing-file scan command.'
+                record.save(update_fields=['status', 'formats', 'rejected_formats', 'detail'])
+                checked += 1
+                continue
+            data = path.read_bytes()
+            import hashlib
+            if hashlib.sha256(data).hexdigest() != record.sha256:
+                continue
+            try:
+                validate_file(data, record.filename, force=True)
+            except ValidationError:
+                pass
+            checked += 1
+        self.message_user(request, f'Retried {checked} file(s). Check their updated status. Contributors can retry their held submissions after checks pass.')
+
+    @admin.action(description='Remove selected held files from private quarantine')
+    def discard_private_uploads(self, request, queryset):
+        from .file_safety import quarantine_path
+        removed = 0
+        for record in queryset.exclude(status='clean'):
+            quarantine_path(record.sha256).unlink(missing_ok=True)
+            record.detail = 'Private upload removed by an administrator.'
+            record.save(update_fields=['detail'])
+            removed += 1
+        self.message_user(request, f'Removed {removed} held file(s). Scan audit records were preserved.')
+
+
 class DocumentCategoryForm(forms.ModelForm):
     def clean_slug(self):
         slug = self.cleaned_data['slug']
@@ -977,6 +1038,9 @@ class FloorPlanForm(forms.ModelForm):
             elif suffix in {'.png', '.jpg', '.jpeg'}:
                 from PIL import Image
                 Image.open(upload).verify()
+                from .file_safety import validate_file
+                upload.seek(0)
+                validate_file(upload.read(MAX_BYTES + 1), upload.name)
             else:
                 raise ValidationError('Use PDF, PNG or JPEG.')
         except ValidationError:
@@ -1304,7 +1368,7 @@ def configure_admin():
     if not admin.site.is_registered(SecurityQuestion):
         admin.site.register(SecurityQuestion, SecurityQuestionAdmin)
     for model, cls in [(User, FgUserAdmin), (Person, FgPersonAdmin), (Contribution, ContributionAdmin), (ContributionRecipient, ContributionRecipientAdmin), (SessionResource, SessionResourceAdmin), (OutgoingMail, OutgoingMailAdmin),
-        (PublicDocumentType, PublicDocumentTypeAdmin),
+        (PublicDocumentType, PublicDocumentTypeAdmin), (FileScan, FileScanAdmin),
         (GitHubAccount,GitHubAccountAdmin),(WorkingGroupConfiguration,WorkingGroupConfigurationAdmin),
         (GitHubRepository,GitHubRepositoryAdmin),(GitHubSource,GitHubSourceAdmin),(WorkItem,WorkItemAdmin),
         (WorkItemRelease,WorkItemReleaseAdmin),(GitHubJob,GitHubJobAdmin),(EmailVerification,EmailVerificationAdmin)]:

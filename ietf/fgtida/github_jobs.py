@@ -84,6 +84,8 @@ def bootstrap_repository(item, client):
         if hashlib.sha256(source_archive).hexdigest() != source_manifest['sha256']:
             raise ValidationError('The current contribution revision archive failed its checksum.')
     if source_archive:
+        from .file_safety import validate_file
+        validate_file(source_archive, 'source.zip')
         if contribution.submission_method == 'word' and not contribution.conversion_verified_at:
             raise ValidationError('Word conversion must be verified before source import.')
         metadata['submitted_source'] = source_manifest

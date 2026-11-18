@@ -86,6 +86,8 @@ def validate_sources(files, entry):
 
 
 def prepare_zip(data, entry, folder=''):
+    from .file_safety import validate_file
+    validate_file(data, 'source.zip')
     files = unpack(data)
     if folder:
         safe_path(folder)
@@ -124,6 +126,8 @@ def github_snapshot(url, commit, folder, entry):
                     raise ValidationError('GitHub snapshot exceeds the 10 MB or download time limit. Submit a documentation-only ZIP instead.')
     except requests.RequestException as error:
         raise ValidationError('GitHub is unavailable. Try again or submit the RST ZIP.') from error
+    from .file_safety import validate_file
+    validate_file(bytes(data), 'github-repository.zip')
     files = unpack(bytes(data))
     roots = {name.split('/')[0] for name in files}
     if len(roots) != 1:
@@ -138,9 +142,12 @@ def github_snapshot(url, commit, folder, entry):
 def convert_word(data):
     if len(data) > MAX_UPLOAD:
         raise ValidationError('Upload a Word document of at most 10 MB.')
+    from .file_safety import validate_file
+    validate_file(data, 'submission.docx')
     try:
+        from .parser_process import environment
         result = subprocess.run([sys.executable, '-m', 'ietf.fgtida.word_worker'],
-                                input=data, capture_output=True, check=True, timeout=35)
+                                input=data, capture_output=True, check=True, timeout=35, env=environment())
         return prepare_zip(result.stdout, 'index.rst')
     except (subprocess.SubprocessError, OSError) as error:
         raise ValidationError('Word conversion failed. Resolve tracked changes, use embedded images and standard Word headings, then retry. Contact the secretariat if conversion still fails.') from error

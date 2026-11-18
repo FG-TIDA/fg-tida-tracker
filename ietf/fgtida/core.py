@@ -114,7 +114,8 @@ def save_document(doc, actor, note, data=None, filename=None, state=None, sessio
     if data is not None:
         from .models import DocumentVersion
         from .github_attribution import source_attribution
+        import hashlib
         DocumentVersion.objects.create(document=doc, revision=doc.rev, version=public_version, recorded=event.time,
-            source_metadata={**source_attribution(text), **(source_metadata or {})})
+            source_metadata={**source_attribution(text), **(source_metadata or {}), 'file_sha256': hashlib.sha256(data).hexdigest()})
         doc.__dict__.pop('_version_labels',None)
     return doc

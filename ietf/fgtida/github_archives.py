@@ -8,9 +8,12 @@ from django.core.exceptions import ValidationError
 
 
 def validate_source_archive(data):
+    from .file_safety import validate_file
+    validate_file(data, 'github-source.tar.gz')
     try:
+        from .parser_process import environment
         subprocess.run([sys.executable,'-m','ietf.fgtida.github_archives'],input=data,
-            capture_output=True,timeout=15,check=True)
+            capture_output=True,timeout=15,check=True,env=environment())
     except subprocess.SubprocessError as error:
         raise ValidationError('Cannot safely read the source archive.') from error
 

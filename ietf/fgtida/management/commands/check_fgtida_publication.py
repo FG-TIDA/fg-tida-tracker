@@ -63,6 +63,8 @@ class Command(BaseCommand):
             failures.append('SMTP delivery is disabled; enable it and verify real reset-email delivery before launch.')
         if not getattr(settings, 'FGTIDA_REQUIRE_ADMIN_MFA', False):
             failures.append('Administrator MFA must be required.')
+        if not getattr(settings, 'FGTIDA_UPLOAD_SCAN_REQUIRED', False):
+            failures.append('Production file uploads must require malware scanning.')
         if getattr(settings, 'LOGIN_REDIRECT_URL', '') != '/':
             failures.append('The default sign-in destination must be the home page.')
         domain = getattr(settings, 'FGTIDA_PUBLIC_DOMAIN', '')

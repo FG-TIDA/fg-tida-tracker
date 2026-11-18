@@ -46,6 +46,9 @@ class TrainingResourceForm(forms.ModelForm):
                 valid = {'.mp4': header[4:8] == b'ftyp', '.webm': header.startswith(b'\x1aE\xdf\xa3')}
                 if not valid.get(suffix) or upload.size > MEDIA_LIMIT:
                     raise forms.ValidationError('Upload a valid MP4 or WebM file up to 100 MB.')
+                from .file_safety import validate_file
+                upload.seek(0)
+                validate_file(upload.read(MEDIA_LIMIT + 1), upload.name)
         except forms.ValidationError as error:
             self.add_error('upload', error)
         finally:

@@ -13,13 +13,16 @@ EXTENSIONS = {'.txt', '.md', '.rst', '.xml', '.pdf', '.docx', '.pptx', '.zip'}
 def extract_text(data, filename):
     if len(data) > MAX_BYTES or os.path.splitext(filename)[1].lower() not in EXTENSIONS:
         raise ValidationError('Use a PDF, DOCX, PPTX, TXT, Markdown, RST, XML or RST ZIP file up to 10 MB.')
+    from .file_safety import validate_file
+    validate_file(data, filename)
     # Compressed PDF/Office data may expand far beyond upload size. Parsing is
     # bounded in a separate process so a malformed file cannot exhaust a worker.
     if os.path.splitext(filename)[1].lower() in {'.pdf', '.docx', '.pptx', '.xml', '.zip'}:
         try:
+            from .parser_process import environment
             result = subprocess.run([sys.executable, '-m', 'ietf.fgtida.extract_worker',
                                      os.path.splitext(filename)[1].lower()],
-                                    input=data, capture_output=True, timeout=15, check=True)
+                                    input=data, capture_output=True, timeout=15, check=True, env=environment())
             return result.stdout.decode('utf-8')[:2_000_000]
         except (subprocess.SubprocessError, UnicodeError) as error:
             raise ValidationError('Cannot safely read this file. Choose a valid, unencrypted document.') from error
@@ -53,6 +56,8 @@ def _extract_text(data, filename):
         elif extension == '.xml':
             text = ' '.join(ElementTree.fromstring(data).itertext())
         elif extension in {'.docx', '.pptx'}:
+            from .file_validation import validate_office
+            validate_office(data, extension)
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
                 if len(archive.infolist()) > 5000 or sum(item.file_size for item in archive.infolist()) > 30 * 1024 * 1024:
                     raise ValueError('Oversized Office archive')
@@ -67,6 +72,8 @@ def _extract_text(data, filename):
             reader = PdfReader(io.BytesIO(data), strict=False)
             if reader.is_encrypted or len(reader.pages) > 1000:
                 raise ValueError('Encrypted or oversized PDF')
+            from .file_validation import validate_passive_pdf
+            validate_passive_pdf(reader)
             text = '\n'.join(page.extract_text() or '' for page in reader.pages)
     except Exception as error:
         raise ValidationError('Cannot read this file. Choose a valid, unencrypted document.') from error

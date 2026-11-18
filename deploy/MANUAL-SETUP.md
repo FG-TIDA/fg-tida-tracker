@@ -1,5 +1,9 @@
 # FG-TIDA: manual GitHub and Render activation
 
+Before deploying file-scanning enforcement, complete the private scanner setup
+in [UPLOAD-SECURITY.md](UPLOAD-SECURITY.md). Existing unchecked files become
+available after their scans pass.
+
 Follow these steps in order. Configuration changes are yours to make; this guide
 does not imply that the live service or the other GitHub repositories were changed.
 Keep ITU mail disabled until its authorized transport is supplied and tested.

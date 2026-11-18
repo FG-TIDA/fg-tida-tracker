@@ -86,6 +86,7 @@ class DocumentListTests(TestCase):
     def word_file(self):
         data = io.BytesIO()
         with zipfile.ZipFile(data, 'w') as archive:
+            archive.writestr('[Content_Types].xml', '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>')
             archive.writestr('word/document.xml', '<document><p>Original contribution</p></document>')
         return SimpleUploadedFile('contribution.docx', data.getvalue())
 

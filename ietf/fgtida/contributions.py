@@ -98,6 +98,10 @@ class ContributionForm(forms.ModelForm):
 
 @login_required
 def submit(request):
+    from .mfa import allow_attempt
+    if request.method == 'POST' and not allow_attempt(f'file-submission:{request.user.pk}', limit=20):
+        return HttpResponse('Too many file submissions. Please wait 15 minutes before trying again.', status=429,
+                            headers={'Retry-After': '900'})
     selected = core.groups().filter(acronym=request.GET.get('group', ''), acronym__in=['incubation']).first()
     form = ContributionForm(request.POST or None, request.FILES or None, initial={'group': selected} if selected else None)
     if request.method == 'POST' and form.is_valid():
@@ -172,10 +176,12 @@ def detail(request, pk, download=False, source=False):
     if not request.user.has_perm('fgtida.view_contribution'):
         items = items.filter(submitter=request.user)
     item = get_object_or_404(items, pk=pk)
+    from .file_safety import allowed, require_clean
     if download or source:
         from django.utils.http import content_disposition_header
         if source and not item.source_archive:
             raise Http404
+        require_clean(bytes(item.source_archive if source else item.content), 'source.zip' if source else item.filename)
         response = HttpResponse(bytes(item.source_archive if source else item.content), content_type='application/octet-stream')
         response['Content-Disposition'] = content_disposition_header(True, 'source.zip' if source else item.filename)
         response['X-Content-Type-Options'] = 'nosniff'
@@ -183,7 +189,8 @@ def detail(request, pk, download=False, source=False):
         return response
     chapters = []
     assets = []
-    if item.source_archive:
+    security_pending = bool(item.source_archive) and not allowed(bytes(item.source_archive), 'source.zip')
+    if item.source_archive and not security_pending:
         from .source_packages import unpack
         for name, data in unpack(bytes(item.source_archive)).items():
             if name.endswith('.rst'):
@@ -191,16 +198,18 @@ def detail(request, pk, download=False, source=False):
             else:
                 assets.append(name)
     legacy_text = ''
-    if not chapters and item.content:
+    if not chapters and item.content and allowed(bytes(item.content), item.filename):
         from .files import extract_text
         try:
             legacy_text = extract_text(bytes(item.content), item.filename)
         except forms.ValidationError:
             pass  # Keep the original download available when extraction is unsupported.
     return render(request, 'fgtida/contribution.html', {'submission': item, 'chapters': chapters, 'assets': assets,
+        'security_pending': security_pending, 'original_available': allowed(bytes(item.content), item.filename),
         'legacy_text': legacy_text, 'legacy_extension': Path(item.filename).suffix.lower(),
         'can_revise': can_revise(item, request.user),
-        'can_verify': item.submission_method == 'word' and item.submitter_id == request.user.pk and not item.conversion_verified_at})
+        'can_verify': item.submission_method == 'word' and item.submitter_id == request.user.pk and not item.conversion_verified_at
+                      and not security_pending and allowed(bytes(item.content), item.filename)})
 
 
 def can_revise(item, user):
@@ -260,6 +269,10 @@ def revise(request, pk):
     item = get_object_or_404(Contribution.objects.defer('content', 'source_archive'), pk=pk)
     if not can_revise(item, request.user):
         raise Http404
+    from .mfa import allow_attempt
+    if request.method == 'POST' and not allow_attempt(f'file-submission:{request.user.pk}', limit=20):
+        return HttpResponse('Too many file submissions. Please wait 15 minutes before trying again.', status=429,
+                            headers={'Retry-After': '900'})
     form = ContributionRevisionForm(request.POST if request.method == 'POST' else None, initial={
         'repository': item.draft_repository_url,
         'source_folder': item.source_folder or 'src/doc',
@@ -281,6 +294,9 @@ def revise(request, pk):
 @transaction.atomic
 def verify_conversion(request, pk):
     item = get_object_or_404(Contribution.objects.select_for_update(), pk=pk, submitter=request.user, submission_method='word', status='pending')
+    from .file_safety import require_clean
+    require_clean(bytes(item.content), item.filename)
+    require_clean(bytes(item.source_archive), 'source.zip')
     if request.POST.get('verified') != 'yes':
         return HttpResponse('Confirm that you checked the converted content and figures.', status=400)
     if not item.conversion_verified_at:
@@ -298,6 +314,8 @@ def asset(request, pk, path):
     item = get_object_or_404(items, pk=pk)
     if not item.source_archive:
         raise Http404
+    from .file_safety import require_clean
+    require_clean(bytes(item.source_archive), 'source.zip')
     from .source_packages import unpack
     data = unpack(bytes(item.source_archive)).get(path)
     if data is None:
@@ -317,6 +335,11 @@ def accept(pk, user, target_group=None):
     item = Contribution.objects.select_for_update().get(pk=pk)
     if item.status != 'pending':
         return
+    from .file_safety import validate_file
+    if item.content:
+        validate_file(bytes(item.content), item.filename)
+    if item.source_archive:
+        validate_file(bytes(item.source_archive), 'source.zip')
     from django.core.exceptions import ValidationError
     if item.submission_method == 'word' and not item.conversion_verified_at:
         raise ValidationError('The contributor must verify the Word-to-RST conversion before adoption.')

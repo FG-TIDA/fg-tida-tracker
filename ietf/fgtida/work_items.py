@@ -131,7 +131,7 @@ def receive_build(repository, manifest, pdf, source_archive=None):
             if not matches:
                 raise ValidationError('This version already exists with different source. Publish a higher version or review the archived source.')
             alternative, created = DocumentFormat.objects.get_or_create(document=document, revision=document.rev, kind='pdf',
-                defaults={'filename': 'release.pdf', 'content': pdf})
+                defaults={'filename': 'release.pdf', 'content': pdf, 'sha256': hashlib.sha256(pdf).hexdigest()})
             if not created and bytes(alternative.content) != pdf:
                 raise ValidationError('A different PDF is already attached to this revision.')
         except (OSError, tarfile.TarError, zipfile.BadZipFile) as error:

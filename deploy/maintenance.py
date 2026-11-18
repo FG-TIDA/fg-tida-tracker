@@ -20,6 +20,8 @@ def main(task):
     while True:
         if task == 'mail':
             invoke(['deliver_fgtida_mail'], 90)
+        elif task == 'files':
+            invoke(['scan_fgtida_files', '--limit', '20'], 900)
         else:
             invoke(['process_fgtida_github', '--limit', '10'], 180)
             if time.monotonic() - last_catalog >= 900:
@@ -29,6 +31,6 @@ def main(task):
 
 
 if __name__=='__main__':
-    if len(sys.argv) != 2 or sys.argv[1] not in {'mail', 'github'}:
-        raise SystemExit('Choose mail or github maintenance.')
+    if len(sys.argv) != 2 or sys.argv[1] not in {'mail', 'github', 'files'}:
+        raise SystemExit('Choose mail, github or files maintenance.')
     main(sys.argv[1])

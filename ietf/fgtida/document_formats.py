@@ -42,8 +42,10 @@ class DocumentFormatForm(forms.ModelForm):
     def save(self, commit=True):
         instance = super().save(commit=False)
         if self.cleaned_data.get('upload'):
+            import hashlib
             instance.filename = Path(self.cleaned_data['upload'].name).name[:255]
             instance.content = self._content
+            instance.sha256 = hashlib.sha256(self._content).hexdigest()
         if commit:
             instance.save()
         return instance
@@ -78,6 +80,8 @@ def download(request, pk):
     record = get_object_or_404(DocumentFormat.objects.select_related('document').defer('content'), pk=pk, document__in=core.documents())
     from .versioning import public_version
     filename = f'{record.document.name}-{public_version(record.document, record.revision)}.{record.kind}'
+    from .file_safety import require_clean
+    require_clean(bytes(record.content), record.filename)
     mime = 'application/pdf' if record.kind == 'pdf' else 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     return FileResponse(io.BytesIO(bytes(record.content)), as_attachment=True, filename=filename, content_type=mime,
         headers={'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store'})
