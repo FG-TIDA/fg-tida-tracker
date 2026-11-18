@@ -522,3 +522,17 @@ class FileScan(models.Model):
 
     class Meta:
         ordering = ['-created']
+
+
+class FileScanEvent(models.Model):
+    scan = models.ForeignKey(FileScan, on_delete=models.PROTECT, related_name='events')
+    created = models.DateTimeField(auto_now_add=True)
+    operation = models.CharField(max_length=16)
+    status = models.CharField(max_length=12)
+    format = models.CharField(max_length=16, blank=True)
+    engine = models.CharField(max_length=255, blank=True)
+    detail = models.CharField(max_length=500, blank=True)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+
+    class Meta:
+        ordering = ['-created', '-pk']

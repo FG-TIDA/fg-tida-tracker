@@ -23,7 +23,7 @@ from .models import Contribution, ContributionRecipient, ContributionSequence, S
 from .models import (EmailVerification, GitHubAccount, WorkingGroupConfiguration, GitHubRepository,
     GitHubSource, WorkItem, WorkItemRelease, GitHubJob, DocumentAttribution, DocumentListing, DocumentFormat,
     PublicDocumentType)
-from .models import FileScan
+from .models import FileScan, FileScanEvent
 from .contributions import ContributionForm
 from .resource_files import SessionResourceForm
 from .training import TrainingVideoAdmin
@@ -622,6 +622,25 @@ class PublicDocumentTypeAdmin(admin.ModelAdmin):
         return (not obj or obj.name != PublicDocumentType.CONTRIBUTION) and super().has_delete_permission(request, obj)
 
 
+class FileScanEventInline(admin.TabularInline):
+    model = FileScanEvent
+    fields = ['created', 'operation', 'status', 'format', 'engine', 'detail', 'actor']
+    readonly_fields = fields
+    extra = 0
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+class FileScanReviewForm(forms.Form):
+    reason = forms.CharField(min_length=10, max_length=400, widget=forms.Textarea(attrs={'rows': 3}),
+        help_text='Explain the suspected false positive or corrected scanner problem. Do not include credentials or document content.')
+
+
 class FileScanAdmin(admin.ModelAdmin):
     list_display = ['filename', 'status', 'size', 'checked', 'attempts']
     list_filter = ['status']
@@ -629,6 +648,7 @@ class FileScanAdmin(admin.ModelAdmin):
     fields = ['sha256', 'filename', 'size', 'status', 'formats', 'rejected_formats', 'created', 'checked', 'attempts', 'engine', 'detail']
     readonly_fields = fields
     actions = ['retry_checks', 'discard_private_uploads']
+    inlines = [FileScanEventInline]
 
     def has_module_permission(self, request):
         return request.user.is_superuser
@@ -645,11 +665,23 @@ class FileScanAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         return False
 
-    @admin.action(description='Retry checks for selected quarantined files')
+    @admin.action(description='Review and retry checks for selected files')
     def retry_checks(self, request, queryset):
-        from .file_safety import quarantine_path, validate_file
+        from django.template.response import TemplateResponse
+        from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
+        from .file_safety import quarantine_path, validate_file, record_event
+        confirmed = request.POST.get('confirm_scan_retry') == 'yes'
+        form = FileScanReviewForm(request.POST if confirmed else None)
+        if not confirmed or not form.is_valid():
+            return TemplateResponse(request, 'fgtida/admin/retry_file_scans.html', {
+                **self.admin_site.each_context(request), 'title': 'Review and retry file security checks',
+                'form': form, 'records': queryset.exclude(status='clean')[:10],
+                'action_checkbox_name': ACTION_CHECKBOX_NAME, 'opts': self.model._meta,
+            })
         checked = 0
         for record in queryset.exclude(status='clean')[:10]:
+            record_event(record, 'review', actor=request.user, detail=form.cleaned_data['reason'])
+            self.log_change(request, record, 'Security rescan requested: ' + form.cleaned_data['reason'])
             path = quarantine_path(record.sha256)
             if not path.is_file():
                 record.status = 'pending'
@@ -672,12 +704,14 @@ class FileScanAdmin(admin.ModelAdmin):
 
     @admin.action(description='Remove selected held files from private quarantine')
     def discard_private_uploads(self, request, queryset):
-        from .file_safety import quarantine_path
+        from .file_safety import quarantine_path, record_event
         removed = 0
         for record in queryset.exclude(status='clean'):
             quarantine_path(record.sha256).unlink(missing_ok=True)
             record.detail = 'Private upload removed by an administrator.'
             record.save(update_fields=['detail'])
+            record_event(record, 'discard', actor=request.user)
+            self.log_change(request, record, 'Held bytes removed; scan decision retained.')
             removed += 1
         self.message_user(request, f'Removed {removed} held file(s). Scan audit records were preserved.')
 

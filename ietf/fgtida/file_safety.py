@@ -17,7 +17,7 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.utils import timezone
 
-from .models import FileScan
+from .models import FileScan, FileScanEvent
 
 log = logging.getLogger(__name__)
 MAX_SCAN_BYTES = 100 * 1024 * 1024
@@ -82,7 +82,9 @@ def reply(connection):
     answer = bytearray()
     while len(answer) < 4096:
         part = connection.recv(1)
-        if not part or part == b'\0':
+        if not part:
+            raise OSError('Incomplete scanner response.')
+        if part == b'\0':
             return answer.decode('utf-8', errors='replace')
         answer.extend(part)
     raise OSError('Invalid scanner response.')
@@ -115,13 +117,18 @@ def scanner_version():
         age = (timezone.now() - stamp).total_seconds()
     except (TypeError, ValueError, IndexError) as error:
         raise OSError('Scanner definition date is unavailable.') from error
-    if age > 7 * 86400 or age < -86400:
+    if age > 3 * 86400 or age < -86400:
         raise OSError('Scanner definitions need updating.')
     return version[:255]
 
 
-def scan_stream(data):
-    version = scanner_version()
+def scanner_test_pattern():
+    # Standard harmless antivirus test data. Never saved or published.
+    return (b'X5O!P%@AP[4' + bytes([92]) + b'PZX54(P^)7CC)7}'
+            + b'$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*')
+
+
+def _scan_stream(data):
     deadline = time.monotonic() + 45
     with scanner_connection() as connection:
         connection.settimeout(10)
@@ -134,10 +141,25 @@ def scan_stream(data):
         connection.sendall(b'\0\0\0\0')
         result = reply(connection)
     if result == 'stream: OK':
-        return version, ''
+        return ''
     if result.startswith('stream: ') and result.endswith(' FOUND'):
-        return version, result[8:-6][:200]
+        return result[8:-6][:200]
     raise OSError('The scanner could not fully inspect the file.')
+
+
+def scan_stream(data):
+    version = scanner_version()
+    # Prove detection and clean-file handling before trusting any new verdict.
+    # This also catches accidentally disabled scanning or an always-rejecting engine.
+    detection = _scan_stream(scanner_test_pattern())
+    if 'eicar' not in detection.casefold() or _scan_stream(b'FG-TIDA clean scanner control.\n'):
+        raise OSError('Scanner detection/control self-test failed.')
+    return version, _scan_stream(data)
+
+
+def record_event(record, operation, *, kind='', actor=None, detail=None):
+    return FileScanEvent.objects.create(scan=record, operation=operation, status=record.status,
+        format=kind, engine=record.engine, detail=(record.detail if detail is None else detail)[:500], actor=actor)
 
 
 def validate_file(data, filename, *, force=False):
@@ -187,10 +209,12 @@ def validate_file(data, filename, *, force=False):
                     record.status = 'clean'
                     record.formats = sorted(set(record.formats) | {kind})
                     record.rejected_formats = [item for item in record.rejected_formats if item != kind]
-            path.unlink(missing_ok=True)
+            if record.status == 'clean' and structure_error is None:
+                path.unlink(missing_ok=True)
         record.checked = timezone.now()
         record.attempts += 1
         record.save()
+        record_event(record, 'scan', kind=kind)
     log.info('File security check sha256=%s status=%s', digest, record.status)
     if structure_error:
         raise structure_error

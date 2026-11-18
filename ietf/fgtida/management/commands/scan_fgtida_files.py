@@ -10,7 +10,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from ietf.fgtida import core
-from ietf.fgtida.file_safety import allowed, format_key, quarantine_path, required, scanner_version, scan_stream, validate_file
+from ietf.fgtida.file_safety import allowed, format_key, quarantine_path, required, scanner_version, scan_stream, validate_file, record_event, scanner_test_pattern
 from ietf.fgtida.models import (Contribution, DocumentFormat, DocumentVersion, FileScan,
     SessionResource, TrainingVideo, WorkItem, WorkItemRelease)
 
@@ -22,8 +22,17 @@ class Command(BaseCommand):
         parser.add_argument('--limit', type=int, default=20)
         parser.add_argument('--check-scanner', action='store_true')
         parser.add_argument('--force', action='store_true', help='Rescan files that already passed. Use without a limit large enough to cover the collection in maintenance.')
+        parser.add_argument('--sha256', help='Only scan this exact file checksum, for a targeted reviewed recovery.')
+        parser.add_argument('--reason', help='Review note for a targeted forced rescan (10 to 400 characters).')
 
     def handle(self, limit, check_scanner, force, **options):
+        self.target = options.get('sha256')
+        if self.target and not re.fullmatch(r'[0-9a-f]{64}', self.target):
+            raise CommandError('Use the full lowercase SHA-256 checksum from Admin > File scans.')
+        self.reason = (options.get('reason') or '').strip()
+        self.review_recorded = False
+        if self.target and force and not 10 <= len(self.reason) <= 400:
+            raise CommandError('Provide --reason with a 10 to 400 character investigation note for this recovery.')
         if not required():
             raise CommandError('Set FGTIDA_UPLOAD_SCAN_REQUIRED=true before scanning files.')
         if limit < 1:
@@ -37,8 +46,7 @@ class Command(BaseCommand):
         self.stdout.write('Private scanner ready. ' + version)
         if check_scanner:
             # Standard harmless antivirus test pattern, constructed only in memory.
-            test_pattern = (b'X5O!P%@AP[4' + bytes([92]) + b'PZX54(P^)7CC)7}'
-                            + b'$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*')
+            test_pattern = scanner_test_pattern()
             try:
                 _, detection = scan_stream(test_pattern)
                 _, clean_detection = scan_stream(b'FG-TIDA clean scanner connection test.\n')
@@ -49,9 +57,13 @@ class Command(BaseCommand):
             self.stdout.write('Antivirus detection and clean-control tests passed.')
             return
         self.attempted = self.passed = self.failed = 0
+        self.processed = set()
         self.limit = limit
         self.force = force
-        for record in FileScan.objects.filter(status__in=['pending', 'error']).order_by('created').iterator():
+        held = FileScan.objects.all() if self.target else FileScan.objects.filter(status__in=['pending', 'error'])
+        if self.target:
+            held = held.filter(pk=self.target)
+        for record in held.order_by('created').iterator():
             path = quarantine_path(record.sha256)
             if path.is_file() and self.attempted < limit:
                 data = path.read_bytes()
@@ -105,6 +117,8 @@ class Command(BaseCommand):
                 with plan.image.open('rb') as source:
                     self.check(source.read(), plan.image.name)
         self.stdout.write(f'New checks: {self.attempted}; passed: {self.passed}; held/rejected: {self.failed}. Existing work items and versions were preserved.')
+        if self.target and self.force and not self.attempted:
+            raise CommandError('The original bytes were not found. Ask the contributor to resubmit after admin review; no file was released.')
 
     def expire_private_uploads(self):
         try:
@@ -112,14 +126,26 @@ class Command(BaseCommand):
             for path in root.iterdir():
                 if re.fullmatch(r'[0-9a-f]{64}', path.name) and path.is_file() and time.time() - path.stat().st_mtime > 7 * 86400:
                     path.unlink(missing_ok=True)
-                    FileScan.objects.filter(pk=path.name).exclude(status='clean').update(detail='Private upload expired. Submit the file again.')
+                    for record in FileScan.objects.filter(pk=path.name).exclude(status='clean'):
+                        record.detail = 'Private upload expired. Submit the file again.'
+                        record.save(update_fields=['detail'])
+                        record_event(record, 'expired')
         except OSError as error:
             raise CommandError('The private quarantine directory is unavailable.') from error
 
     def check(self, data, filename):
         if not data:
             return False
-        known = FileScan.objects.filter(pk=hashlib.sha256(data).hexdigest()).first()
+        digest = hashlib.sha256(data).hexdigest()
+        if self.target and digest != self.target:
+            return False
+        key = (digest, format_key(filename))
+        if key in self.processed:
+            return allowed(data, filename)
+        known = FileScan.objects.filter(pk=digest).first()
+        if self.target and self.force and known and not self.review_recorded:
+            record_event(known, 'review', detail='Operator recovery: ' + self.reason)
+            self.review_recorded = True
         refresh = bool(known and known.checked and known.checked < timezone.now() - timedelta(days=1))
         if not self.force and not refresh and allowed(data, filename):
             return True
@@ -128,6 +154,7 @@ class Command(BaseCommand):
             return False
         if self.attempted >= self.limit:
             return False
+        self.processed.add(key)
         self.attempted += 1
         try:
             validate_file(data, filename, force=self.force or refresh)

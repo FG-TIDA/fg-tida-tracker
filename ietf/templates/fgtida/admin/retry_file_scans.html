@@ -1,0 +1,15 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<p>Update ClamAV signatures and investigate the reported detection before requesting another scan.
+This action runs the security checks again; it cannot mark a file clean or bypass document validation.</p>
+<p>If the original is no longer held privately, the contributor must resubmit it or an operator must scan the existing archive.
+Review at most ten files at a time. Your reason and the results are recorded in the file's history.</p>
+<form method="post">{% csrf_token %}
+{{ form.as_p }}
+<ul>{% for record in records %}<li>{{ record.filename }} — {{ record.get_status_display }}
+<input type="hidden" name="{{ action_checkbox_name }}" value="{{ record.pk }}"></li>{% endfor %}</ul>
+<input type="hidden" name="action" value="retry_checks">
+<input type="hidden" name="confirm_scan_retry" value="yes">
+<button type="submit" class="default">Run security checks again</button>
+</form>
+{% endblock %}
