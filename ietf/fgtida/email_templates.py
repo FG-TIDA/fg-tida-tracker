@@ -58,18 +58,21 @@ def password_reset(user, link):
 
 def contribution(item, acknowledgement=False):
     subject = f'{item.reference or "FG-TIDA"} — contribution received: {item.title}'.replace('\r',' ').replace('\n',' ')[:255]
-    salutation = greeting(item.submitter) if acknowledgement else f'Dear {item.group.name} colleagues,'
+    salutation = (f'Dear {item.contact_name.split()[0]},' if item.contact_name else greeting(item.submitter)) if acknowledgement else f'Dear {item.group.name} colleagues,'
     text = 'Your contribution has been received' if acknowledgement else 'A new contribution has been received'
     from .accounts import mail_origin
     from django.urls import reverse
     details = mail_origin(None).rstrip('/') + reverse('fgtida:contribution', args=[item.pk])
     public_record = (mail_origin(None).rstrip('/') + reverse('fgtida:document', args=[item.document.name])) if item.document_id else ''
-    source_note = ('Word was automatically converted to RST. The contributor must verify the conversion before adoption.\n'
+    if not item.submitter:
+        details = public_record
+    details_label = 'Contribution and source preview (sign in)' if item.submitter else 'Public contribution preview'
+    source_note = ('Word was automatically converted to RST. The contributor or administrator must verify the conversion before adoption.\n'
                    if item.submission_method == 'word' else '')
     return (subject, f'{salutation}\n\n{text} and recorded in the FG-TIDA Datatracker.\n\n'
         f'Contribution number: {item.reference or "Pending assignment"}\n'
         f'Title: {item.title}\nGroup: {item.group.name}\nStatus: Submitted\n\n'
         f'{item.abstract}\n\nSubmission method: {item.get_submission_method_display()}\n{source_note}'
-        f'Contribution and source preview (sign in): {details}\n\n'
+        f'{details_label}: {details}\n\n'
         f'Public work item record: {public_record}\n\n'
         'The group will review the proposal and record its decision in the tracker.\n\nRegards,')

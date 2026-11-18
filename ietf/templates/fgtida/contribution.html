@@ -15,7 +15,7 @@
 {% if submission.draft_repository_url %}<p><a href="{{ submission.draft_repository_url }}">Original personal GitHub repository</a> · commit <code>{{ submission.source_commit }}</code></p>{% endif %}
 {% if submission.submission_method == 'word' %}
 <div class="alert alert-warning">
-{% if submission.conversion_verified_at %}Conversion checked by the contributor on {{ submission.conversion_verified_at }}.
+{% if submission.conversion_verified_at %}Conversion checked on {{ submission.conversion_verified_at }}.
 {% else %}<strong>Conversion needs your verification before adoption.</strong> Compare all text, tables, equations, references and figures with your Word original. Check the extracted assets below and the source package. If anything is missing or wrong, contact <a href="mailto:{{ platform_content.secretariat_email }}">the secretariat</a> before confirming.{% endif %}
 </div>{% endif %}
 {% if chapters %}<h2>Full contribution</h2><p>Read the submitted chapters below. Supporting figures and files follow the text.</p>

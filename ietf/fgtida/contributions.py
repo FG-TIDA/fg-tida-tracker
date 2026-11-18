@@ -136,6 +136,12 @@ def record_submission(item, form, user):
     item.save()
     entry = unpack(form.source_archive)[form.manifest['entry_document']].decode('utf-8-sig')
     credits = source_attribution(entry)
+    if item.contact_name:
+        credits.update(authors=list(dict.fromkeys([*credits.get('authors', []), item.contact_name])), contacts=[item.contact_name])
+    if item.contact_affiliation:
+        credits['affiliations'] = list(dict.fromkeys([*credits.get('affiliations', []), item.contact_affiliation]))
+    if item.contact_email:
+        credits['contact_emails'] = [item.contact_email]
     doc = Document(name=f'fg-tida-contribution-{item.pk}', title=item.title,
         abstract=item.abstract, type_id='tida', group=item.group)
     core.save_document(doc, core.actor_for(user), 'Work item submitted for a group decision.',
@@ -145,11 +151,81 @@ def record_submission(item, form, user):
         DocumentAuthor.objects.create(document=doc, person=core.actor_for(item.submitter), order=1)
     item.document = doc
     item.save(update_fields=['document'])
+    sync_contact_metadata(item)
     WorkItem.objects.create(document=doc, short_name=item.work_item_acronym or slugify(item.title)[:48] or f'item-{item.pk}')
     queue_notifications(item.pk)
-    if item.submitter and item.submitter.email:
+    receipt_address = item.contact_email or (item.submitter.email if item.submitter else '')
+    if receipt_address:
         subject, body = contribution(item, acknowledgement=True)
-        enqueue(item.submitter.email, subject, body, contribution=item, purpose='submitter')
+        enqueue(receipt_address, subject, body, contribution=item, purpose='submitter')
+
+
+def sync_contact_metadata(item, clear=False, previous=None):
+    if not item.document_id:
+        return
+    from .models import DocumentAttribution
+    values = {'authors': item.contact_name, 'contacts': item.contact_name,
+              'affiliations': item.contact_affiliation, 'contact_emails': item.contact_email}
+    if any(values.values()) or clear:
+        attribution, created = DocumentAttribution.objects.get_or_create(document_id=item.document_id)
+        version = item.document.tida_versions.filter(revision=item.document.rev).first()
+        source = version.source_metadata if version else {}
+        for key, contact_field in [('authors', 'contact_name'), ('affiliations', 'contact_affiliation')]:
+            lines = list(source.get(key, [])) if created else getattr(attribution, key).splitlines()
+            old = (previous or {}).get(contact_field, '')
+            if old:
+                lines = [line for line in lines if line != old]
+            if getattr(item, contact_field):
+                lines.append(getattr(item, contact_field))
+            values[key] = '\n'.join(dict.fromkeys(lines))
+        for key, value in values.items():
+            setattr(attribution, key, value)
+        attribution.save(update_fields=list(values))
+
+
+@transaction.atomic
+def convert_existing_word(pk, user):
+    """Archive a maintained source package without duplicating the work item."""
+    item = Contribution.objects.select_for_update().get(pk=pk)
+    if item.source_archive:
+        return False
+    if Path(item.filename).suffix.lower() != '.docx':
+        raise forms.ValidationError('Only DOCX submissions can be converted automatically. Save older DOC files as DOCX first.')
+    from .source_packages import convert_word
+    from .models import DocumentFormat
+    import hashlib
+    archive, manifest = convert_word(bytes(item.content))
+    item.source_archive = archive
+    item.source_manifest = {**manifest, 'original_sha256': hashlib.sha256(bytes(item.content)).hexdigest(), 'method': 'word'}
+    item.submission_method = 'word'
+    item.entry_document = 'index.rst'
+    item.conversion_verified_at = None
+    item.conversion_verified_by = None
+    doc = item.document or Document(name=f'fg-tida-contribution-{item.pk}', title=item.title,
+        abstract=item.abstract, type_id='tida', group=item.group)
+    if doc.pk and doc.uploaded_filename:
+        current = Path(doc.get_file_name())
+        if not current.is_file() or current.read_bytes() != bytes(item.content):
+            raise forms.ValidationError('The current document differs from the original Word submission. Review its revisions before converting an older original.')
+        core.save_document(doc, core.actor_for(user),
+            'Maintained RST ZIP added for the existing Word version. Conversion requires verification; original and version preserved.')
+        package, created = DocumentFormat.objects.get_or_create(document=doc, revision=doc.rev, kind='zip',
+            defaults={'filename': 'source.zip', 'content': archive, 'sha256': hashlib.sha256(archive).hexdigest()})
+        if not created and bytes(package.content) != archive:
+            raise forms.ValidationError('This version already has a different RST ZIP package. Review that package before replacing it.')
+    else:
+        core.save_document(doc, core.actor_for(user), 'Word converted to a maintained RST package; verification required.',
+            data=archive, filename='source.zip', state=State.objects.get(type_id='tida', slug='submitted'))
+        DocumentFormat.objects.get_or_create(document=doc, revision=doc.rev, kind='docx', defaults={
+            'filename': item.filename, 'content': bytes(item.content),
+            'sha256': hashlib.sha256(bytes(item.content)).hexdigest()})
+    item.document = doc
+    item.save(update_fields=['source_archive', 'source_manifest', 'submission_method', 'entry_document',
+        'conversion_verified_at', 'conversion_verified_by', 'document'])
+    sync_contact_metadata(item)
+    from django.utils.text import slugify
+    WorkItem.objects.get_or_create(document=doc, defaults={'short_name': item.work_item_acronym or slugify(item.title)[:48] or f'item-{item.pk}'})
+    return True
 
 
 @transaction.atomic
@@ -303,7 +379,8 @@ def verify_conversion(request, pk):
         return HttpResponse('Confirm that you checked the converted content and figures.', status=400)
     if not item.conversion_verified_at:
         item.conversion_verified_at = timezone.now()
-        item.save(update_fields=['conversion_verified_at'])
+        item.conversion_verified_by = request.user
+        item.save(update_fields=['conversion_verified_at', 'conversion_verified_by'])
         core.save_document(item.document, core.actor_for(request.user), 'Contributor verified the automatic Word-to-RST conversion.')
     return redirect('fgtida:contribution', pk=pk)
 
@@ -358,7 +435,9 @@ def accept(pk, user, target_group=None):
         doc=Document(name=f'fg-tida-contribution-{item.pk}',title=item.title,abstract=item.abstract,type_id='tida',group=group)
         core.save_document(doc,core.actor_for(user),'Original submitted file archived.',data=bytes(item.content),filename=item.filename,
             state=State.objects.get(type_id='tida',slug='submitted'))
-        DocumentAuthor.objects.create(document=doc,person=core.actor_for(item.submitter),order=1)
+        if item.submitter:
+            DocumentAuthor.objects.create(document=doc,person=core.actor_for(item.submitter),order=1)
+        sync_contact_metadata(item)
     if doc.group_id!=group.pk:
         doc.group=group
         core.save_document(doc,core.actor_for(user),f'Assigned to adopting group: {group.name}.')

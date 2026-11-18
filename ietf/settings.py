@@ -441,6 +441,7 @@ MIDDLEWARE = [
     "django_otp.middleware.OTPMiddleware",
     "ietf.fgtida.mfa.MfaGateMiddleware",
     "ietf.fgtida.security.PublicationBoundaryMiddleware",
+    "ietf.fgtida.admin_uploads.TrustedAdminUploadsMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "ietf.middleware.is_authenticated_header_middleware",
     "django.middleware.http.ConditionalGetMiddleware",

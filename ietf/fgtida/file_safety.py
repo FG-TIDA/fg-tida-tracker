@@ -162,6 +162,56 @@ def record_event(record, operation, *, kind='', actor=None, detail=None):
         format=kind, engine=record.engine, detail=(record.detail if detail is None else detail)[:500], actor=actor)
 
 
+@transaction.atomic
+def _trust_admin_file(data, filename, actor, source_digest=''):
+    """Internal: validate structure and record the requested administrator exemption."""
+    digest = hashlib.sha256(data).hexdigest()
+    record, _ = FileScan.objects.get_or_create(pk=digest, defaults={'filename': filename, 'size': len(data)})
+    record = FileScan.objects.select_for_update().get(pk=digest)
+    kind = format_key(filename)
+    try:
+        inspect_file(data, kind)
+    except ValidationError as error:
+        record.rejected_formats = sorted(set(record.rejected_formats) | {kind})
+        record.formats = [value for value in record.formats if value != kind]
+        record.status = record.status if record.status in {'clean', 'admin'} and record.formats else 'blocked'
+        record.detail = f'Administrator upload failed structural checks for {kind}.'
+        failure = error
+    else:
+        revoke_exceptions(record, actor=actor, reason='An administrator uploaded these exact bytes; administrator upload policy now applies.')
+        record.status = 'admin'
+        record.engine = ''
+        record.formats = sorted(set(record.formats) | {kind})
+        record.rejected_formats = [value for value in record.rejected_formats if value != kind]
+        record.detail = 'Administrator upload: structural checks passed; antivirus scan skipped.'
+        if source_digest:
+            record.detail += ' Derived from ' + source_digest + '.'
+        failure = None
+    record.checked = timezone.now()
+    record.attempts += 1
+    record.save()
+    record_event(record, 'admin_block' if failure else 'admin_upload', kind=kind, actor=actor)
+    return failure
+
+
+def trust_admin_derivative(data, filename, source, source_filename):
+    """Only internal converters may propagate trust from a checked admin source."""
+    if not required():
+        return
+    source_digest = hashlib.sha256(source).hexdigest()
+    original = FileScan.objects.filter(pk=source_digest, status='admin').first()
+    if not original or format_key(source_filename) not in original.formats:
+        return
+    if not data or len(data) > MAX_SCAN_BYTES:
+        raise ValidationError('Converted file exceeds the supported size.')
+    actor = original.events.filter(operation='admin_upload').order_by('-pk').values_list('actor_id', flat=True).first()
+    from django.contrib.auth import get_user_model
+    actor = get_user_model().objects.filter(pk=actor).first() if actor else None
+    failure = _trust_admin_file(data, filename, actor, source_digest)
+    if failure:
+        raise failure
+
+
 def has_exception(record, kind):
     return bool(record.status == 'rejected' and kind not in record.rejected_formats
         and record.exceptions.filter(format=kind, detection=record.detail, revoked_at__isnull=True).exists())
@@ -246,6 +296,15 @@ def validate_file(data, filename, *, force=False):
     record, _ = FileScan.objects.get_or_create(sha256=digest, defaults={
         'filename': Path(filename).name[:255], 'size': len(data)})
     kind = format_key(filename)
+    from .admin_uploads import actor_for_digest
+    actor = actor_for_digest(digest)
+    if actor or record.status == 'admin':
+        if record.status == 'admin' and kind in record.formats and kind not in record.rejected_formats and not force:
+            return
+        failure = _trust_admin_file(data, filename, actor)
+        if failure:
+            raise failure
+        return
     if not force and ((record.status == 'clean' and kind in record.formats and kind not in record.rejected_formats) or has_exception(record, kind)):
         return
     if (record.status == 'rejected' or kind in record.rejected_formats) and not force:
@@ -328,7 +387,7 @@ def allowed_digest(digest, filename):
         return True
     record = FileScan.objects.filter(sha256=digest).first() if digest else None
     kind = format_key(filename)
-    return bool(record and ((record.status == 'clean' and kind in record.formats and kind not in record.rejected_formats)
+    return bool(record and ((record.status in {'clean', 'admin'} and kind in record.formats and kind not in record.rejected_formats)
                             or has_exception(record, kind)))
 
 
@@ -351,26 +410,38 @@ def require_clean_digest(digest, filename):
         raise PermissionDenied('This file is awaiting security checks and is temporarily unavailable.')
 
 
-def safe_document_text(snapshot):
+def preview_source(snapshot):
+    """Use a maintained same-version RST package when the original is Word."""
+    document = snapshot.doc if snapshot.is_dochistory() else snapshot
+    if Path(snapshot.uploaded_filename or '').suffix.lower() != '.zip':
+        package = document.tida_formats.filter(revision=snapshot.rev, kind='zip').first()
+        if package:
+            return bytes(package.content), package.filename
     if not snapshot.uploaded_filename:
-        return ''
+        return b'', ''
     path = Path(snapshot.get_file_name())
     if not path.is_file():
+        return b'', ''
+    return path.read_bytes(), snapshot.uploaded_filename
+
+
+def safe_document_text(snapshot):
+    data, filename = preview_source(snapshot)
+    if not data:
         return ''
-    if not required():
+    if not required() and filename == snapshot.uploaded_filename:
         return snapshot.text() or ''
-    data = path.read_bytes()
-    if not allowed(data, snapshot.uploaded_filename):
+    if not allowed(data, filename):
         return None
     # Rebuild the preview from the scanned original, never trust an old extracted sidecar.
     from .files import extract_text
     from django.core.cache import cache
-    key = 'fgtida:checked-preview:1:' + hashlib.sha256(data).hexdigest() + ':' + format_key(snapshot.uploaded_filename)
+    key = 'fgtida:checked-preview:1:' + hashlib.sha256(data).hexdigest() + ':' + format_key(filename)
     cached = cache.get(key)
     if cached is not None:
         return cached
     try:
-        text = extract_text(data, snapshot.uploaded_filename)
+        text = extract_text(data, filename)
     except ValidationError:
         return None
     if len(text.encode('utf-8')) < 500000:

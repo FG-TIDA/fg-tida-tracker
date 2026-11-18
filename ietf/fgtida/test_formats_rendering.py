@@ -74,10 +74,10 @@ class DocumentFormatTests(TestCase):
         return SimpleUploadedFile('alternative.pdf', stream.getvalue())
 
     def word(self):
-        stream = io.BytesIO()
-        with zipfile.ZipFile(stream, 'w') as archive:
-            archive.writestr('word/document.xml', '<document><p>Word alternative</p></document>')
-        return SimpleUploadedFile('alternative.docx', stream.getvalue())
+        import subprocess
+        data = subprocess.run(['pandoc', '-f', 'rst', '-t', 'docx'], input=b'Word alternative',
+                              capture_output=True, check=True).stdout
+        return SimpleUploadedFile('alternative.docx', data)
 
     def values(self, doc, additions=2):
         url = f'/admin/doc/document/{doc.pk}/change/'
@@ -134,11 +134,11 @@ class DocumentFormatTests(TestCase):
         url, values = self.values(doc)
         values['tida_formats-1-kind'] = 'pdf'
         values['tida_formats-1-upload'] = self.pdf()
-        self.assertContains(self.client.post(url, values), 'Keep at most one PDF and one Word alternative per revision.')
+        self.assertContains(self.client.post(url, values), 'Keep at most one alternative of each format per revision.')
         self.assertFalse(doc.tida_formats.exists())
         url, values = self.values(doc, 1)
         values['tida_formats-0-upload'] = self.word()
-        self.assertContains(self.client.post(url, values), 'Select PDF for a .pdf file, or Word for a .docx file.')
+        self.assertContains(self.client.post(url, values), 'Select PDF for .pdf, Word for .docx, or RST ZIP package for .zip.')
         self.assertFalse(doc.tida_formats.exists())
 
     def test_incubation_is_public_catalogue_with_scoped_metadata_and_separate_submission(self):

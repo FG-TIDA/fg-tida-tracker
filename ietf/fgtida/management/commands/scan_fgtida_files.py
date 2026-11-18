@@ -141,6 +141,8 @@ class Command(BaseCommand):
         if key in self.processed:
             return allowed(data, filename)
         known = FileScan.objects.filter(pk=digest).first()
+        if known and known.status == 'admin':
+            return allowed(data, filename)
         if self.target and self.force and known and not self.review_recorded:
             record_event(known, 'review', detail='Operator recovery: ' + self.reason)
             self.review_recorded = True

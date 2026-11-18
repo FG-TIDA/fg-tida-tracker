@@ -12,7 +12,7 @@ from .models import DocumentFormat
 
 
 class DocumentFormatForm(forms.ModelForm):
-    upload = forms.FileField(required=False, label='Word / PDF file', help_text='Optional alternative for this revision, up to 10 MB. Uploading it does not replace the source document. Public when the document is catalogued.')
+    upload = forms.FileField(required=False, label='Word / PDF / RST ZIP file', help_text='Optional alternative for this revision, up to 10 MB. Uploading it does not replace the source document. Public when the document is catalogued.')
 
     class Meta:
         model = DocumentFormat
@@ -23,8 +23,8 @@ class DocumentFormatForm(forms.ModelForm):
         upload = values.get('upload')
         if upload:
             extension = Path(upload.name).suffix.lower().lstrip('.')
-            if extension not in {'pdf', 'docx'} or extension != values.get('kind'):
-                self.add_error('upload', 'Select PDF for a .pdf file, or Word for a .docx file.')
+            if extension not in {'pdf', 'docx', 'zip'} or extension != values.get('kind'):
+                self.add_error('upload', 'Select PDF for .pdf, Word for .docx, or RST ZIP package for .zip.')
             else:
                 try:
                     self._content = upload.read(MAX_BYTES + 1)
@@ -34,7 +34,7 @@ class DocumentFormatForm(forms.ModelForm):
                 finally:
                     upload.seek(0)
         elif not self.instance.pk:
-            self.add_error('upload', 'Attach a PDF or Word file.')
+            self.add_error('upload', 'Attach a PDF, Word or RST ZIP file.')
         elif values.get('kind') != self.instance.kind:
             self.add_error('upload', 'Upload a matching replacement file when changing its format.')
         return values
@@ -67,7 +67,7 @@ class DocumentFormatFormSet(BaseInlineFormSet):
                 raise forms.ValidationError('Upload a source revision in the main Upload field before adding alternative formats.')
             key = (form.instance.revision if form.instance.pk else target, values.get('kind'))
             if key in seen:
-                raise forms.ValidationError('Keep at most one PDF and one Word alternative per revision.')
+                raise forms.ValidationError('Keep at most one alternative of each format per revision.')
             seen.add(key)
 
     def save_new(self, form, commit=True):
@@ -82,6 +82,6 @@ def download(request, pk):
     filename = f'{record.document.name}-{public_version(record.document, record.revision)}.{record.kind}'
     from .file_safety import require_clean
     require_clean(bytes(record.content), record.filename)
-    mime = 'application/pdf' if record.kind == 'pdf' else 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    mime = {'pdf': 'application/pdf', 'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'zip': 'application/zip'}[record.kind]
     return FileResponse(io.BytesIO(bytes(record.content)), as_attachment=True, filename=filename, content_type=mime,
         headers={'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store'})

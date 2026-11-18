@@ -180,19 +180,19 @@ def document(request, name, rev=None):
         # Legacy imports used a truncated source prefix, not an actual abstract.
         # Keep the archived source intact and let editors supply a real abstract.
         abstract=''
-    file_available = bool(snapshot.uploaded_filename) and Path(snapshot.get_file_name()).is_file()
-    from .file_safety import safe_document_text
+    from .file_safety import safe_document_text, preview_source
+    preview_bytes, preview_filename = preview_source(snapshot)
+    file_available = bool(preview_bytes)
     scanned_text = safe_document_text(snapshot) if file_available else ''
     security_pending = scanned_text is None
     body = scanned_text or ''
     package_chapters = []
-    if body and Path(snapshot.uploaded_filename or '').suffix.lower() == '.zip' and not hasattr(doc, 'tida_listing'):
+    if body and Path(preview_filename).suffix.lower() == '.zip' and not hasattr(doc, 'tida_listing'):
         from .package_previews import chapters
         from django.urls import reverse
         from .file_safety import allowed
-        data = Path(snapshot.get_file_name()).read_bytes()
-        if allowed(data, snapshot.uploaded_filename):
-            package_chapters = chapters(data,
+        if allowed(preview_bytes, preview_filename):
+            package_chapters = chapters(preview_bytes,
                 lambda path: reverse('fgtida:document-image', args=[doc.name, snapshot.rev, path]))
         else:
             security_pending, body = True, ''
@@ -232,8 +232,8 @@ def document(request, name, rev=None):
         'last_change':doc.docevent_set.order_by('-time','-pk').first(),
         'text': without_duplicate_title(body, snapshot.title),
         'text_is_markdown': Path(snapshot.uploaded_filename or '').suffix.lower() in ('.md', '.markdown'),
-        'text_is_rst': Path(snapshot.uploaded_filename or '').suffix.lower() == '.rst' or (Path(snapshot.uploaded_filename or '').suffix.lower() == '.zip' and not hasattr(doc, 'tida_listing')),
-        'text_is_package': Path(snapshot.uploaded_filename or '').suffix.lower() == '.zip' and not hasattr(doc, 'tida_listing'),
+        'text_is_rst': Path(preview_filename).suffix.lower() == '.rst' or (Path(preview_filename).suffix.lower() == '.zip' and not hasattr(doc, 'tida_listing')),
+        'text_is_package': Path(preview_filename).suffix.lower() == '.zip' and not hasattr(doc, 'tida_listing'),
         'work_item':work_item,'old_revision':bool(rev and rev!=doc.rev),'show_working':not rev,
         'events': doc.docevent_set.select_related('by')[:100],
         'authors': authors, 'credits': credits, 'source_records': source_records,
@@ -496,14 +496,12 @@ def snapshot_for(name, rev):
 
 def document_image(request, name, rev, path):
     snapshot = snapshot_for(name, rev)
-    if Path(snapshot.uploaded_filename or '').suffix.lower() != '.zip':
+    from .file_safety import preview_source
+    data, filename = preview_source(snapshot)
+    if Path(filename).suffix.lower() != '.zip':
         raise Http404
-    filename = Path(snapshot.get_file_name())
-    if not filename.is_file():
-        raise Http404
-    data = filename.read_bytes()
     from .file_safety import require_clean
-    require_clean(data, snapshot.uploaded_filename)
+    require_clean(data, filename)
     from .package_previews import image_response
     return image_response(data, path)
 

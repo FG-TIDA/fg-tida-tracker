@@ -182,13 +182,15 @@ class SessionResourceInline(admin.TabularInline):
 
 
 class ContributionReviewForm(forms.ModelForm):
+    verify_conversion = forms.BooleanField(required=False,
+        label='I compared the converted RST text, figures and package with the Word original and confirm they preserve the contribution.')
     decision = forms.ChoiceField(required=False, choices=[('','Save review note'),('adopt','Adopt into a working group'),('reject','Reject proposal')])
     adopt_into = forms.ModelChoiceField(queryset=Group.objects.filter(parent__acronym='tida',type_id='wg').exclude(state_id='conclude'),required=False,
         help_text='For an Incubation submission, create the new WG and its numbered GitHub configuration first, then select it here.')
 
     class Meta:
         model=Contribution
-        fields=['sequence_number', 'review_note']
+        fields=['sequence_number', 'review_note', 'contact_name', 'contact_email', 'contact_affiliation']
 
     def clean_sequence_number(self):
         number = self.cleaned_data['sequence_number']
@@ -209,27 +211,39 @@ class ContributionReviewForm(forms.ModelForm):
             self.add_error('adopt_into','Select the working group formed to adopt this proposal.')
         if values.get('decision') and self.instance.status!='pending':
             self.add_error('decision','This proposal already has a review decision. Use its document lifecycle for further changes.')
-        if values.get('decision') == 'adopt' and self.instance.submission_method == 'word' and not self.instance.conversion_verified_at:
-            self.add_error('decision', 'The contributor must verify the automatic Word-to-RST conversion before adoption.')
+        if values.get('verify_conversion'):
+            from .file_safety import allowed
+            if self.instance.submission_method != 'word' or not self.instance.source_archive:
+                self.add_error('verify_conversion', 'Convert the Word submission first, then check its source preview.')
+            elif not allowed(bytes(self.instance.content), self.instance.filename) or not allowed(bytes(self.instance.source_archive), 'source.zip'):
+                self.add_error('verify_conversion', 'The original and source package must pass security checks or have an authorized exception.')
+        if values.get('decision') == 'adopt' and self.instance.submission_method == 'word' and not self.instance.conversion_verified_at and not values.get('verify_conversion'):
+            self.add_error('decision', 'The contributor or administrator must verify the automatic Word-to-RST conversion before adoption.')
         return values
 
 
 class AdminContributionForm(ContributionForm):
     class Meta(ContributionForm.Meta):
-        fields = ['submitter', *ContributionForm.Meta.fields]
+        fields = ['submitter', 'contact_name', 'contact_email', 'contact_affiliation', *ContributionForm.Meta.fields]
         widgets = {'submitter': admin.widgets.ForeignKeyRawIdWidget(Contribution._meta.get_field('submitter').remote_field, admin.site)}
+
+    def clean(self):
+        values = super().clean()
+        if not values.get('submitter') and not values.get('contact_name'):
+            self.add_error('contact_name', 'Enter the contributor name when no platform account is selected.')
+        return values
 
 
 class ContributionAdmin(admin.ModelAdmin):
     form=ContributionReviewForm
     list_display = ['reference', 'title', 'submitter', 'group', 'created', 'status', 'notifications_queued']
     list_filter = ['status', 'group']
-    search_fields = ['title', 'submitter__username']
-    fields = ['reference', 'sequence_number', 'title', 'submitter', 'group', 'abstract', 'submitted_file', 'source_details', 'submission_method', 'source_commit',
-              'source_folder', 'entry_document', 'conversion_verified_at', 'created',
+    search_fields = ['title', 'submitter__username', 'contact_name', 'contact_email', 'contact_affiliation']
+    fields = ['reference', 'sequence_number', 'title', 'submitter', 'contact_name', 'contact_email', 'contact_affiliation', 'group', 'abstract', 'submitted_file', 'source_details', 'submission_method', 'source_commit',
+              'source_folder', 'entry_document', 'conversion_verified_at', 'conversion_verified_by', 'verify_conversion', 'created',
               'status', 'review_note', 'decision', 'adopt_into', 'draft_repository_url', 'reviewed_by', 'reviewed_at', 'document', 'notifications_queued']
-    readonly_fields = [field for field in fields if field not in {'sequence_number','review_note','decision','adopt_into'}]
-    actions = ['accept_contributions', 'reject_contributions']
+    readonly_fields = [field for field in fields if field not in {'sequence_number','review_note','decision','adopt_into', 'verify_conversion', 'contact_name', 'contact_email', 'contact_affiliation'}]
+    actions = ['accept_contributions', 'reject_contributions', 'convert_word_contributions']
     ordering = ['number_prefix', 'sequence_number', 'pk']
 
     def get_fields(self, request, obj=None):
@@ -238,7 +252,12 @@ class ContributionAdmin(admin.ModelAdmin):
         return super().get_fields(request, obj)
 
     def get_readonly_fields(self, request, obj=None):
-        return self.readonly_fields if obj else []
+        if not obj:
+            return []
+        fields = list(self.readonly_fields)
+        if not request.user.has_perm('doc.change_document'):
+            fields += ['contact_name', 'contact_email', 'contact_affiliation']
+        return fields
 
     def get_form(self, request, obj=None, **kwargs):
         if obj is None:
@@ -253,7 +272,15 @@ class ContributionAdmin(admin.ModelAdmin):
         if 'sequence_number' in form.changed_data:
             sequence = form.numbering_sequence
             sequence.reorder(moved=obj, position=obj.sequence_number)
-        obj.save(update_fields=['review_note'])
+        if form.cleaned_data.get('verify_conversion') and not obj.conversion_verified_at:
+            from django.utils import timezone
+            obj.conversion_verified_at = timezone.now()
+            obj.conversion_verified_by = request.user
+        obj.save(update_fields=['review_note', 'contact_name', 'contact_email', 'contact_affiliation',
+            'conversion_verified_at', 'conversion_verified_by'])
+        if any(field in form.changed_data for field in ('contact_name', 'contact_email', 'contact_affiliation')):
+            from .contributions import sync_contact_metadata
+            sync_contact_metadata(obj, clear=True, previous=form.initial)
         from .contributions import accept,reject
         if form.cleaned_data.get('decision')=='adopt':
             if not request.user.has_perm('doc.add_document'):
@@ -323,6 +350,23 @@ class ContributionAdmin(admin.ModelAdmin):
         from .contributions import reject
         for item in queryset.filter(status='pending'):
             reject(item.pk,request.user)
+
+    @admin.action(description='Convert selected Word contributions to RST ZIP packages', permissions=['change'])
+    def convert_word_contributions(self, request, queryset):
+        if not request.user.has_perm('doc.change_document'):
+            raise PermissionDenied
+        from .contributions import convert_existing_word
+        converted = 0
+        for item in queryset[:10]:
+            try:
+                changed = convert_existing_word(item.pk, request.user)
+            except ValidationError as error:
+                self.message_user(request, f'{item.reference}: ' + '; '.join(error.messages), level='error')
+            else:
+                if changed:
+                    converted += 1
+                    self.log_change(request, item, 'Word converted to RST ZIP; original retained and verification required.')
+        self.message_user(request, f'Converted {converted} contribution(s). Numbers and work-item IDs were preserved. Check each conversion before marking it verified. No notifications were sent.')
 
 
 class SessionResourceAdmin(admin.ModelAdmin):
@@ -769,11 +813,11 @@ class FileScanAdmin(admin.ModelAdmin):
         if not confirmed or not form.is_valid():
             return TemplateResponse(request, 'fgtida/admin/retry_file_scans.html', {
                 **self.admin_site.each_context(request), 'title': 'Review and retry file security checks',
-                'form': form, 'records': queryset.exclude(status='clean')[:10],
+                'form': form, 'records': queryset.exclude(status__in=['clean', 'admin'])[:10],
                 'action_checkbox_name': ACTION_CHECKBOX_NAME, 'opts': self.model._meta,
             })
         checked = 0
-        for record in queryset.exclude(status='clean')[:10]:
+        for record in queryset.exclude(status__in=['clean', 'admin'])[:10]:
             record_event(record, 'review', actor=request.user, detail=form.cleaned_data['reason'])
             self.log_change(request, record, 'Security rescan requested: ' + form.cleaned_data['reason'])
             path = quarantine_path(record.sha256)

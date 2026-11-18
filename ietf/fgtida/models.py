@@ -104,6 +104,9 @@ class ContributionSequence(models.Model):
 class Contribution(models.Model):
     """Private review metadata linked to a public submitted document."""
     submitter = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    contact_name = models.CharField(max_length=255, blank=True, help_text='Contributor name; no platform account is required.')
+    contact_email = models.EmailField(blank=True, help_text='Contact email; included in document metadata and used for the receipt.')
+    contact_affiliation = models.CharField(max_length=255, blank=True)
     notifications_queued = models.BooleanField(default=True, editable=False)
     group = models.ForeignKey('group.Group', on_delete=models.PROTECT)
     number_prefix = models.CharField(max_length=50, blank=True, editable=False, db_default='')
@@ -121,6 +124,8 @@ class Contribution(models.Model):
     source_archive = models.BinaryField(default=bytes, editable=False)
     source_manifest = models.JSONField(default=dict, editable=False)
     conversion_verified_at = models.DateTimeField(null=True, blank=True, editable=False)
+    conversion_verified_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='verified_conversions', editable=False)
     work_item_acronym = models.SlugField(max_length=48, blank=True)
     filename = models.CharField(max_length=255)
     content = models.BinaryField(editable=False)
@@ -494,7 +499,7 @@ class DocumentFormat(models.Model):
     """Optional editorial Word/PDF alternatives belonging to one archive revision."""
     document = models.ForeignKey('doc.Document', on_delete=models.CASCADE, related_name='tida_formats')
     revision = models.CharField(max_length=16)
-    kind = models.CharField(max_length=4, choices=[('pdf', 'PDF'), ('docx', 'Word')])
+    kind = models.CharField(max_length=4, choices=[('pdf', 'PDF'), ('docx', 'Word'), ('zip', 'RST ZIP package')])
     filename = models.CharField(max_length=255, editable=False)
     content = models.BinaryField(editable=False)
     sha256 = models.CharField(max_length=64, blank=True, editable=False)
@@ -511,7 +516,8 @@ class FileScan(models.Model):
     size = models.PositiveBigIntegerField()
     status = models.CharField(max_length=12, default='pending', choices=[
         ('pending', 'Quarantined'), ('clean', 'Passed checks'), ('rejected', 'Malware rejected'),
-        ('blocked', 'Unsafe document structure'), ('error', 'Scanner unavailable')])
+        ('blocked', 'Unsafe document structure'), ('error', 'Scanner unavailable'),
+        ('admin', 'Administrator trusted — antivirus skipped')])
     created = models.DateTimeField(auto_now_add=True)
     checked = models.DateTimeField(null=True, blank=True)
     attempts = models.PositiveIntegerField(default=0)

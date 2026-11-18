@@ -700,7 +700,8 @@ class NativeDatatrackerTests(TestCase):
         self.assertContains(page, 'https://github.com/example-wg0')
         path = '/admin/fgtida/contribution/add/'
         self.assertContains(self.client.get(path), 'How will you submit?')
-        response = self.client.post(path, {'title': 'Admin work item', 'group': group.pk, **self.source_submission()})
+        response = self.client.post(path, {'title': 'Admin work item', 'group': group.pk,
+            'contact_name': person.name, **self.source_submission()})
         self.assertEqual(response.status_code, 302)
         submission = Contribution.objects.get(title='Admin work item')
         self.assertEqual(submission.reference, 'FG-TIDA-WG0-001')

@@ -261,7 +261,7 @@ def document_formats(doc, alternatives_only=False, plain=False):
             label = alternative.get_kind_display()
             if Path(doc.uploaded_filename or '').suffix == '.' + alternative.kind:
                 label += ' (alternative)'
-            links.append((label, 'file-pdf' if alternative.kind == 'pdf' else 'file-word', reverse('fgtida:document-format', args=[alternative.pk])))
+            links.append((label, {'pdf': 'file-pdf', 'docx': 'file-word', 'zip': 'file-earmark-zip'}[alternative.kind], reverse('fgtida:document-format', args=[alternative.pk])))
     if not alternatives_only and doc.external_url and urlsplit(doc.external_url).scheme in ('http', 'https'):
         label, icon = ('Recording', 'camera-video') if doc.type_id == 'recording' else ('Template package', 'folder') if doc.type_id == 'tida-template' else ('GitHub reference', 'box-arrow-up-right')
         links.append((label, icon, doc.external_url))

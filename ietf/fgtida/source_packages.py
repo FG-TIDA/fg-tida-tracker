@@ -100,6 +100,8 @@ def prepare_zip(data, entry, folder=''):
     manifest = {'entry_document': entry, 'files': {
         name: hashlib.sha256(value).hexdigest() for name, value in sorted(files.items())}}
     result = pack(files)
+    from .file_safety import trust_admin_derivative
+    trust_admin_derivative(result, 'source.zip', data, 'source.zip')
     manifest['sha256'] = hashlib.sha256(result).hexdigest()
     return result, manifest
 
@@ -148,6 +150,8 @@ def convert_word(data):
         from .parser_process import environment
         result = subprocess.run([sys.executable, '-m', 'ietf.fgtida.word_worker'],
                                 input=data, capture_output=True, check=True, timeout=35, env=environment())
+        from .file_safety import trust_admin_derivative
+        trust_admin_derivative(result.stdout, 'source.zip', data, 'submission.docx')
         return prepare_zip(result.stdout, 'index.rst')
     except (subprocess.SubprocessError, OSError) as error:
         raise ValidationError('Word conversion failed. Resolve tracked changes, use embedded images and standard Word headings, then retry. Contact the secretariat if conversion still fails.') from error

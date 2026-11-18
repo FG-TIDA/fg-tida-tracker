@@ -1,13 +1,35 @@
 # File scanning on Render
 
-Uploads pass structural checks and a private ClamAV scan before conversion or
-publication. Documents, source packages and hosted media are covered. Existing
+Uploads from ordinary users and automated integrations pass structural checks
+and a private ClamAV scan before conversion or publication. Documents, source
+packages and hosted media are covered. Existing
 originals, alternative formats, GitHub artifacts and session archives require a
 successful scan before download, unless a superuser has approved the specific
 antivirus finding for those exact bytes as described below. Structural checks
 always apply. Contribution emails contain links only.
 Accounts can make up to 20 submission or revision attempts per 15 minutes to
 limit repeated expensive file checks.
+
+### Administrator upload policy
+
+As requested, files actually uploaded by an authenticated, active staff
+administrator are exempt from antivirus scanning. They still pass file-type,
+macro/active-content, archive and resource-limit checks before conversion or
+publication. The admin list labels them **Administrator trusted — antivirus
+skipped**, with an audit event identifying the uploader; this does not certify
+them as antivirus clean. Administrators are responsible for checking their
+upload sources and protecting their accounts/devices.
+
+The exemption is scoped to exact uploaded bytes and locally generated,
+structurally validated derivatives such as the converted RST ZIP. Merely
+opening an admin page, editing metadata, fetching GitHub content, or running
+a scheduled task does not exempt unrelated files. Scheduled antivirus scans
+skip records with this administrator provenance. Changed bytes from ordinary
+users remain subject to scanning. Files uploaded before this policy was
+implemented are not automatically reclassified based on guesses about their
+origin. The existing reviewed exception flow remains available for those.
+
+See [Backend contribution entry and Word conversion](CONTRIBUTION-ADMIN.md).
 
 ## Create the private scanner first
 
