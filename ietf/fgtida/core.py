@@ -10,7 +10,7 @@ from ietf.meeting.models import Meeting
 from ietf.person.models import Person
 
 TYPE_LABELS = [('tida', 'FG-TIDA document'), ('agenda', 'Agenda'), ('minutes', 'Minutes'),
-               ('slides', 'Slides'), ('charter', 'Charter'), ('tida-template', 'Template'),
+               ('slides', 'Slide'), ('charter', 'Charter'), ('tida-template', 'Template'),
                ('recording', 'Recording')]
 DOCUMENT_TYPES = [slug for slug, label in TYPE_LABELS]
 GROUP_ROLES = {'chair': 'Chair', 'cochair': 'Co-Chair', 'secr': 'Secretariat', 'editor': 'Editor', 'member': 'Member'}

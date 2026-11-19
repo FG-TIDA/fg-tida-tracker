@@ -72,9 +72,12 @@ def refresh_document(doc, group, category, source_url, replacement_url=None):
     category_tags = ['tida-'+slug for slug, _ in core.categories()]
     old = set(doc.tags.filter(slug__in=category_tags).values_list('slug', flat=True))
     desired = {'tida-'+category} if category else set()
+    from .document_types import assign_source_type
     if doc.group_id == group.pk and old == desired and not replacement_url:
+        assign_source_type(doc, category)
         return False
     doc.group = group
+    assign_source_type(doc, category)
     if old != desired:
         doc.tags.remove(*old)
         for slug in desired:

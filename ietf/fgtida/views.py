@@ -81,25 +81,31 @@ def search(request, acronym=None, incubation=False, category_slug=None):
         docs = docs.filter(Q(group__acronym='incubation') | Q(pk__in=Contribution.objects.filter(group__acronym='incubation').values('document_id')))
     elif group:
         docs = docs.filter(group__acronym=group)
-    types = {**dict(core.TYPE_LABELS), **{f'public-{record.pk}': record.name for record in PublicDocumentType.objects.all()}}
-    default_contribution = Q(type_id='tida', is_contribution=True, tida_attribution__public_type__isnull=True)
-    default_use_cases = Q(type_id='tida', is_contribution=False, tags__slug='tida-use-cases', tida_attribution__public_type__isnull=True)
-    default_themes = Q(type_id='tida', is_contribution=False, tags__slug='tida-themes', tida_attribution__public_type__isnull=True)
+    from .document_types import singular, NAMES
+    public_types = list(PublicDocumentType.objects.all())
+    public_names = {record.name for record in public_types}
+    types = {key: singular(label) for key, label in core.TYPE_LABELS if singular(label) not in public_names}
+    types.update({f'public-{record.pk}': record.name for record in public_types})
     if kind in types:
         if kind.startswith('public-'):
-            public_type = Q(tida_attribution__public_type_id=kind.removeprefix('public-'))
-            if types[kind] == PublicDocumentType.CONTRIBUTION:
-                public_type |= default_contribution
-            elif types[kind] == 'use-cases':
-                public_type |= default_use_cases
-            elif types[kind] == 'themes':
-                public_type |= default_themes
-            docs = docs.filter(public_type)
+            name = types[kind]
+            selected = Q(tida_attribution__public_type_id=kind.removeprefix('public-'))
+            fallback = Q(tida_attribution__public_type__isnull=True)
+            native = [key for key, label in core.TYPE_LABELS if singular(label) == name]
+            inferred = Q(type_id__in=native)
+            if name == PublicDocumentType.CONTRIBUTION:
+                inferred |= Q(is_contribution=True) | Q(group__acronym='tidawg0', tags__slug='tida-use-cases')
+            for slug, label in NAMES.items():
+                if label == name:
+                    inferred |= Q(tags__slug='tida-' + slug)
+            docs = docs.filter(selected | (fallback & inferred))
         else:
-            docs = docs.filter(type_id=kind, tida_attribution__public_type__isnull=True).exclude(default_contribution | default_use_cases | default_themes)
+            docs = docs.filter(type_id=kind, tida_attribution__public_type__isnull=True)
     elif kind:
         docs = docs.none()
     if category:
+        # Keep old bookmarked collection links usable; Category is no longer
+        # presented as a separate document property or editable field.
         docs = docs.filter(tags__slug='tida-' + category)
     if author:
         from .models import DocumentAttribution, DocumentVersion, GitHubSource
@@ -400,6 +406,7 @@ def meeting(request, num, section='agenda'):
     sessions = Session.objects.with_current_status().filter(meeting=meeting).select_related('group').order_by('pk').prefetch_related(
         Prefetch('materials', queryset=core.documents().select_related('type').order_by('type_id', 'title'), to_attr='public_materials'))
     if section == 'agenda':
+        sessions = sessions.filter(on_agenda=True)
         zone_mode = request.GET.get('tz', 'meeting')
         if zone_mode not in ('meeting', 'UTC', 'local'):
             zone_mode = 'meeting'
@@ -416,7 +423,7 @@ def meeting(request, num, section='agenda'):
         if query:
             sessions = sessions.filter(
                 Q(name__icontains=query) | Q(group__name__icontains=query)
-                | Q(agenda_note__icontains=query) | Q(agenda_presenters__icontains=query)
+                | Q(agenda_note__icontains=query) | Q(agenda_presenters__icontains=query) | Q(agenda_outcome__icontains=query)
             )
         if selected_group:
             sessions = sessions.filter(group__acronym=selected_group)

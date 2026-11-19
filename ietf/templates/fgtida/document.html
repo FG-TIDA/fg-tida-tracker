@@ -17,7 +17,6 @@
 <tr><th scope="row">Version</th><td>{% if selected_version %}{{ selected_version.version }} · recorded <time datetime="{{ selected_version.recorded|date:'c' }}">{{ selected_version.recorded|date:'Y-m-d H:i T' }}</time>{% elif snapshot.uploaded_filename %}Version mapping unavailable — contact the administrator.{% else %}No archived version — content has not been imported or uploaded.{% endif %}</td></tr>
 <tr><th scope="row">Last updated</th><td>{{ snapshot.time|date:'Y-m-d H:i T' }}</td></tr>
 <tr><th scope="row">Formats</th><td>{% document_formats snapshot %}</td></tr>
-<tr><th scope="row">Category</th><td>{% document_categories snapshot %}</td></tr>
 <tr><th scope="rowgroup" rowspan="4">FG-TIDA workflow</th><th scope="row">State</th><td>{% document_states snapshot %}</td></tr>
 <tr><th scope="row">Working group / stream</th><td>{% if snapshot.group.acronym != "tida" %}<a href="{% url 'fgtida:group' snapshot.group.acronym %}">{{ snapshot.group|group_label }}</a>{% endif %}</td></tr>
 <tr><th scope="row">History</th><td><a href="{% url 'fgtida:history' doc.name %}">Decisions and changes</a>{% if last_change %} · latest activity {{ last_change.time|date:'Y-m-d H:i T' }}{% endif %}</td></tr>

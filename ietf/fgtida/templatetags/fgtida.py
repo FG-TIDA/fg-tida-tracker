@@ -81,10 +81,11 @@ def account_person(user):
 @register.simple_tag
 def document_type(doc, current=None):
     from ietf.fgtida.models import PublicDocumentType
+    from ..document_types import singular, source_type
     current = current or doc
     metadata = getattr(current, 'tida_attribution', None)
     if metadata and metadata.public_type_id:
-        return metadata.public_type.name
+        return singular(metadata.public_type.name)
     if doc.type_id == 'tida':
         is_contribution = getattr(current, 'is_contribution', None)
         if is_contribution is None:
@@ -93,9 +94,9 @@ def document_type(doc, current=None):
             return PublicDocumentType.CONTRIBUTION
         categories = {tag.slug for tag in current.tags.all()}
         if 'tida-use-cases' in categories:
-            return 'use-cases'
+            return source_type(current, 'use-cases')
         if 'tida-themes' in categories:
-            return 'themes'
+            return 'Theme'
     return dict(core.TYPE_LABELS).get(doc.type_id, doc.type.name)
 
 

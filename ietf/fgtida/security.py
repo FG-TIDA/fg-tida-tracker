@@ -12,7 +12,7 @@ ADMIN_MODELS = {
         'emailverification','githubaccount','workinggroupconfiguration','githubrepository','githubsource','workitem','workitemrelease','githubjob'},
     'auth': {'user', 'group'},
     'person': {'person', 'email', 'alias'},
-    'name': {'importantdatename', 'doctagname'},
+    'name': {'importantdatename'},
     'doc': {'document'},
     'group': {'group', 'role', 'groupmilestone', 'groupurl'},
     'meeting': {'meeting', 'meetingcategory', 'session', 'timeslot', 'room', 'floorplan', 'schedule',

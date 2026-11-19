@@ -1136,6 +1136,8 @@ class Session(models.Model):
     attendees = models.IntegerField(null=True, blank=True)
     agenda_note = models.TextField(blank=True)
     agenda_presenters = models.TextField(blank=True, db_default='')
+    agenda_outcome = models.TextField(blank=True, db_default='', verbose_name='Status / expected outcome')
+    agenda_open_ended = models.BooleanField(default=False, db_default=False)
     requested_duration = models.DurationField(default=datetime.timedelta(0))
     comments = models.TextField(blank=True)
     scheduled = models.DateTimeField(null=True, blank=True)

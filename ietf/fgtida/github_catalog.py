@@ -105,7 +105,9 @@ def store_source(repository, key, data, filename, title, source_url, sha, catego
     doc.tags.remove(*doc.tags.filter(slug__in=['tida-'+slug for slug, _ in core.categories()]))
     if selected_category in dict(core.categories()):
         doc.tags.add('tida-'+selected_category)
-    # Update the native snapshot after categories have been attached.
+    from .document_types import assign_source_type
+    assign_source_type(doc, selected_category)
+    # Update the native snapshot after source type assignment.
     from ietf.doc.utils import save_document_in_history
     save_document_in_history(doc)
     source.document, source.sha, source.checksum = doc, sha, digest

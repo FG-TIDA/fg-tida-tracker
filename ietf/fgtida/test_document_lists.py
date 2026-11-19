@@ -31,23 +31,25 @@ class DocumentListTests(TestCase):
             self.assertContains(detail, '<th scope="row">Working group / stream</th><td></td>')
             self.assertNotContains(detail, 'wg assignment evidence')
             self.assertNotContains(detail, 'FG-TIDA (no wg assigned)')
-            kind = PublicDocumentType.objects.get(name=category)
+            kind = PublicDocumentType.objects.get(name={'use-cases': 'Use case', 'themes': 'Theme'}[category])
             self.assertContains(self.client.get('/doc/', {'type': f'public-{kind.pk}'}), document.title)
-        response = self.client.post('/admin/name/doctagname/add/', {'slug': 'reports', 'name': 'Reports', 'used': 'on', 'order': 0})
+        response = self.client.post('/admin/fgtida/publicdocumenttype/add/', {'name': 'Report'})
         self.assertEqual(response.status_code, 302)
-        self.assertTrue(DocTagName.objects.filter(slug='tida-reports').exists())
+        self.assertTrue(PublicDocumentType.objects.filter(name='Report').exists())
         edit = f'/admin/doc/document/{document.pk}/change/'
         payload = self.admin_payload(edit, {'name': document.name, 'title': document.title, 'type': document.type_id,
-            'group': self.root.pk, 'current_version': '0.9', 'tags': ['tida-reports'], 'comment_about_changes': 'Correct version and category'})
+            'group': self.root.pk, 'current_version': '0.9', 'comment_about_changes': 'Correct version and type'})
         self.assertEqual(self.client.post(edit, payload).status_code, 302)
         document.refresh_from_db()
         self.assertEqual(public_version(document), '0.9')
         for version in ['0.0', '0.9']:
             self.assertEqual(self.client.get(f'/doc/{document.name}/download/{version}/').status_code, 200)
-        listing = self.client.get('/doc/', {'category': 'reports'})
+        from .models import DocumentAttribution
+        DocumentAttribution.objects.update_or_create(document=document, defaults={'public_type': PublicDocumentType.objects.get(name='Report')})
+        listing = self.client.get('/doc/', {'type': 'public-' + str(PublicDocumentType.objects.get(name='Report').pk)})
         self.assertContains(listing, document.title)
         self.assertFalse(listing.context['groups'].filter(acronym='tida').exists())
-        self.assertContains(self.client.get(f'/doc/{document.name}/'), '>Reports</a>')
+        self.assertNotContains(self.client.get(f'/doc/{document.name}/'), '<th scope="row">Category</th>')
 
     def test_preview_uses_one_title_and_identification_metadata_with_editor_overrides(self):
         title = 'Example use case'

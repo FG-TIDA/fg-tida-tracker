@@ -515,7 +515,7 @@ class DocumentForm(forms.ModelForm):
 
     class Meta:
         model = Document
-        fields = ['name', 'title', 'type', 'group', 'abstract', 'tags', 'external_url']
+        fields = ['name', 'title', 'type', 'group', 'abstract', 'external_url']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -527,8 +527,6 @@ class DocumentForm(forms.ModelForm):
         self.fields['group'].queryset = core.groups()
         self.fields['group'].required = True
         self.fields['group'].initial = Group.objects.filter(acronym='tida').first()
-        self.fields['tags'].queryset = DocTagName.objects.filter(slug__startswith='tida-').exclude(slug='tida-uncatalogued')
-        self.fields['tags'].label = 'Categories'
         self.fields['meeting_session'].queryset = Session.objects.filter(meeting__type_id='tida', group__in=core.groups()).select_related('meeting', 'group')
         self.fields['meeting_session'].widget = admin.widgets.AutocompleteSelect(
             SessionPresentation._meta.get_field('session'), admin.site,
@@ -911,11 +909,11 @@ class DocumentCategoryAdmin(admin.ModelAdmin):
 
 class FgDocumentAdmin(DocumentAdmin):
     form = DocumentForm
-    fields = ['name', 'title', 'type', 'group', 'abstract', 'catalogued', 'tags', 'lifecycle_state',
+    fields = ['name', 'title', 'type', 'group', 'abstract', 'catalogued', 'lifecycle_state',
               'current_version', 'upload', 'version', 'document_direction', 'document_meeting', 'document_source', 'document_created', 'meeting_session', 'external_url', 'comment_about_changes']
     list_display = ['name', 'title', 'public_document_type', 'group', 'public_version', 'time']
     search_fields = ['name', 'title', 'abstract']
-    list_filter = ['tida_attribution__public_type', 'type', 'group', 'tags']
+    list_filter = ['tida_attribution__public_type', 'type', 'group']
     raw_id_fields = []
     inlines = [DocAuthorInline, DocumentAttributionInline, RelatedDocumentInline, AdditionalUrlInLine, DocumentFormatInline]
     actions = []
@@ -1084,20 +1082,18 @@ class GitHubRepositoryAdmin(IntegrationAdmin):
     search_fields=['name','account__organization','group__name']
     list_filter=['account','mode','enabled']
     readonly_fields=['last_sync','last_error']
+    exclude = ['category', 'category_evidence']
     actions=['queue_sync']
 
     def get_form(self, request, obj=None, **kwargs):
         base = super().get_form(request, obj, **kwargs)
         class EvidenceForm(base):
-            category = forms.ChoiceField(required=False, choices=[('', 'Not specified by source')] + core.categories())
             def clean(self):
                 values = super().clean()
                 from .classification import public_github_url
                 group = values.get('group')
                 if group and group.acronym != 'tida' and not public_github_url(values.get('group_evidence')):
                     self.add_error('group_evidence', 'Provide public GitHub evidence of this group assignment; otherwise select FG-TIDA without a wg assignment.')
-                if values.get('category') and not public_github_url(values.get('category_evidence')):
-                    self.add_error('category_evidence', 'Provide public GitHub evidence for this category, or leave the category empty.')
                 return values
         return EvidenceForm
 
@@ -1438,7 +1434,7 @@ class SchedulingHistoryInline(admin.TabularInline):
 class FgSessionAdmin(SessionAdmin):
     form = FgSessionForm
     fields = ['meeting', 'name', 'short', 'group', 'purpose', 'type', 'scheduling_status',
-              'agenda_start', 'agenda_minutes', 'agenda_room', 'agenda_note', 'agenda_presenters',
+              'agenda_start', 'agenda_minutes', 'agenda_room', 'agenda_note', 'agenda_presenters', 'agenda_outcome', 'agenda_open_ended',
               'remote_instructions', 'on_agenda', 'manage_materials']
     readonly_fields = ['manage_materials']
     raw_id_fields = []
@@ -1576,7 +1572,7 @@ def configure_admin():
     admin.site.site_header = 'FG-TIDA Datatracker administration'
     admin.site.site_title = 'FG-TIDA administration'
     admin.site.index_title = 'Documents, groups, meetings and participants'
-    for model, cls in [(Document, FgDocumentAdmin), (Group, FgGroupAdmin), (Role, FgRoleAdmin), (Meeting, FgMeetingAdmin), (Session, FgSessionAdmin), (ImportantDateName, FgImportantDateNameAdmin), (DocTagName, DocumentCategoryAdmin), (MeetingCategory, admin.ModelAdmin)]:
+    for model, cls in [(Document, FgDocumentAdmin), (Group, FgGroupAdmin), (Role, FgRoleAdmin), (Meeting, FgMeetingAdmin), (Session, FgSessionAdmin), (ImportantDateName, FgImportantDateNameAdmin), (MeetingCategory, admin.ModelAdmin)]:
         if model in admin.site._registry:
             admin.site.unregister(model)
         admin.site.register(model, cls)
