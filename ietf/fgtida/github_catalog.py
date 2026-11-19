@@ -137,7 +137,8 @@ def sync_repository(repository, dry_run=False, client=None, metadata=None):
         repository.github_id=metadata['id']
         repository.save(update_fields=['github_id'])
     if repository.mode == 'issues':
-        for issue in client.pages(f'/repos/{repository.full_name}/issues?state=all'):
+        ordering = '&sort=created&direction=asc' if repository.full_name.lower() == 'fg-tida-wg0/use-cases' else ''
+        for issue in client.pages(f'/repos/{repository.full_name}/issues?state=all' + ordering):
             if 'pull_request' in issue:
                 continue
             issue_body = issue.get('body') or ''

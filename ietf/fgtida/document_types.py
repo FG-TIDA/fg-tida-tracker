@@ -23,3 +23,28 @@ def assign_source_type(doc, category):
     if not metadata.public_type_id:
         metadata.public_type = PublicDocumentType.objects.get_or_create(name=name)[0]
         metadata.save(update_fields=['public_type'])
+    if category == 'use-cases' and doc.group.acronym == 'tidawg0':
+        metadata.additional_types.add(PublicDocumentType.objects.get_or_create(name='Use case')[0])
+        if metadata.public_type.name != 'Contribution':
+            metadata.additional_types.add(PublicDocumentType.objects.get_or_create(name='Contribution')[0])
+        number_use_case(doc)
+
+
+def number_use_case(doc):
+    """Share the normal submission sequence without creating a second document."""
+    from django.db import transaction
+    from ietf.doc.models import Document
+    from .models import Contribution, ContributionSequence
+    with transaction.atomic():
+        Document.objects.select_for_update().get(pk=doc.pk)
+        if Contribution.objects.filter(document=doc).exists():
+            return
+        prefix = 'FG-TIDA-WG0'
+        sequence = ContributionSequence.lock(prefix)
+        maximum = Contribution.objects.filter(number_prefix=prefix).order_by('-sequence_number').values_list('sequence_number', flat=True).first() or 0
+        if sequence.last_number != maximum:
+            sequence.last_number = maximum
+            sequence.save(update_fields=['last_number'])
+        Contribution.objects.create(document=doc, group=doc.group, title=doc.title,
+            abstract=doc.abstract, submission_method='github', draft_repository_url=doc.external_url,
+            filename='', content=b'', status='catalogued', notifications_queued=True)

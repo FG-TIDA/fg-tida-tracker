@@ -89,7 +89,7 @@ def search(request, acronym=None, incubation=False, category_slug=None):
     if kind in types:
         if kind.startswith('public-'):
             name = types[kind]
-            selected = Q(tida_attribution__public_type_id=kind.removeprefix('public-'))
+            selected = Q(tida_attribution__public_type_id=kind.removeprefix('public-')) | Q(tida_attribution__additional_types__id=kind.removeprefix('public-'))
             fallback = Q(tida_attribution__public_type__isnull=True)
             native = [key for key, label in core.TYPE_LABELS if singular(label) == name]
             inferred = Q(type_id__in=native)

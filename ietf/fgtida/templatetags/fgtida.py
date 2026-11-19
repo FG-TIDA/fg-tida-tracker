@@ -84,8 +84,11 @@ def document_type(doc, current=None):
     from ..document_types import singular, source_type
     current = current or doc
     metadata = getattr(current, 'tida_attribution', None)
-    if metadata and metadata.public_type_id:
-        return singular(metadata.public_type.name)
+    if metadata:
+        names = ([singular(metadata.public_type.name)] if metadata.public_type_id else [])
+        names += [singular(kind.name) for kind in metadata.additional_types.all()]
+        if names:
+            return ', '.join(dict.fromkeys(names))
     if doc.type_id == 'tida':
         is_contribution = getattr(current, 'is_contribution', None)
         if is_contribution is None:

@@ -131,7 +131,7 @@ class Contribution(models.Model):
     content = models.BinaryField(editable=False)
     created = models.DateTimeField(auto_now_add=True, db_index=True)
     status = models.CharField(max_length=16, default='pending', db_index=True,
-        choices=[('pending', 'Awaiting review'), ('accepted', 'Accepted'), ('rejected', 'Rejected')])
+        choices=[('pending', 'Awaiting review'), ('accepted', 'Accepted'), ('rejected', 'Rejected'), ('catalogued', 'Imported from GitHub')])
     review_note = models.TextField(blank=True)
     reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
         on_delete=models.SET_NULL, related_name='reviewed_contributions')
@@ -479,6 +479,8 @@ class DocumentAttribution(models.Model):
     contact_emails = models.TextField(blank=True, help_text='One public contact email per line. Addresses entered here appear on the public document page.')
     public_type = models.ForeignKey(PublicDocumentType, null=True, blank=True, on_delete=models.SET_NULL,
         help_text='Choose the type shown publicly. Leave blank to use the default from the document’s workflow.')
+    additional_types = models.ManyToManyField(PublicDocumentType, blank=True, related_name='additional_attributions',
+        help_text='Additional document types. A use case can also be a Contribution.')
 
 
 class DocumentListing(models.Model):

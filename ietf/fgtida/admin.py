@@ -913,7 +913,7 @@ class FgDocumentAdmin(DocumentAdmin):
               'current_version', 'upload', 'version', 'document_direction', 'document_meeting', 'document_source', 'document_created', 'meeting_session', 'external_url', 'comment_about_changes']
     list_display = ['name', 'title', 'public_document_type', 'group', 'public_version', 'time']
     search_fields = ['name', 'title', 'abstract']
-    list_filter = ['tida_attribution__public_type', 'type', 'group']
+    list_filter = ['tida_attribution__public_type', 'tida_attribution__additional_types', 'type', 'group']
     raw_id_fields = []
     inlines = [DocAuthorInline, DocumentAttributionInline, RelatedDocumentInline, AdditionalUrlInLine, DocumentFormatInline]
     actions = []
