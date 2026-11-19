@@ -8,6 +8,17 @@ def singular(value):
     return NAMES.get(value.lower(), value)
 
 
+def search_type_choices():
+    """Use the same current, deduplicated type options in every search form."""
+    from . import core
+    from .models import PublicDocumentType
+    public_types = list(PublicDocumentType.objects.all())
+    public_names = {record.name for record in public_types}
+    choices = {key: singular(label) for key, label in core.TYPE_LABELS if singular(label) not in public_names}
+    choices.update({f'public-{record.pk}': record.name for record in public_types})
+    return choices
+
+
 def source_type(doc, category):
     if category == 'use-cases' and doc.group.acronym == 'tidawg0':
         return 'Contribution'

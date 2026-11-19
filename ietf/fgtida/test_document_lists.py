@@ -18,6 +18,57 @@ class DocumentListTests(TestCase):
     setUp = native_tests.NativeDatatrackerTests.setUp
     admin_payload = native_tests.NativeDatatrackerTests.admin_payload
 
+    def test_metadata_sections_keep_three_columns_with_optional_credit_rows(self):
+        from html.parser import HTMLParser
+        from .models import DocumentAttribution
+
+        class MetadataTable(HTMLParser):
+            active = False
+            def __init__(self):
+                super().__init__()
+                self.groups = []
+            def handle_starttag(self, tag, attrs):
+                attrs = dict(attrs)
+                if tag == 'table':
+                    self.active = 'fg-document-metadata' in attrs.get('class', '').split()
+                if not self.active:
+                    return
+                if tag == 'tbody':
+                    self.groups.append([])
+                elif tag == 'tr':
+                    self.groups[-1].append([])
+                elif tag in ('td', 'th'):
+                    self.groups[-1][-1].append(attrs)
+            def handle_endtag(self, tag):
+                if tag == 'table':
+                    self.active = False
+
+        document = Document.objects.create(name='metadata-layout-example', title='Metadata layout', group=self.root, type_id='tida')
+        metadata = DocumentAttribution.objects.create(document=document, authors='First Author\nSecond Author')
+        for affiliation, contact in [('', ''), ('Example organization', ''), ('', 'Example contact'), ('Example organization', 'Example contact')]:
+            with self.subTest(affiliation=affiliation, contact=contact):
+                metadata.affiliations, metadata.contacts = affiliation, contact
+                metadata.save()
+                page = self.client.get(f'/doc/{document.name}/')
+                self.assertEqual(page.status_code, 200)
+                table = MetadataTable()
+                table.feed(page.content.decode())
+                for group in table.groups:
+                    spans = [0, 0, 0]
+                    for row in group:
+                        cursor = 0
+                        for cell in row:
+                            while cursor < 3 and spans[cursor]:
+                                cursor += 1
+                            columns = int(cell.get('colspan', 1))
+                            self.assertLessEqual(cursor + columns, 3, 'Metadata has an extra column caused by an overlapping row span.')
+                            for col in range(cursor, cursor + columns):
+                                spans[col] = int(cell.get('rowspan', 1))
+                            cursor += columns
+                        self.assertTrue(all(spans), 'Metadata row does not fill all three columns.')
+                        spans = [max(0, value - 1) for value in spans]
+                    self.assertEqual(spans, [0, 0, 0], 'A section heading spans beyond its section.')
+
     def test_source_types_custom_categories_and_corrected_versions_preserve_downloads(self):
         from ietf.name.models import DocTagName
         from .versioning import public_version

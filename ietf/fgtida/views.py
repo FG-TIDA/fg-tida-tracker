@@ -32,7 +32,8 @@ def floor_plan(request, num, pk):
 
 
 def home(request):
-    return render(request, 'fgtida/home.html', {'types': core.TYPE_LABELS,
+    from .document_types import search_type_choices
+    return render(request, 'fgtida/home.html', {'types': search_type_choices().items(),
         'groups': core.groups().exclude(acronym='tida'), 'categories': core.categories()})
 
 
@@ -81,11 +82,8 @@ def search(request, acronym=None, incubation=False, category_slug=None):
         docs = docs.filter(Q(group__acronym='incubation') | Q(pk__in=Contribution.objects.filter(group__acronym='incubation').values('document_id')))
     elif group:
         docs = docs.filter(group__acronym=group)
-    from .document_types import singular, NAMES
-    public_types = list(PublicDocumentType.objects.all())
-    public_names = {record.name for record in public_types}
-    types = {key: singular(label) for key, label in core.TYPE_LABELS if singular(label) not in public_names}
-    types.update({f'public-{record.pk}': record.name for record in public_types})
+    from .document_types import singular, NAMES, search_type_choices
+    types = search_type_choices()
     if kind in types:
         if kind.startswith('public-'):
             name = types[kind]
@@ -243,7 +241,7 @@ def document(request, name, rev=None):
         'work_item':work_item,'old_revision':bool(rev and rev!=doc.rev),'show_working':not rev,
         'events': doc.docevent_set.select_related('by')[:100],
         'authors': authors, 'credits': credits, 'source_records': source_records,
-        'document_metadata_rows': 5 + bool(credits.get('affiliations')) + bool(credits.get('contact_emails') or credits.get('contacts')),
+        'document_metadata_rows': 4 + bool(credits.get('affiliations')) + bool(credits.get('contact_emails') or credits.get('contacts')),
         'sessions': doc.session_set.select_related('meeting'),
         'relationships': RelatedDocument.objects.filter(source=doc, target__in=core.documents()).select_related('target', 'relationship'),
         'incoming': RelatedDocument.objects.filter(target=doc, source__in=core.documents()).select_related('source', 'relationship'),

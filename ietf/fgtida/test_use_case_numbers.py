@@ -15,6 +15,24 @@ from .templatetags.fgtida import document_type
 class UseCaseNumberTests(TestCase):
     setUp = native_tests.NativeDatatrackerTests.setUp
 
+    def test_home_and_document_search_share_all_types_and_new_admin_types(self):
+        home = self.client.get('/')
+        listing = self.client.get('/doc/')
+        self.assertEqual(dict(home.context['types']), dict(listing.context['types']))
+        labels = list(dict(home.context['types']).values())
+        for label in ['Contribution', 'Use case', 'Theme', 'Template', 'Deliverable', 'Resource']:
+            self.assertIn(label, labels)
+        self.assertEqual(labels.count('Template'), 1)
+        custom = PublicDocumentType.objects.create(name='Technical report')
+        doc = self.document('custom-type-from-home')
+        DocumentAttribution.objects.create(document=doc, public_type=custom)
+        self.client.logout()
+        home = self.client.get('/')
+        key = f'public-{custom.pk}'
+        self.assertContains(home, f'<option value="{key}"')
+        self.assertContains(home, 'Technical report')
+        self.assertContains(self.client.get('/doc/', {'type': key}), doc.title)
+
     def document(self, name):
         return Document.objects.create(name=name, title=name, type_id='tida', group=Group.objects.get(acronym='tidawg0'))
 
