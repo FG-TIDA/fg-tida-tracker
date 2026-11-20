@@ -49,7 +49,13 @@ def image_response(data, path):
     from .file_safety import inspect_file
     from django.core.exceptions import ValidationError, PermissionDenied
     try:
-        inspect_file(content, PurePosixPath(path).suffix.lower().lstrip('.'))
+        import hashlib
+        from django.core.cache import cache
+        kind = PurePosixPath(path).suffix.lower().lstrip('.')
+        key = 'fgtida:preview-image:v1:' + kind + ':' + hashlib.sha256(content).hexdigest()
+        if cache.get(key) is not True:
+            inspect_file(content, kind)
+            cache.set(key, True, 3600)
     except ValidationError as error:
         raise PermissionDenied('This image cannot be previewed safely.') from error
     response = HttpResponse(content, content_type=mime)

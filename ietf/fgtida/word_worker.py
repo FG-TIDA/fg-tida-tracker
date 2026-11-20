@@ -1,5 +1,6 @@
 """Isolated DOCX conversion: bounded resources, Pandoc sandbox, no external media."""
 import subprocess
+import hashlib
 import sys
 import tempfile
 from pathlib import Path
@@ -36,6 +37,14 @@ def main():
         for path in (root / 'media').rglob('*'):
             if path.is_file():
                 media[path.relative_to(root).as_posix()] = path.read_bytes()
+        # Pandoc can omit embedded assets it does not render. Retain those too;
+        # presence in the ZIP does not claim that every diagram was converted.
+        retained = {hashlib.sha256(value).hexdigest() for value in media.values()}
+        for name, value in files.items():
+            digest = hashlib.sha256(value).hexdigest() if name.startswith('word/media/') else None
+            if digest and digest not in retained:
+                media['media/original/' + name.removeprefix('word/media/')] = value
+                retained.add(digest)
         from .word_scaffold import wrap_word_source
         output = wrap_word_source((root / 'index.rst').read_text(encoding='utf-8'), media)
         sys.stdout.buffer.write(pack(output))

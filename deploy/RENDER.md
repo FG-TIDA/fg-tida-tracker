@@ -6,6 +6,9 @@ PostgreSQL. No Redis service or Celery worker is required. Celery publishing
 raises an explicit error in this profile; reviewed FG-TIDA mail uses the durable
 PostgreSQL outbox. Do not run upstream Celery workers/beat with this profile.
 
+For high CPU or repeated restarts, see [runtime performance checks](RUNTIME-PERFORMANCE.md)
+before changing service capacity.
+
 ## Service settings
 
 - Repository: `FG-TIDA/fg-tida-tracker`; reviewed branch: `main`.

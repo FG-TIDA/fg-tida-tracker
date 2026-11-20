@@ -31,6 +31,19 @@ def approved_static_file(name, data):
     return scaffold()[1].get(name) == data
 
 
+def package_gaps(files, original_word=b''):
+    """Check build assets and retention of embedded Word media, by bytes."""
+    from .source_packages import unpack
+    missing = sorted(set(scaffold()[1]) - set(files))
+    media = []
+    if original_word:
+        present = {hashlib.sha256(data).hexdigest() for data in files.values()}
+        for name, data in unpack(original_word).items():
+            if name.startswith('word/media/') and hashlib.sha256(data).hexdigest() not in present:
+                media.append(name)
+    return {'missing': missing, 'missing_word_media': sorted(media)}
+
+
 def wrap_word_source(text, media):
     commit, original = scaffold()
     files = dict(original)

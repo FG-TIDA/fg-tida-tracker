@@ -73,6 +73,44 @@ does not modify any GitHub repository or build workflow.
 
 ## Repair older incomplete packages
 
+### Word contributions, including ones with no ZIP yet
+
+The audit checks template assets and compares the embedded media in the retained
+Word original with the actual bytes in its ZIP. A template profile label alone
+does not prove completeness. New Word conversions retain embedded media even
+when Pandoc does not reference it in the converted text. This does not guarantee
+that complex Word diagrams render correctly; compare the conversion with Word.
+
+After deploying this code, use the Render **web service → Shell**. Take a database
+and persistent-file backup first. These commands run sequentially at lower CPU
+priority, suitable for a quiet period on the one-CPU web service:
+
+```sh
+nice -n 10 python ietf/manage.py complete_fgtida_packages --word-only --skip-checks
+```
+
+Review the per-contribution states. Then repair all eligible Word records:
+
+```sh
+nice -n 10 python ietf/manage.py complete_fgtida_packages --word-only --apply --reason "Complete Word source packages and recover retained embedded media." --skip-checks
+```
+
+Run the first command again. Its summary should show `complete` for repaired
+records. Inspect each ZIP and compare its preview with the Word original before
+marking the conversion verified in admin. The ZIP includes `index.rst`, the
+contribution chapter, build configuration, styling, template assets and embedded
+media when the original contains any. A text-only Word original has no figures
+to extract. New conversions have the same completeness check automatically.
+
+States such as `awaiting_security_checks`, `later_source_requires_review`,
+`no_document` or `no_current_zip` are unresolved, not successful repairs. Do not
+overwrite newer edits or bypass scanning. Review those contribution IDs in admin;
+missing originals, legacy `.doc` files and unsupported embedded formats may need
+the contributor to supply a DOCX or supported image export. Earlier historical
+versions remain immutable and can still contain the older package.
+
+### Other incomplete source packages
+
 Take a production database and file backup first. Plan without changes:
 
 ```sh
@@ -96,7 +134,9 @@ records and choose **Complete reviewed contribution ZIPs with specification-temp
 assets**. Click **Go**, provide a reason, read the acknowledgement and confirm.
 
 Repairs keep the same contribution/document identifiers and numbers, preserve
-original uploads and earlier versions, and create a new archive version. They
+original uploads and earlier versions. Rebuilding an existing package records a
+new archive version; converting a previously unconverted Word document adds its
+RST ZIP alongside the existing Word version. They
 send no emails, write nothing to GitHub and do not grant WG approval. An older
 Word conversion is rebuilt from its retained Word original so embedded images
 can be recovered; verification resets and must be reviewed against that original.

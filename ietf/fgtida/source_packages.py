@@ -161,6 +161,10 @@ def convert_word(data):
         trust_admin_derivative(result.stdout, 'source.zip', data, 'submission.docx')
         archive, manifest = prepare_zip(result.stdout, 'index.rst')
         from .word_scaffold import PROFILE, scaffold
+        from .word_scaffold import package_gaps
+        gaps = package_gaps(unpack(archive), data)
+        if any(gaps.values()):
+            raise ValidationError('The converted Word package is incomplete. Contact the secretariat for review; the original must be retained.')
         manifest.update(package_profile=PROFILE, template_commit=scaffold()[0])
         return archive, manifest
     except (subprocess.SubprocessError, OSError) as error:

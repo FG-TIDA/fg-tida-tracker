@@ -47,7 +47,74 @@ class IdentityAndPackageTests(SimpleTestCase):
 
 @override_settings(FGTIDA_REQUIRE_ADMIN_MFA=False, FGTIDA_UPLOAD_SCAN_REQUIRED=False)
 class ContributionIntegrityTests(TestCase):
+    def word_original(self):
+        import subprocess
+        return subprocess.run(['pandoc', '-f', 'rst', '-t', 'docx'],
+            input=b'Word proposal\n=============\n\nRetained paragraph.\n', capture_output=True, check=True).stdout
+
+    def test_bulk_completion_includes_word_documents_without_a_zip(self):
+        from .contribution_packages import inspect_package
+        word = self.word_original()
+        doc = Document(name='word-without-source-package', title='Word proposal', type_id='tida', group=self.root)
+        core.save_document(doc, core.actor_for(), 'Original Word', data=word, filename='proposal.docx')
+        item = Contribution.objects.create(group=self.root, document=doc, title=doc.title,
+            filename='proposal.docx', content=word)
+        unlinked = Contribution.objects.create(group=self.root, title='Word without document link',
+            filename='unlinked.docx', content=word)
+        self.assertEqual(inspect_package(item)['state'], 'incomplete')
+        call_command('complete_fgtida_packages', word_only=True, apply=True,
+            reason='Complete retained Word source packages.', stdout=StringIO())
+        item.refresh_from_db()
+        self.assertEqual(inspect_package(item)['state'], 'complete')
+        self.assertEqual(bytes(item.content), word)
+        unlinked.refresh_from_db()
+        self.assertEqual(inspect_package(unlinked)['state'], 'complete')
+        self.assertIsNotNone(unlinked.document_id)
+        self.assertFalse(item.conversion_verified_at)
+        self.assertFalse(OutgoingMail.objects.exists())
+
+    def test_word_media_missing_from_otherwise_complete_package_is_rebuilt(self):
+        import base64
+        from .word_scaffold import wrap_word_source, PROFILE
+        from .contribution_packages import inspect_package, complete_package
+        word_files = unpack(self.word_original())
+        image = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWZkAAAAASUVORK5CYII=')
+        word_files['word/media/retained.png'] = image
+        word = pack(word_files)
+        incomplete = pack(wrap_word_source('Word proposal\n=============\n\nRetained paragraph.', {}))
+        doc = Document(name='word-missing-media', title='Word proposal', type_id='tida', group=self.root)
+        core.save_document(doc, core.actor_for(), 'Old conversion', data=incomplete, filename='source.zip')
+        old_path = Path(doc.get_file_name())
+        item = Contribution.objects.create(group=self.root, document=doc, title=doc.title,
+            filename='proposal.docx', content=word, source_archive=incomplete, submission_method='word',
+            source_manifest={'package_profile': PROFILE, 'sha256': hashlib.sha256(incomplete).hexdigest()})
+        self.assertEqual(inspect_package(item)['missing_word_media'], ['word/media/retained.png'])
+        self.assertTrue(complete_package(item.pk, self.user, 'Recover all embedded Word images.'))
+        item.refresh_from_db()
+        self.assertEqual(inspect_package(item)['state'], 'complete')
+        self.assertIn(image, unpack(bytes(item.source_archive)).values())
+        self.assertEqual(old_path.read_bytes(), incomplete)
+        self.assertFalse(complete_package(item.pk, self.user, 'Do not duplicate the complete package.'))
+
     setUp = native_tests.NativeDatatrackerTests.setUp
+
+    def test_completion_preserves_an_alternative_word_format_on_the_new_revision(self):
+        from .models import DocumentFormat
+        from .contribution_packages import inspect_package, complete_package
+        original = pack({'index.rst': b'Word proposal\n=============\n\nRetained paragraph.'})
+        word = self.word_original()
+        doc = Document(name='source-with-word-format', title='Word proposal', type_id='tida', group=self.root)
+        core.save_document(doc, core.actor_for(), 'Original package', data=original, filename='source.zip')
+        DocumentFormat.objects.create(document=doc, revision=doc.rev, kind='docx', filename='original.docx',
+            content=word, sha256=hashlib.sha256(word).hexdigest())
+        item = Contribution.objects.create(group=self.root, document=doc, title=doc.title,
+            filename='source.zip', content=original, submission_method='rst', source_archive=original,
+            source_manifest={'entry_document': 'index.rst', 'sha256': hashlib.sha256(original).hexdigest()})
+        self.assertTrue(complete_package(item.pk, self.user, 'Preserve the alternative Word original.'))
+        item.refresh_from_db()
+        current = item.document.tida_formats.get(revision=item.document.rev, kind='docx')
+        self.assertEqual(bytes(current.content), word)
+        self.assertEqual(inspect_package(item)['state'], 'complete')
 
     def payload(self, content=b'An actual submission.'):
         from ietf.group.models import Group

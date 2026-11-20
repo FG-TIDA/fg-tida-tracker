@@ -87,6 +87,18 @@ class PackageTests(SimpleTestCase):
         with self.assertRaises(ValidationError):
             convert_word(pack(files))
 
+    def test_word_package_retains_embedded_media_even_if_pandoc_does_not_reference_it(self):
+        word = subprocess.run(['pandoc', '-f', 'rst', '-t', 'docx'],
+            input=b'Example\n=======\n\nOriginal text.\n', capture_output=True, check=True).stdout
+        files = unpack(word)
+        image = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWZkAAAAASUVORK5CYII=')
+        files['word/media/unreferenced.png'] = image
+        source, manifest = convert_word(pack(files))
+        from .word_scaffold import package_gaps
+        output = unpack(source)
+        self.assertIn(image, output.values())
+        self.assertFalse(any(package_gaps(output, pack(files)).values()))
+
 
 @override_settings(FGTIDA_REQUIRE_ADMIN_MFA=False, FGTIDA_MAIL_ENABLED=False, FGTIDA_MAIL_IMMEDIATE=False)
 class SubmissionTests(TestCase):

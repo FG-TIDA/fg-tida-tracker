@@ -264,9 +264,9 @@ def convert_existing_word(pk, user, *, rebuild=False, reason=''):
         return False
     from .word_scaffold import PROFILE
     if previous_package and item.source_manifest.get('package_profile') == PROFILE:
-        from .word_scaffold import scaffold
+        from .word_scaffold import package_gaps
         from .source_packages import unpack
-        if set(scaffold()[1]).issubset(unpack(previous_package)):
+        if not any(package_gaps(unpack(previous_package), bytes(item.content)).values()):
             return False
     if previous_package and (item.submission_method not in {'word', 'legacy'} or len(reason.strip()) < 10):
         raise forms.ValidationError('Rebuilding an existing conversion requires an explicit administrator review reason.')

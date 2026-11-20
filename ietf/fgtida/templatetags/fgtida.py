@@ -10,6 +10,13 @@ from django.utils.html import format_html_join
 register = template.Library()
 
 
+def fragment_key(kind, text, source_url, image_urls=()):
+    import hashlib
+    import json
+    context = json.dumps([text, str(source_url), sorted(image_urls)], ensure_ascii=True)
+    return 'fgtida:html:' + kind + ':v1:' + hashlib.sha256(context.encode()).hexdigest()
+
+
 @register.filter
 def public_document_name(name):
     # Only official input/output numbers are public labels. All other stored
@@ -138,6 +145,12 @@ def document_categories(doc):
 @register.filter
 def rich_text(value, source_url=''):
     """Render complete Markdown blocks using Datatracker's HTML sanitizer."""
+    from django.core.cache import cache
+    from django.utils.safestring import mark_safe
+    key = fragment_key('md', str(value or ''), source_url)
+    cached = cache.get(key)
+    if cached is not None:
+        return format_html('<div class="fg-tida-rich-text">{}</div>', mark_safe(cached))
     # Imported prose can contain visually blank lines made of non-breaking
     # spaces. Markdown treats those as paragraph text, swallowing following tables.
     text = re.sub(r'(?m)^[^\S\r\n]+$', '', str(value or ''))
@@ -159,7 +172,10 @@ def rich_text(value, source_url=''):
     text='\n'.join(normalized)
     from ietf.fgtida.rendering import markdown_fragment
     from django.utils.safestring import mark_safe
-    return format_html('<div class="fg-tida-rich-text">{}</div>', mark_safe(markdown_fragment(text, source_url)))
+    rendered = markdown_fragment(text, source_url)
+    if len(rendered.encode()) < 500000:
+        cache.set(key, rendered, 3600)
+    return format_html('<div class="fg-tida-rich-text">{}</div>', mark_safe(rendered))
 
 
 @register.filter
@@ -184,6 +200,10 @@ def rich_rst(value, source_url=''):
     if len(text.encode())>500000:
         return format_html('<pre>{}</pre>',text)
     from ietf.fgtida.rendering import clean_fragment
+    clean_key = fragment_key('rst', text, source_url, image_urls)
+    cleaned = cache.get(clean_key)
+    if cleaned is not None:
+        return format_html('<div class="fg-tida-rich-text">{}</div>', mark_safe(cleaned))
     key='fgtida:rst:v3:'+hashlib.sha256(text.encode()).hexdigest()
     rendered=cache.get(key)
     if rendered is None:
@@ -198,7 +218,10 @@ def rich_rst(value, source_url=''):
                 cache.set(key,rendered,3600)
         except (subprocess.SubprocessError,UnicodeError):
             return format_html('<pre>{}</pre>',text)
-    return format_html('<div class="fg-tida-rich-text">{}</div>',mark_safe(clean_fragment(rendered, source_url, image_urls)))
+    cleaned = clean_fragment(rendered, source_url, image_urls)
+    if len(cleaned.encode()) < 500000:
+        cache.set(clean_key, cleaned, 3600)
+    return format_html('<div class="fg-tida-rich-text">{}</div>',mark_safe(cleaned))
 
 
 @register.simple_tag
