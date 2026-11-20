@@ -3,6 +3,7 @@
 <h1>{{ submission.title }}</h1>
 {% if submission.reference %}<p class="lead">{{ submission.reference }}</p>{% endif %}
 {% if can_revise %}<p><a class="btn btn-primary" href="{% url 'fgtida:contribution-revise' submission.pk %}">Submit a new version</a></p>{% endif %}
+{% if can_revise %}<p><a class="btn btn-outline-primary" href="{% url 'fgtida:contribution-authors' submission.pk %}">Edit author details</a></p>{% endif %}
 <p>{% if submission.document %}{% document_states submission.document %}{% else %}{{ submission.get_status_display }}{% endif %} · {{ submission.created }}</p>
 <h2>Abstract</h2><div>{{ submission.abstract|rich_text }}</div>
 <p>Submission method: <strong>{{ submission.get_submission_method_display }}</strong></p>

@@ -1,6 +1,6 @@
 """Resolve public credits consistently, retaining deliberate editorial choices."""
 import re
-from .github_attribution import CREDIT_FIELDS, plain_value, source_attribution
+from .github_attribution import CREDIT_FIELDS, plain_value, source_attribution, document_attribution
 
 
 def clean_values(values, field):
@@ -15,8 +15,9 @@ def clean_values(values, field):
         if field == 'contact_emails':
             from .github_attribution import EMAIL
             candidates = EMAIL.findall(value)
-        elif field in ('authors', 'contacts') and re.search(r'(?i)\bName\s*:', value) and re.search(r'(?i)\bOrgani[sz]ation\s*:', value):
-            candidates = source_attribution('Author: ' + value).get('authors', [])
+        elif field in ('authors', 'contacts') and (re.match(r'(?i)^\s*(?:\*\*)?Name(?:\*\*)?\s*:', value) or
+                (re.search(r'(?i)\bName\s*:', value) and re.search(r'(?i)\bOrgani[sz]ation\s*:', value))):
+            candidates = document_attribution('Author: ' + value).get('authors', [])
         else:
             candidates = [plain_value(value)]
         for candidate in candidates:
@@ -25,14 +26,26 @@ def clean_values(values, field):
     return result
 
 
-def resolve_credits(body, override, version_metadata, sources):
-    credits = source_attribution(body)
+def legacy_import_fields(override, sources, versions):
+    """Recognize pre-provenance auto-fill only when recorded imports prove it."""
+    automatic = [source for source in sources if source.sync_mode == 'automatic']
+    if not override or not automatic:
+        return set()
+    provenance = override.credit_provenance or {}
+    evidence = [source.source_metadata for source in automatic] + list(versions)
+    return {key for key in CREDIT_FIELDS if key not in provenance and
+        (entered := clean_values(getattr(override, key, ''), key)) and
+        any(clean_values(record.get(key, []), key) == entered for record in evidence)}
+
+
+def resolve_credits(body, override, version_metadata, sources, legacy_imports=()):
+    credits = {field: clean_values(values, field) for field, values in source_attribution(body).items()}
     modes = getattr(override, 'credit_provenance', {}) or {}
     authoritative = set()
     profiles = modes.get('authors', {}).get('mode') == 'profiles'
     for key in CREDIT_FIELDS:
         entered = clean_values(getattr(override, key, ''), key)
-        mode = modes.get(key, {}).get('mode')
+        mode = 'source' if key in legacy_imports else modes.get(key, {}).get('mode')
         if mode == 'manual' or (entered and mode not in ('source', 'profiles')):
             credits[key] = entered
             authoritative.add(key)

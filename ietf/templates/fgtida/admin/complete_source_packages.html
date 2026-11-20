@@ -1,0 +1,9 @@
+{% extends 'admin/base_site.html' %}
+{% block content %}
+<p>Add missing reviewed specification-template build assets. Existing RST text and supplied images remain unchanged. Older Word conversions are rebuilt from their retained original so embedded figures can be extracted. Later source edits are protected; imported use cases are excluded.</p>
+<p>This records a new version, preserves original uploads and previous archives, and does not approve a work item or send notifications. Missing images cannot be recovered when they were never supplied.</p>
+<form method="post">{% csrf_token %}{{ form.as_p }}
+<ul>{% for record in records %}<li>{{ record.reference }} — {{ record.title }}<input type="hidden" name="{{ action_checkbox_name }}" value="{{ record.pk }}"></li>{% endfor %}</ul>
+<input type="hidden" name="action" value="complete_source_packages"><input type="hidden" name="confirm_complete" value="yes">
+<button type="submit" class="default">Complete reviewed packages</button></form>
+{% endblock %}

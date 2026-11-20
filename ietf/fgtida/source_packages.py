@@ -86,7 +86,7 @@ def validate_sources(files, entry):
                     raise ValidationError(f'{name} references a missing or external file: {target}. Include the file in the source package.')
 
 
-def prepare_zip(data, entry, folder=''):
+def prepare_zip(data, entry, folder='', *, complete=False):
     from .file_safety import validate_file
     validate_file(data, 'source.zip')
     files = unpack(data)
@@ -98,12 +98,18 @@ def prepare_zip(data, entry, folder=''):
         files = {name[len(prefix):]: value for name, value in files.items() if name.startswith(prefix)}
         entry = entry[len(prefix):]
     validate_sources(files, entry)
+    package_metadata = {}
+    if complete:
+        from .word_scaffold import complete_rst_source
+        files, package_metadata = complete_rst_source(files, entry)
+        validate_sources(files, entry)
     manifest = {'entry_document': entry, 'files': {
         name: hashlib.sha256(value).hexdigest() for name, value in sorted(files.items())}}
     result = pack(files)
     from .file_safety import trust_admin_derivative
     trust_admin_derivative(result, 'source.zip', data, 'source.zip')
     manifest['sha256'] = hashlib.sha256(result).hexdigest()
+    manifest.update(package_metadata)
     return result, manifest
 
 

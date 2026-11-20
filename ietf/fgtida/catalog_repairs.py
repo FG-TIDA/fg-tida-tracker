@@ -22,7 +22,7 @@ def repair_catalog(apply=False):
     from ietf.group.models import Group
     from .document_types import assign_source_type
     from .file_safety import safe_document_text
-    from .credits import clean_values
+    from .credits import clean_values, legacy_import_fields
     stats = Counter()
     wg0 = Group.objects.get(acronym='tidawg0', parent__acronym='tida')
     identifiers = list(use_case_documents().values_list('pk', flat=True))
@@ -58,7 +58,8 @@ def repair_catalog(apply=False):
             assign_source_type(doc, 'use-cases')
     for doc in core.documents(include_uncatalogued=True).select_related('tida_attribution').iterator(chunk_size=100):
         credits = source_attribution(safe_document_text(doc) or '')
-        for source in doc.github_sources.filter(sync_mode='automatic'):
+        sources = list(doc.github_sources.filter(sync_mode='automatic'))
+        for source in sources:
             for field in CREDIT_FIELDS:
                 if not credits.get(field) and source.source_metadata.get(field):
                     credits[field] = clean_values(source.source_metadata[field], field)
@@ -68,19 +69,25 @@ def repair_catalog(apply=False):
         meta = getattr(doc, 'tida_attribution', None) or DocumentAttribution(document=doc)
         changed = []
         provenance = dict(meta.credit_provenance or {})
+        imported = legacy_import_fields(meta, sources, doc.tida_versions.values_list('source_metadata', flat=True))
         for field in CREDIT_FIELDS:
             current = getattr(meta, field).strip()
-            mode = provenance.get(field, {}).get('mode')
-            if mode in ('manual', 'profiles'):
+            mode = 'source' if field in imported else provenance.get(field, {}).get('mode')
+            if mode == 'profiles':
                 continue
             cleaned = '\n'.join(clean_values(current, field))
             malformed = bool(current and cleaned != current)
+            if mode == 'manual':
+                if malformed:
+                    setattr(meta, field, cleaned)
+                    changed.append(field)
+                continue  # Normalize formatting only; never replace editor facts.
             if current and not malformed and mode != 'source' and current.casefold() not in {'not entered', 'not provided', 'see submission contact below', 'tbd', 'tbc', 'unknown'}:
                 continue
             if field == 'authors' and native and not malformed and not credits.get('authors'):
                 continue
             replacement = '\n'.join(clean_values(credits.get(field, []), field)) or cleaned
-            if replacement != current or (replacement and mode != 'source'):
+            if replacement != current or (replacement and (mode != 'source' or field in imported)):
                 setattr(meta, field, replacement)
                 provenance[field] = {'mode': 'source', 'value': replacement}
                 changed.append(field)

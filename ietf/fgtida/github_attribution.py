@@ -1,6 +1,7 @@
 """Read public attribution fields without treating GitHub accounts as tracker identities."""
 import re
 from itertools import takewhile
+from .credit_lists import source_credit_list, MAX_CREDITS
 
 
 AUTHOR = r'authors?(?:\(s\))?|(?:theme )?proposers?(?:\(s\))?|contributors?(?:\(s\))?|drafters?|contact names?(?:\(s\))?'
@@ -14,10 +15,64 @@ FIELD = re.compile(
 RST_FIELD = re.compile(rf'^\s*:(?P<label>{FIELDS}):\s*(?P<value>.*)$', re.IGNORECASE)
 EMAIL = re.compile(r'[\w.!#$%&\x27*+/=?^_`{|}~-]+@[\w.-]+\.[a-z]{2,}', re.IGNORECASE)
 
+ORG_ROLE = re.compile(r'\b(?:university|institute|lab|laboratory|group|groupe|company|corporation|technologies|services|solutions|consulting|LLC|Ltd|GmbH|Inc|chair|expert|MBA|MSc|PhD|director|fellow|independent|individual|authority|commission|centre|center|forum|foundation|section|invited|program|committee)\b', re.I)
 
-def plain_value(value):
+
+def person_line(value):
+    words = value.split()
+    return (2 <= len(words) <= 5 and not ORG_ROLE.search(value) and not re.search(r'[/#:=]', value)
+        and all(word[0].isupper() or word.casefold() in {'de', 'del', 'van', 'von', 'da', 'al', 'bin'} for word in words))
+
+
+def proposer_credits(value):
+    """Read the combined GitHub proposer field, not arbitrary narrative names."""
+    names, organizations = [], []
+    for row in value.splitlines():
+        row = row.strip().removeprefix('- ').removeprefix('* ')
+        if not row or re.match(r'^\(?https?://', row):
+            continue
+        continuation = re.match(r'^(?:AI Expert|MBA|MSc|PhD|Section Leader|Co-Chair|Invited Expert|Visiting Research Fellow|Chair\b|Centre\b|Center\b|University\b|Institute\b|Department\b|School\b)', row, re.I)
+        if names and (continuation or (ORG_ROLE.search(row) and not person_line(row) and ',' not in row.split('(', 1)[0])):
+            if not organizations:
+                organizations.append(row)
+            continue
+        paired = re.fullmatch(r'(.+?)\s*\(([^()]+)\)(?:[.,;]\s+.*)?', row)
+        if paired:
+            possible = source_credit_list(paired[1])
+            if len(possible) == 1 or all(person_line(name) for name in possible):
+                names.extend(plain_value(name) for name in possible if plain_value(name))
+                organizations.append(plain_value(paired[2]))
+                continue
+        slash = re.split(r'\s*/\s*|\s+[-–—]\s+', row, maxsplit=1)
+        if len(slash) == 2 and all(person_line(name) for name in source_credit_list(slash[0])):
+            names.extend(plain_value(name) for name in source_credit_list(slash[0]) if plain_value(name))
+            organizations.append(plain_value(slash[1]))
+            continue
+        comma = source_credit_list(row)
+        if len(comma) >= 2:
+            # This field's established format is Name, Organization, location.
+            # Several people are separate rows; Authors fields use CSV lists.
+            names.append(plain_value(comma[0]))
+            rest = comma[1:]
+            while rest and re.match(r'^(?:Esq\.?|Chair|Managing Director|Visiting Research Fellow)(?:\s|$)', rest[0], re.I):
+                rest.pop(0)
+            organization = ', '.join(rest)
+            if re.search(r'\)\.\s+[A-Z]', organization):
+                organization = re.split(r'\)\.\s+(?=[A-Z])', organization, maxsplit=1)[0] + ')'
+            if organization := plain_value(organization):
+                organizations.append(organization)
+        elif not names or person_line(row) or row.startswith('@'):
+            if name := plain_value(row):
+                names.append(name)
+        elif ORG_ROLE.search(row) and not organizations:
+            organizations.append(plain_value(row))
+    return list(filter(None, names)), list(filter(None, organizations))
+
+
+def plain_value(value, max_length=350):
     value = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', value)
     value = EMAIL.sub('', value).strip(' \t|*_.,;–—-\u200b\u200c\u200d\ufeff')
+    value = re.sub(r'<\s*>|\(\s*\)', '', value).strip()
     if not re.search(r'[^\W\d_]', value, re.UNICODE):
         return ''  # Markdown/RST separators and empty table cells are not people.
     if value.startswith('<') and value.endswith('>') and '<' not in value[1:-1] and '>' not in value[1:-1]:
@@ -29,7 +84,7 @@ def plain_value(value):
             'name / affiliation', 'your full name', 'first last', 'first name last name',
             'author name', 'org', '@your-github-username'} or re.fullmatch(r'author\s*\d+', value, re.I):
         return ''
-    return value[:350]
+    return value[:max_length] if max_length is not None else value
 
 
 def document_attribution(body):
@@ -92,15 +147,36 @@ def document_attribution(body):
             following = next((row.strip() for row in lines[index + 1:] if row.strip()), '')
             if not following.startswith('#') and not FIELD.fullmatch(following):
                 value = following.removeprefix('- ')
+                if following.startswith(('- ', '* ')):
+                    bullets = []
+                    for row in lines[index+1:]:
+                        row = row.strip()
+                        if not row:
+                            continue
+                        if FIELD.fullmatch(row) or not row.startswith(('- ', '* ')):
+                            break
+                        bullets.append(row[2:])
+                    value = '\n'.join(bullets)
+                elif 'proposer' in match['label'].casefold():
+                    people = []
+                    for row in lines[index+1:]:
+                        row = row.strip()
+                        if not row and not people:
+                            continue
+                        if (not row or row.startswith('#') or FIELD.fullmatch(row) or RST_FIELD.fullmatch(row)
+                                or re.fullmatch(r'(?:summary|scope|motivation|description|rationale|references|problem statement)', row, re.I)):
+                            break
+                        people.append(row)
+                    value = '\n'.join(people)
         label = match['label'].casefold()
-        if value and re.fullmatch(AUTHOR, label) and re.match(r'(?i)^\s*Name\s*:', value):
+        if value and (re.fullmatch(AUTHOR, label) or label in {'contact', 'contacts'}) and re.match(r'(?i)^\s*Name\s*:', value):
             parts = list(identity.finditer(value))
             for pos, part in enumerate(parts):
                 end = parts[pos+1].start() if pos+1 < len(parts) else len(value)
                 declared = value[part.end():end].strip(' /|;')
                 key = part[1].casefold()
                 if key == 'name' and (name := plain_value(declared)):
-                    authors.append(name)
+                    (contacts if label in {'contact', 'contacts'} else authors).append(name)
                 elif key in ('organization', 'organisation') and (organization := plain_value(declared)):
                     affiliations.append(organization)
                 elif key in ('email', 'e-mail'):
@@ -110,41 +186,33 @@ def document_attribution(body):
             contact_emails.extend(EMAIL.findall(value or ''))
         elif label in {'contact', 'contacts'}:
             contact_emails.extend(EMAIL.findall(value or ''))
-            if name := plain_value(value or ''):
-                contacts.append(name)
-        elif value := plain_value(value or ''):
+            entries = source_credit_list(value or '') if label == 'contacts' else [value or '']
+            contacts.extend(name for entry in entries if (name := plain_value(entry)))
+        elif value := plain_value(value or '', max_length=None):
             if re.fullmatch(AFFILIATION, label):
                 if re.fullmatch(r'individual expert(?: contribution)?(?:\s*\([^()]+\))?', value, re.IGNORECASE):
                     value = 'Individual expert'
-                affiliations.append(value)
+                entries = source_credit_list(value) if label.endswith(('s', '(s)')) else [value]
+                affiliations.extend(organization for entry in entries if (organization := plain_value(entry)))
             elif label.startswith('contact name'):
-                contacts.append(value)
+                entries = source_credit_list(value) if label.endswith(('s', '(s)')) else [value]
+                contacts.extend(name for entry in entries if (name := plain_value(entry)))
+            elif 'proposer' in label:
+                people, organizations = proposer_credits(value)
+                authors.extend(people)
+                affiliations.extend(organizations)
             else:
                 if label == 'author' and ' / ' in value:
                     name, organization = value.split(' / ', 1)
                     if re.search(r'\b(independent|expert|researcher|laboratory|institute|university|academy|LLC|Ltd)\b', organization, re.I):
                         value = name
                         affiliations.append(organization)
-                if label.startswith('theme proposer'):
-                    match = re.fullmatch(r'(.+?)\s*\(([^()]+)\)', value)
-                    if match:
-                        authors.extend(clean for name in match[1].split(',') if (clean := plain_value(name)))
-                        if organization := plain_value(match[2]):
-                            affiliations.append(organization)
-                        continue
-                if label.startswith('proposer') or label.startswith('theme proposer'):
-                    # Themes commonly use "Name / Organization" or
-                    # "Name - Organization - email" in the Proposer field.
-                    parts = re.split(r'\s*/\s*|\s+[-–—]\s+', value, maxsplit=1)
-                    if len(parts) == 1 and value.count(',') == 1:
-                        parts = [part.strip() for part in value.split(',')]
-                    if len(parts) == 2:
-                        value, organization = parts
-                        if organization := plain_value(organization):
-                            affiliations.append(organization)
-                if value := plain_value(value):
-                    authors.append(value)
-    return {key: list(dict.fromkeys(values))[:20] for key, values in zip(
+                if label.startswith('drafter') and '@' in value:
+                    authors.extend(re.findall(r'(?<!\w)@[A-Za-z0-9][A-Za-z0-9-]{0,38}', value))
+                    continue
+                entries = source_credit_list(value) if label.endswith(('s', '(s)')) or '\n' in value else [value]
+                authors.extend(clean for entry in entries if (clean := plain_value(entry)))
+    return {key: list(dict.fromkeys(values))[:MAX_CREDITS] for key, values in zip(
         CREDIT_FIELDS, (authors or contacts, affiliations, contacts, contact_emails))}
 
 
@@ -159,11 +227,16 @@ def rst_table_attribution(body):
         name, organization = name.strip(), organization.strip()
         if name == 'Name' or name.startswith('<'):
             continue  # The template uses angle brackets for sample values.
-        if value := plain_value(name):
+        if re.match(r'(?i)^Name\s*:', name):
+            identity = document_attribution('Author: ' + name)
+            authors.extend(identity.get('authors', []))
+            affiliations.extend(identity.get('affiliations', []))
+        elif value := plain_value(name):
             authors.append(value)
+        if plain_value(name):
             if not organization.startswith('<') and (affiliation := plain_value(organization)):
                 affiliations.append(affiliation)
-    return {'authors': list(dict.fromkeys(authors))[:20], 'affiliations': list(dict.fromkeys(affiliations))[:20]}
+    return {'authors': list(dict.fromkeys(authors))[:MAX_CREDITS], 'affiliations': list(dict.fromkeys(affiliations))[:MAX_CREDITS]}
 
 
 def source_attribution(body):
@@ -175,7 +248,7 @@ def source_attribution(body):
 def structured_attribution(metadata):
     authors, affiliations = [], []
     entries = metadata.get('authors', [])
-    for entry in entries[:20] if isinstance(entries, list) else []:
+    for entry in entries[:MAX_CREDITS] if isinstance(entries, list) else []:
         if isinstance(entry, str):
             authors.append(plain_value(entry))
         elif isinstance(entry, dict):

@@ -12,9 +12,28 @@ from ietf.doc.models import Document, DocumentAuthor, State
 from . import core
 from .files import MAX_BYTES
 from .models import Contribution, DocumentVersion, WorkItem, GitHubJob
+from .credit_lists import parse_credit_list, format_credit_list
+
+
+class CreditListField(forms.CharField):
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault('required', False)
+        kwargs.setdefault('max_length', 40000)
+        kwargs.setdefault('widget', forms.Textarea(attrs={'rows': 2}))
+        kwargs.setdefault('help_text', 'Separate entries with commas or new lines. Put an entry containing a comma in double quotes. Accounts are not required for co-authors.')
+        super().__init__(*args, **kwargs)
+
+    def clean(self, value):
+        value = super().clean(value)
+        try:
+            return '\n'.join(parse_credit_list(value))
+        except ValueError as error:
+            raise forms.ValidationError(str(error)) from error
 
 
 class ContributionForm(forms.ModelForm):
+    authors = CreditListField(label='Author(s)', help_text='Enter all authors, separated by commas or new lines. Co-authors need no tracker account. Leave blank to use the document source. Your submitting account is recorded separately.')
+    affiliations = CreditListField(label='Affiliation(s)', help_text='Separate organizations with commas or new lines. Put an organization containing a comma in double quotes. Leave blank to use the source.')
     meeting = forms.ModelChoiceField(queryset=core.meetings().none(), required=True,
         empty_label='Choose an upcoming meeting', help_text='Select the meeting you are contributing to. Closed submission windows are unavailable.',
         error_messages={'invalid_choice': 'This meeting is unavailable or its submission deadline has passed. Choose an open meeting.'})
@@ -25,7 +44,7 @@ class ContributionForm(forms.ModelForm):
 
     class Meta:
         model = Contribution
-        fields = ['title', 'group', 'meeting', 'abstract', 'work_item_acronym', 'submission_method',
+        fields = ['title', 'group', 'meeting', 'authors', 'affiliations', 'abstract', 'work_item_acronym', 'submission_method',
                   'draft_repository_url', 'source_commit', 'source_folder', 'entry_document']
 
     def __init__(self, *args, **kwargs):
@@ -96,7 +115,7 @@ class ContributionForm(forms.ModelForm):
                     entry = values.get('entry_document', '')
                     from pathlib import PurePosixPath
                     folder = str(PurePosixPath(entry).parent)
-                    self.source_archive, self.manifest = prepare_zip(self.content, entry, '' if folder == '.' else folder)
+                    self.source_archive, self.manifest = prepare_zip(self.content, entry, '' if folder == '.' else folder, complete=True)
                 else:
                     if Path(upload.name).suffix.lower() != '.docx':
                         raise forms.ValidationError('The Word fallback requires a .docx file.')
@@ -112,6 +131,9 @@ class ContributionForm(forms.ModelForm):
 
 @login_required
 def submit(request):
+    if request.method == 'POST' and any(request.POST.get(field) for field in
+            ('submitter', 'contact_name', 'contact_email', 'contact_affiliation')):
+        return HttpResponse('Submitting on behalf of another person is available only in the administrator backend.', status=403)
     from .mfa import allow_attempt
     if request.method == 'POST' and not allow_attempt(f'file-submission:{request.user.pk}', limit=20):
         return HttpResponse('Too many file submissions. Please wait 15 minutes before trying again.', status=429,
@@ -155,6 +177,8 @@ def record_submission(item, form, user):
     item.source_archive = form.source_archive
     item.source_manifest = form.manifest
     item.save()
+    if item.submitter_id:
+        core.actor_for(item.submitter)
     credits = source_attribution(package_text(form.source_archive))
     if item.contact_name:
         credits.update(authors=list(dict.fromkeys([*credits.get('authors', []), item.contact_name])), contacts=[item.contact_name])
@@ -162,6 +186,10 @@ def record_submission(item, form, user):
         credits['affiliations'] = list(dict.fromkeys([*credits.get('affiliations', []), item.contact_affiliation]))
     if item.contact_email:
         credits['contact_emails'] = [item.contact_email]
+    entered = {field: form.cleaned_data.get(field, '') for field in ('authors', 'affiliations')}
+    for field, value in entered.items():
+        if value:
+            credits[field] = value.splitlines()
     doc = Document(name=f'fg-tida-contribution-{item.pk}', title=item.title,
         abstract=item.abstract, type_id='tida', group=item.group)
     core.save_document(doc, core.actor_for(user), 'Work item submitted for a group decision.',
@@ -174,6 +202,15 @@ def record_submission(item, form, user):
     from .file_safety import retire_private_after_archive
     retire_private_after_archive(bytes(item.content), item.filename, contribution_id=item.pk)
     sync_contact_metadata(item)
+    if any(entered.values()):
+        from .models import DocumentAttribution
+        from .credits import record_editor_changes
+        metadata, _ = DocumentAttribution.objects.get_or_create(document=doc)
+        fields = [field for field, value in entered.items() if value]
+        for field in fields:
+            setattr(metadata, field, entered[field])
+        record_editor_changes(metadata, fields)
+        metadata.save()
     WorkItem.objects.create(document=doc, short_name=item.work_item_acronym or slugify(item.title)[:48] or f'item-{item.pk}')
     queue_notifications(item.pk)
     receipt_address = item.contact_email or (item.submitter.email if item.submitter else '')
@@ -195,14 +232,19 @@ def sync_contact_metadata(item, clear=False, previous=None):
         for key, contact_field in [('authors', 'contact_name'), ('affiliations', 'contact_affiliation')]:
             lines = list(source.get(key, [])) if created else getattr(attribution, key).splitlines()
             old = (previous or {}).get(contact_field, '')
-            if old:
-                lines = [line for line in lines if line != old]
+            if old and old != getattr(item, contact_field):
+                lines = [getattr(item, contact_field) if line == old else line for line in lines]
+                lines = [line for line in lines if line]
             if getattr(item, contact_field):
                 lines.append(getattr(item, contact_field))
             values[key] = '\n'.join(dict.fromkeys(lines))
         provenance = dict(attribution.credit_provenance or {})
         updates = []
+        contact_fields = {'authors': 'contact_name', 'contacts': 'contact_name',
+                          'affiliations': 'contact_affiliation', 'contact_emails': 'contact_email'}
         for key, value in values.items():
+            if clear and previous is not None and previous.get(contact_fields[key], '') == getattr(item, contact_fields[key]):
+                continue
             mode = provenance.get(key, {}).get('mode')
             if not clear and (mode in ('manual', 'profiles') or (not created and mode is None and getattr(attribution, key))):
                 continue
@@ -222,8 +264,11 @@ def convert_existing_word(pk, user, *, rebuild=False, reason=''):
         return False
     from .word_scaffold import PROFILE
     if previous_package and item.source_manifest.get('package_profile') == PROFILE:
-        return False
-    if previous_package and (item.submission_method != 'word' or len(reason.strip()) < 10):
+        from .word_scaffold import scaffold
+        from .source_packages import unpack
+        if set(scaffold()[1]).issubset(unpack(previous_package)):
+            return False
+    if previous_package and (item.submission_method not in {'word', 'legacy'} or len(reason.strip()) < 10):
         raise forms.ValidationError('Rebuilding an existing conversion requires an explicit administrator review reason.')
     if Path(item.filename).suffix.lower() != '.docx':
         raise forms.ValidationError('Only DOCX submissions can be converted automatically. Save older DOC files as DOCX first.')
@@ -343,6 +388,58 @@ def detail(request, pk, download=False, source=False):
 def can_revise(item, user):
     return item.status == 'pending' and bool(item.document_id) and (user is None or item.submitter_id == user.pk or (
         user.has_perm('fgtida.change_contribution') and user.has_perm('doc.change_document')))
+
+
+class ContributionCreditsForm(forms.Form):
+    authors = CreditListField(label='Author(s)')
+    affiliations = CreditListField(label='Affiliation(s)')
+
+
+@login_required
+def edit_credits(request, pk):
+    items = Contribution.objects.select_related('document')
+    if not (request.user.has_perm('fgtida.change_contribution') and request.user.has_perm('doc.change_document')):
+        items = items.filter(submitter=request.user)
+    item = get_object_or_404(items, pk=pk)
+    if not can_revise(item, request.user):
+        return HttpResponse('Author details for an adopted or closed work item must be changed by an administrator in the backend.', status=403)
+    if request.method == 'POST' and any(request.POST.get(field) for field in ('submitter', 'contact_name', 'contact_email', 'contact_affiliation')):
+        return HttpResponse('The submitting account cannot be changed through this form.', status=403)
+    from .models import DocumentAttribution
+    from .github_attribution import source_attribution
+    from .file_safety import safe_document_text
+    from .credits import clean_values, record_editor_changes
+    metadata = getattr(item.document, 'tida_attribution', None)
+    declared = source_attribution(safe_document_text(item.document) or '')
+    assigned = list(item.document.documentauthor_set.select_related('person').order_by('order'))
+    native = {'authors': [author.person.name for author in assigned],
+              'affiliations': list(dict.fromkeys(author.affiliation for author in assigned if author.affiliation))}
+    initial = {}
+    for field in ('authors', 'affiliations'):
+        mode = (getattr(metadata, 'credit_provenance', {}) or {}).get(field, {}).get('mode')
+        value = getattr(metadata, field, '')
+        if mode == 'profiles':
+            value = native[field]
+        elif mode != 'manual' and not value:
+            value = declared.get(field, []) or native[field]
+        initial[field] = format_credit_list(clean_values(value, field))
+    form = ContributionCreditsForm(request.POST if request.method == 'POST' else None, initial=initial)
+    if request.method == 'POST' and form.is_valid():
+        with transaction.atomic():
+            item = Contribution.objects.select_for_update().get(pk=item.pk)
+            if not can_revise(item, request.user):
+                return HttpResponse('This work item is no longer awaiting review.', status=403)
+            item.document = Document.objects.select_for_update().get(pk=item.document_id)
+            metadata, _ = DocumentAttribution.objects.select_for_update().get_or_create(document_id=item.document_id)
+            for field in ('authors', 'affiliations'):
+                setattr(metadata, field, form.cleaned_data[field])
+            record_editor_changes(metadata, ('authors', 'affiliations'))
+            metadata.save()
+            core.save_document(item.document, core.actor_for(request.user), 'Author(s) and affiliations updated by the recorded submitter/editor. Submitting account and archived sources unchanged.')
+        return redirect('fgtida:document', name=item.document.name)
+    response = render(request, 'fgtida/edit_credits.html', {'submission': item, 'form': form})
+    response['Cache-Control'] = 'private, no-store'
+    return response
 
 
 class ContributionRevisionForm(forms.Form):

@@ -26,7 +26,7 @@ from .models import (EmailVerification, GitHubAccount, WorkingGroupConfiguration
     GitHubSource, WorkItem, WorkItemRelease, GitHubJob, DocumentAttribution, DocumentListing, DocumentFormat,
     PublicDocumentType)
 from .models import FileScan, FileScanEvent, FileScanException
-from .contributions import ContributionForm
+from .contributions import ContributionForm, CreditListField
 from .resource_files import SessionResourceForm
 from .training import TrainingVideoAdmin
 from .models import TrainingCategory, TrainingVideo
@@ -191,7 +191,12 @@ class ContributionReviewForm(forms.ModelForm):
 
     class Meta:
         model=Contribution
-        fields=['sequence_number', 'review_note', 'contact_name', 'contact_email', 'contact_affiliation', 'meeting']
+        fields=['sequence_number', 'review_note', 'submitter', 'contact_name', 'contact_email', 'contact_affiliation', 'meeting']
+
+    def clean_submitter(self):
+        if 'submitter' not in self.data and self.instance.pk:
+            return self.instance.submitter
+        return self.cleaned_data.get('submitter')
 
     def clean_meeting(self):
         if 'meeting' not in self.data and self.instance.pk:
@@ -242,14 +247,15 @@ class AdminContributionForm(ContributionForm):
 
 class ContributionAdmin(admin.ModelAdmin):
     form=ContributionReviewForm
+    raw_id_fields = ['submitter']
     list_display = ['reference', 'title', 'submitter', 'group', 'created', 'status', 'notifications_queued']
-    list_filter = ['status', 'group', 'meeting']
+    list_filter = ['status', 'group', 'meeting', ('submitter', admin.EmptyFieldListFilter), 'submission_method']
     search_fields = ['title', 'submitter__username', 'contact_name', 'contact_email', 'contact_affiliation', 'meeting__number', 'meeting__title']
     fields = ['reference', 'sequence_number', 'title', 'submitter', 'contact_name', 'contact_email', 'contact_affiliation', 'group', 'meeting', 'abstract', 'submitted_file', 'source_details', 'submission_method', 'source_commit',
               'source_folder', 'entry_document', 'conversion_verified_at', 'conversion_verified_by', 'verify_conversion', 'created',
               'status', 'review_note', 'decision', 'adopt_into', 'draft_repository_url', 'reviewed_by', 'reviewed_at', 'document', 'notifications_queued']
-    readonly_fields = [field for field in fields if field not in {'sequence_number','review_note','decision','adopt_into', 'verify_conversion', 'contact_name', 'contact_email', 'contact_affiliation', 'meeting'}]
-    actions = ['accept_contributions', 'reject_contributions', 'convert_word_contributions', 'rebuild_word_packages']
+    readonly_fields = [field for field in fields if field not in {'sequence_number','review_note','decision','adopt_into', 'verify_conversion', 'submitter', 'contact_name', 'contact_email', 'contact_affiliation', 'meeting'}]
+    actions = ['accept_contributions', 'reject_contributions', 'convert_word_contributions', 'rebuild_word_packages', 'complete_source_packages']
     ordering = ['number_prefix', 'sequence_number', 'pk']
 
     def get_fields(self, request, obj=None):
@@ -262,7 +268,7 @@ class ContributionAdmin(admin.ModelAdmin):
             return []
         fields = list(self.readonly_fields)
         if not request.user.has_perm('doc.change_document'):
-            fields += ['contact_name', 'contact_email', 'contact_affiliation', 'meeting']
+            fields += ['submitter', 'contact_name', 'contact_email', 'contact_affiliation', 'meeting']
         return fields
 
     def get_form(self, request, obj=None, **kwargs):
@@ -283,7 +289,11 @@ class ContributionAdmin(admin.ModelAdmin):
             obj.conversion_verified_at = timezone.now()
             obj.conversion_verified_by = request.user
         obj.save(update_fields=['review_note', 'contact_name', 'contact_email', 'contact_affiliation',
-            'conversion_verified_at', 'conversion_verified_by', 'meeting'])
+            'conversion_verified_at', 'conversion_verified_by', 'meeting', 'submitter'])
+        if 'submitter' in form.changed_data and obj.document_id:
+            if obj.submitter_id:
+                core.actor_for(obj.submitter)
+            core.save_document(obj.document, core.actor_for(request.user), 'Submitting account corrected by an authorized administrator.')
         if any(field in form.changed_data for field in ('contact_name', 'contact_email', 'contact_affiliation')):
             from .contributions import sync_contact_metadata
             sync_contact_metadata(obj, clear=True, previous=form.initial)
@@ -401,6 +411,33 @@ class ContributionAdmin(admin.ModelAdmin):
                     count += 1
                     self.log_change(request, item, 'Word source package rebuilt: ' + form.cleaned_data['reason'])
         self.message_user(request, f'Rebuilt {count} package(s). Earlier archives were preserved; review the new conversion before verifying it. No notifications were sent.')
+
+    @admin.action(description='Complete reviewed contribution ZIPs with specification-template assets', permissions=['change'])
+    def complete_source_packages(self, request, queryset):
+        if not request.user.has_perm('doc.change_document'):
+            raise PermissionDenied
+        from django.template.response import TemplateResponse
+        from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
+        from .contribution_packages import complete_package
+        class CompletionForm(forms.Form):
+            reason = forms.CharField(min_length=10, max_length=400, widget=forms.Textarea)
+            acknowledge = forms.BooleanField(label='I reviewed the sources. Earlier versions will be retained, a new package version recorded and Word conversion verification reset where applicable.')
+        form = CompletionForm(request.POST if request.POST.get('confirm_complete') == 'yes' else None)
+        if not form.is_bound or not form.is_valid():
+            return TemplateResponse(request, 'fgtida/admin/complete_source_packages.html', {
+                **self.admin_site.each_context(request), 'title': 'Complete reviewed contribution packages',
+                'form': form, 'records': queryset[:10], 'action_checkbox_name': ACTION_CHECKBOX_NAME})
+        changed = 0
+        for item in queryset[:10]:
+            try:
+                result = complete_package(item.pk, request.user, form.cleaned_data['reason'])
+            except (ValidationError, ValueError) as error:
+                self.message_user(request, f'{item.reference}: {error}', level='error')
+            else:
+                changed += bool(result)
+                if result:
+                    self.log_change(request, item, 'Source package completed: ' + form.cleaned_data['reason'])
+        self.message_user(request, f'Completed {changed} package(s). Review new versions; original uploads and earlier archives remain unchanged. No emails or GitHub writes were sent.')
 
 
 class SessionResourceAdmin(admin.ModelAdmin):
@@ -665,6 +702,15 @@ class DocumentFormatInline(admin.TabularInline):
 
 
 class PublicDocumentMetadataForm(forms.ModelForm):
+    authors = CreditListField(label='Author(s)')
+    affiliations = CreditListField(label='Affiliation(s)')
+
+    def __init__(self, *args, **kwargs):
+        from .credit_lists import format_credit_list
+        super().__init__(*args, **kwargs)
+        for field in ('authors', 'affiliations'):
+            self.initial[field] = format_credit_list(self.initial.get(field, ''))
+
     def clean_authors(self):
         from .credits import clean_values
         return '\n'.join(clean_values(self.cleaned_data['authors'], 'authors'))

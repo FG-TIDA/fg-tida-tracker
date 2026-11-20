@@ -32,7 +32,7 @@ class CreditFormatTests(SimpleTestCase):
         from .github_attribution import source_attribution
         self.assertEqual(source_attribution('Proposer(s)\nExample Author / Example Lab\nSummary\nBody')['authors'], ['Example Author'])
         self.assertEqual(source_attribution('> - Author: Example Author / Independent Researcher\n')['affiliations'], ['Independent Researcher'])
-        self.assertEqual(source_attribution('**Contacts** First Author, Second Author\n')['authors'], ['First Author, Second Author'])
+        self.assertEqual(source_attribution('**Contacts** First Author, Second Author\n')['authors'], ['First Author', 'Second Author'])
         self.assertEqual(source_attribution('**Source:** Example Author, Example Lab\n**Contact:** author@example.test\n')['authors'], ['Example Author'])
 
 

@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 
 PROFILE = 'word-spec-template-v1'
+RST_PROFILE = 'rst-spec-template-v1'
 
 
 @lru_cache(maxsize=1)
@@ -74,3 +75,27 @@ def wrap_word_source(text, media):
         f'Template: https://github.com/FG-TIDA/spec-template/tree/{commit}\n'
         'Original template license: LICENSE.txt.\n').encode()
     return files
+
+
+def complete_rst_source(files, entry):
+    """Add reviewed build assets without changing any submitted source bytes."""
+    from .source_packages import safe_path
+    safe_path(entry)
+    if entry not in files or not entry.endswith('.rst'):
+        raise ValueError('The entry document must be an existing RST file.')
+    defaults = wrap_word_source(files[entry].decode('utf-8-sig'), {})
+    defaults.pop('chapters/01_contribution.rst', None)
+    defaults.pop('conversion.json', None)
+    defaults['README.md'] = (
+        '# FG-TIDA contribution source package\n\n'
+        'Original submitted sources and images are preserved without alteration.\n'
+        'Missing build configuration, styling, logos and dependencies were added\n'
+        'from the reviewed FG-TIDA specification template. Uploaded conf.py is\n'
+        'stored only: the tracker never executes uploaded build configuration.\n'
+        'Build separately with: python -m sphinx -b html . _build/html\n').encode()
+    if entry != 'index.rst' and 'index.rst' not in files:
+        defaults['index.rst'] = ('FG-TIDA contribution\n====================\n\n.. toctree::\n\n   ' + entry[:-4] + '\n').encode()
+    merged = {**defaults, **files}
+    added = sorted(set(merged) - set(files))
+    return merged, {'package_profile': RST_PROFILE, 'template_commit': scaffold()[0],
+                    'added_template_files': added}

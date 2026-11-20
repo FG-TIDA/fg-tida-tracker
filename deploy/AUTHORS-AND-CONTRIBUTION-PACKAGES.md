@@ -1,0 +1,108 @@
+# Author identities and complete contribution source packages
+
+Deploy the reviewed changes first. No new environment variables or schema
+migrations are required beyond the existing metadata migration 0044.
+
+## Correct metadata
+
+In Render Shell run:
+
+```sh
+python ietf/manage.py refresh_fgtida_collections --no-sync --apply --skip-checks
+```
+
+The parser now handles Word-converted RST grid tables with a Contact cell such
+as `Name: Example Expert / Organization: Example Lab / Country: ... / E-mail:`.
+Names, organizations and emails remain separate. Display also normalizes cached
+metadata; manual metadata values are formatted without replacing the editor's
+chosen identity. Deliberately cleared fields remain cleared.
+
+GitHub use cases and themes take authors/affiliations from the declared document
+content, including multiple authors. The combined Proposer section supports
+multiple `Name, Organization` lines and shared-organization parentheses. Explicit
+Authors fields support comma-separated names. Issue creators' account names are
+not guessed to be authors. Older auto-filled values proven to match recorded
+imports follow later source updates; deliberate administrator overrides remain
+authoritative. If a declaration is ambiguous or absent, correct it in GitHub or
+set a deliberate backend override rather than inventing a person or affiliation.
+
+Edit credits in **Admin → Documents → document → Public metadata → Author(s)**,
+using commas or new lines. Quote a name or organization containing a comma,
+for example `"Family, Given", Another Author` or `"Institute, Paris", Example Lab`.
+Explicit assigned author profiles are editable in the author
+inline. A name in a source document does not by itself prove a registered identity.
+
+## Submission identity
+
+The public NWI form requires login and binds ownership to that logged-in account.
+**Author(s)** and **Affiliation(s)** accept comma-separated or newline-separated
+lists. Co-authors do not need accounts. Blank submission fields use the declarations
+in the uploaded source. These lists do not change the submitting account.
+The form rejects POST fields attempting to select another submitter or proxy
+contact. Only the administrator backend can select/correct the submitting account
+or record on-behalf-of contact details. Co-author declarations do not automatically
+create accounts or link arbitrary namesake profiles.
+
+The recorded owner can open **Edit author details** on a pending NWI and update
+authors/affiliations. Other users cannot edit it; adopted/closed items require an
+administrator. This updates metadata/history only, without changing the original,
+owner, numbering or sending emails. Administrators can edit public metadata and
+types in the document backend, and correct the submitting account in Contributions.
+
+Document pages show the submitting account's public profile under **Submitted
+by**. A declared author matching that actual submitter or an explicitly assigned
+author profile is clickable. External/imported authors remain plain text unless
+an administrator assigns their profile. No account identity is inferred by
+searching all users for a matching name or email. Profile pages list the person's
+authored documents and recorded submissions.
+
+In **Admin → Contributions**, the **Submitter** column and empty/non-empty
+Submitter filter show the recorded account. Imported use cases and legitimate
+admin on-behalf-of submissions may have none. A plain-text source author is not
+evidence that the public login requirement was bypassed. Do not guess ownership
+from names or silently assign historical records to namesake accounts.
+
+## New source packages
+
+New uploaded RST packages retain their original RST sources and supplied media;
+missing reviewed template configuration, styling, logos and dependency files
+are added automatically. Word conversion already produces a complete package
+and extracts embedded media. Neither uploaded conf.py nor JavaScript is executed
+on the tracker. Existing GitHub snapshots remain faithful to their source; this
+does not modify any GitHub repository or build workflow.
+
+## Repair older incomplete packages
+
+Take a production database and file backup first. Plan without changes:
+
+```sh
+python ietf/manage.py complete_fgtida_packages --skip-checks
+```
+
+The plan excludes use cases and reports complete, incomplete, awaiting security
+checks, missing current ZIPs, or later source edits requiring individual review.
+After reviewing the plan, repair one selected contribution (use its backend ID):
+
+```sh
+python ietf/manage.py complete_fgtida_packages --contribution 22 --apply --reason "Reviewed the retained original and incomplete source package." --skip-checks
+```
+
+Contribution 22's currently published 0.1 package was already complete when
+inspected on 20 November 2026, so it should remain unchanged. To process all
+eligible incomplete records after review, omit `--contribution 22`.
+
+Alternatively open **Admin → Contributions**, select at most ten reviewed
+records and choose **Complete reviewed contribution ZIPs with specification-template
+assets**. Click **Go**, provide a reason, read the acknowledgement and confirm.
+
+Repairs keep the same contribution/document identifiers and numbers, preserve
+original uploads and earlier versions, and create a new archive version. They
+send no emails, write nothing to GitHub and do not grant WG approval. An older
+Word conversion is rebuilt from its retained Word original so embedded images
+can be recovered; verification resets and must be reviewed against that original.
+Later source edits are not overwritten. Generic RST repairs preserve all existing
+source/media bytes and add supporting assets only. Missing original diagrams
+cannot be invented or recovered if they were never supplied.
+
+Inspect the new default version and its ZIP after repair. An explicitly selected
+old historical version retains its old package; earlier archives are immutable.

@@ -224,12 +224,16 @@ def document(request, name, rev=None):
     selected_version = version_rows.get(snapshot.rev)
     version_metadata = selected_version.source_metadata if selected_version else {}
     authors = list(doc.documentauthor_set.select_related('person').order_by('order'))
+    assigned_authors = authors
     override = getattr(doc, 'tida_attribution', None)
-    from .credits import resolve_credits
+    from .credits import resolve_credits, legacy_import_fields
+    imported = legacy_import_fields(override, source_records, [row.source_metadata for row in version_rows.values()])
     credits, editor_credits, use_profiles = resolve_credits(body, override, version_metadata,
-        source_records if snapshot is doc else [])
+        source_records if snapshot is doc else [], imported)
     if not use_profiles and ('authors' in editor_credits or credits.get('authors')):
         authors = []
+    from .author_links import document_people
+    author_entries, submitted_by = document_people(doc, authors, credits, assigned_authors)
     return render(request, 'fgtida/document.html', {'doc': doc, 'snapshot': snapshot,
         'revisions': ordered, 'file_available': file_available,'display_abstract':abstract,
         'security_pending': security_pending,
@@ -243,8 +247,9 @@ def document(request, name, rev=None):
         'text_is_package': Path(preview_filename).suffix.lower() == '.zip' and not hasattr(doc, 'tida_listing'),
         'work_item':work_item,'old_revision':bool(rev and rev!=doc.rev),'show_working':not rev,
         'events': doc.docevent_set.select_related('by')[:100],
-        'authors': authors, 'credits': credits, 'source_records': source_records,
-        'document_metadata_rows': 4 + bool(credits.get('affiliations')) + bool(credits.get('contact_emails') or credits.get('contacts')),
+        'authors': authors, 'author_entries': author_entries, 'submitted_by': submitted_by, 'credits': credits, 'source_records': source_records,
+        'credit_edit_item': doc.contribution_set.filter(submitter=request.user, status='pending').first() if request.user.is_authenticated else None,
+        'document_metadata_rows': 4 + bool(credits.get('affiliations')) + bool(credits.get('contact_emails') or credits.get('contacts')) + bool(submitted_by),
         'sessions': doc.session_set.select_related('meeting'),
         'relationships': RelatedDocument.objects.filter(source=doc, target__in=core.documents()).select_related('target', 'relationship'),
         'incoming': RelatedDocument.objects.filter(target=doc, source__in=core.documents()).select_related('source', 'relationship'),
@@ -553,7 +558,8 @@ def compare(request, name):
 
 
 def member_photo(request, person_id):
-    scope = Q(role__group__in=core.groups()) | Q(documentauthor__document__in=core.documents())
+    from .author_links import public_person_scope
+    scope = public_person_scope()
     if request.user.is_authenticated:
         scope |= Q(user=request.user)
     person = get_object_or_404(Person.objects.filter(scope).distinct(), pk=person_id)
@@ -566,13 +572,17 @@ def member_photo(request, person_id):
 
 
 def person(request, person_id):
-    scope = Q(role__group__in=core.groups()) | Q(documentauthor__document__in=core.documents())
+    from .author_links import public_person_scope
+    scope = public_person_scope()
     if request.user.is_authenticated:
         scope |= Q(user=request.user)
     person = get_object_or_404(Person.objects.filter(scope).distinct(), pk=person_id)
-    return render(request, 'fgtida/person.html', {'person': person,
+    from .author_links import person_label
+    documents = core.documents().filter(Q(documentauthor__person=person) |
+        Q(contribution__submitter_id=person.user_id)) if person.user_id else core.documents().filter(documentauthor__person=person)
+    return render(request, 'fgtida/person.html', {'person': person, 'person_display_name': person_label(person),
         'roles': person.role_set.filter(group__in=core.groups()).select_related('group', 'name'),
-        'documents': core.documents().filter(documentauthor__person=person).distinct().order_by('-time')[:25]})
+        'documents': documents.distinct().order_by('-time')[:25]})
 
 
 def calendar(request, num=None, acronym=None):

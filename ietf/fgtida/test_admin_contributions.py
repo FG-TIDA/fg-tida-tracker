@@ -94,6 +94,8 @@ class AdminContributionTests(TestCase):
         self.client.force_login(user)
         payload = self.payload()
         payload.pop('_save')
+        for field in ('submitter', 'contact_name', 'contact_email', 'contact_affiliation'):
+            payload.pop(field, None)
         with tempfile.TemporaryDirectory() as root, override_settings(FGTIDA_QUARANTINE_DIR=root), \
                 patch('ietf.fgtida.file_safety.scan_stream', side_effect=OSError) as scan:
             response = self.client.post('/submit/', payload)
@@ -117,6 +119,12 @@ class AdminContributionTests(TestCase):
             self.assertNotIn(field, form.fields)
         payload = self.payload()
         payload['submitter'] = self.user.pk
+        response = self.client.post('/submit/', payload)
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(Contribution.objects.exists())
+        payload = self.payload()
+        for field in ('submitter', 'contact_name', 'contact_email', 'contact_affiliation'):
+            payload.pop(field, None)
         response = self.client.post('/submit/', payload)
         self.assertEqual(response.status_code, 302)
         item = Contribution.objects.get()

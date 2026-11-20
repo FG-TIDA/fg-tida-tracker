@@ -1,0 +1,6 @@
+{% extends 'base.html' %}{% load django_bootstrap5 %}
+{% block title %}Edit author details | FG-TIDA{% endblock %}
+{% block content %}<h1>Edit author details</h1><h2 class="h4">{{ submission.title }}</h2>
+<p>List all authors and affiliations, including co-authors without tracker accounts. Separate entries with commas or new lines; quote entries containing commas. This changes public metadata only. The submitting account and archived document remain unchanged. Update the document source as well when its author list changes.</p>
+<form method="post">{% csrf_token %}{% bootstrap_form form %}<button class="btn btn-primary">Save author details</button></form>
+{% endblock %}
