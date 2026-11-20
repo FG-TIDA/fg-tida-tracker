@@ -268,7 +268,7 @@ class GitHubWorkflowTests(TestCase):
         self.assertEqual(original.source_metadata['affiliations'], ['Example Lab'])
         self.assertNotIn('private@example.test', str(original.source_metadata))
         page = self.client.get('/doc/' + original.document.name + '/')
-        self.assertContains(page, '<th scope="row">Affiliation</th><td>Example Lab</td>')
+        self.assertContains(page, '<th scope="row">Affiliation(s)</th><td>Example Lab</td>')
         self.assertContains(self.client.get('/doc/', {'author': 'Example Lab'}), issue['title'])
 
     def test_catalog_refresh_reuses_explicit_work_item_link(self):

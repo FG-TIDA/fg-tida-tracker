@@ -97,6 +97,12 @@ def search(request, acronym=None, incubation=False, category_slug=None):
         docs = docs.filter(group__acronym=group)
     from .document_types import singular, NAMES, search_type_choices
     types = search_type_choices()
+    # Old menu/bookmark URLs use native slugs. Resolve them to the unified
+    # public type when duplicate native choices have been hidden in the form.
+    if kind and kind not in types:
+        native_label = dict(core.TYPE_LABELS).get(kind)
+        if native_label:
+            kind = next((key for key, label in types.items() if label == singular(native_label)), kind)
     if kind in types:
         if kind.startswith('public-'):
             name = types[kind]

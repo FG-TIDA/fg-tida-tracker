@@ -18,6 +18,27 @@ class DocumentListTests(TestCase):
     setUp = native_tests.NativeDatatrackerTests.setUp
     admin_payload = native_tests.NativeDatatrackerTests.admin_payload
 
+    def test_templates_menu_legacy_slug_uses_unified_type_and_keeps_both_templates(self):
+        from .models import DocumentAttribution
+        template = PublicDocumentType.objects.get_or_create(name='Template')[0]
+        documents = []
+        for name, title, native in [('specification-template-menu', 'Specification template', 'tida-template'),
+                                    ('charter-template-menu', 'WG charter template', 'tida')]:
+            doc = Document.objects.create(name=name, title=title, group=self.root, type_id=native)
+            DocumentAttribution.objects.create(document=doc, public_type=template)
+            documents.append(doc)
+        unrelated = Document.objects.create(name='actual-wg-charter-menu', title='Actual working-group charter', group=self.root, type_id='charter')
+        legacy = Document.objects.create(name='legacy-untyped-template', title='Legacy template', group=self.root, type_id='tida-template')
+        manual = Document.objects.create(name='manually-reclassified-template', title='Manually classified resource', group=self.root, type_id='tida-template')
+        DocumentAttribution.objects.create(document=manual, public_type=PublicDocumentType.objects.get_or_create(name='Resource')[0])
+        for kind in ['tida-template', f'public-{template.pk}']:
+            response = self.client.get('/doc/', {'type': kind})
+            for document in [*documents, legacy]:
+                self.assertContains(response, document.title)
+            self.assertNotContains(response, unrelated.title)
+            self.assertNotContains(response, manual.title)
+            self.assertEqual(response.context['selected_type'], f'public-{template.pk}')
+
     def test_metadata_sections_keep_three_columns_with_optional_credit_rows(self):
         from html.parser import HTMLParser
         from .models import DocumentAttribution
@@ -117,7 +138,7 @@ class DocumentListTests(TestCase):
         self.assertNotContains(response, f'>{title}</h2>')
         self.assertContains(response, 'Keep the rest of the document here.', count=1)
         self.assertContains(response, '<th scope="row">Author(s)</th><td>Example Author</td>')
-        self.assertContains(response, '<th scope="row">Affiliation</th><td>Individual expert</td>')
+        self.assertContains(response, '<th scope="row">Affiliation(s)</th><td>Individual expert</td>')
         self.assertContains(response, '<th scope="row">Submission contact</th><td><a href="mailto:author@example.test">')
 
         self.assertEqual(self.client.post('/admin/fgtida/publicdocumenttype/add/', {'name': 'Technical note'}).status_code, 302)
