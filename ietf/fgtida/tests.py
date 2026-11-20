@@ -18,6 +18,13 @@ from ietf.meeting.models import Meeting, MeetingCategory, Session, Schedule, Tim
 from . import core
 
 
+def open_submission_meeting():
+    meeting, _ = Meeting.objects.get_or_create(number='nwi-submission-test', defaults={
+        'title': 'Upcoming submission meeting', 'type_id': 'tida', 'date': timezone.localdate() + timedelta(days=30),
+        'days': 2, 'time_zone': 'UTC'})
+    return meeting
+
+
 class PublicationSecurityTests(SimpleTestCase):
     def test_production_can_prepare_without_smtp_credentials(self):
         import os
@@ -521,7 +528,7 @@ class NativeDatatrackerTests(TestCase):
 
     def source_submission(self, text=b'Contribution'):
         from .source_packages import pack
-        return {'submission_method': 'rst', 'publication_consent': 'on', 'entry_document': 'index.rst',
+        return {'meeting': open_submission_meeting().pk, 'submission_method': 'rst', 'publication_consent': 'on', 'entry_document': 'index.rst',
                 'upload': SimpleUploadedFile('proposal.zip', pack({'index.rst': text}))}
 
     def admin_payload(self, url, values):
@@ -711,7 +718,7 @@ class NativeDatatrackerTests(TestCase):
         self.client.logout()
         self.assertEqual(self.client.get('/submit/').status_code, 302)
         self.client.force_login(self.user)
-        self.assertContains(self.client.post('/submit/', {'title': 'Bad file', 'group': Group.objects.get(acronym='tidawg1').pk,
+        self.assertContains(self.client.post('/submit/', {'title': 'Bad file', 'meeting': open_submission_meeting().pk, 'group': Group.objects.get(acronym='tidawg1').pk,
             'submission_method': 'rst', 'publication_consent': 'on', 'entry_document': 'index.rst', 'upload': SimpleUploadedFile('file.exe', b'bad')}), 'Upload an RST source ZIP')
 
     def test_admin_user_creation_and_profile(self):

@@ -4,6 +4,20 @@ from pathlib import Path
 import sys
 
 
+def inspect_publication(data, kind):
+    """Publication checks are separate from optional preview compatibility."""
+    if kind in {'pdf', 'doc', 'docx', 'pptx', 'xml', 'txt', 'md', 'rst', 'zip', 'repository'}:
+        if kind in {'docx', 'pptx', 'zip', 'repository'}:
+            import zipfile
+            # Bound archives without requiring their contents to be renderable.
+            # Invalid containers remain opaque downloads; preview parsers reject them.
+            if zipfile.is_zipfile(io.BytesIO(data)):
+                from .source_packages import unpack
+                unpack(data)
+        return
+    inspect(data, kind)
+
+
 def inspect(data, kind):
     from .files import _extract_text
     if kind == 'repository':
@@ -57,4 +71,7 @@ if __name__ == '__main__':
     data = sys.stdin.buffer.read(100 * 1024 * 1024 + 1)
     if not data or len(data) > 100 * 1024 * 1024:
         raise ValueError('Invalid file size')
-    inspect(data, sys.argv[1])
+    if len(sys.argv) > 2 and sys.argv[2] == 'publication':
+        inspect_publication(data, sys.argv[1])
+    else:
+        inspect(data, sys.argv[1])

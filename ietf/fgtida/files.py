@@ -25,8 +25,19 @@ def extract_text(data, filename):
                                     input=data, capture_output=True, timeout=15, check=True, env=environment())
             return result.stdout.decode('utf-8')[:2_000_000]
         except (subprocess.SubprocessError, UnicodeError) as error:
+            from .file_safety import required, allowed
+            if required() and allowed(data, filename):
+                # An optional reading preview must not prevent archiving an
+                # antivirus-clean original. The parser remains isolated/strict.
+                return ''
             raise ValidationError('Cannot safely read this file. Choose a valid, unencrypted document.') from error
-    return _extract_text(data, filename)
+    try:
+        return _extract_text(data, filename)
+    except ValidationError:
+        from .file_safety import required, allowed
+        if required() and allowed(data, filename):
+            return ''
+        raise
 
 
 def _extract_text(data, filename):

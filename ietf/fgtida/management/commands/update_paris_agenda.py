@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from ietf.fgtida import core, workflow
-from ietf.meeting.models import Session, Schedule, TimeSlot, SchedTimeSessAssignment
+from ietf.meeting.models import Session, Schedule, TimeSlot, SchedTimeSessAssignment, Room
 
 
 class Command(BaseCommand):
@@ -30,6 +30,14 @@ class Command(BaseCommand):
         rows = json.loads(Path(__file__).resolve().parents[2].joinpath('paris_agenda_2026.json').read_text(encoding='utf-8-sig'))
         self.stdout.write(f'{meeting.number}: {len(rows)} agenda rows. ' + ('Applying.' if options['apply'] else 'Preview only; use --apply to save.'))
         actor = core.actor_for() if options['apply'] else None
+        if options['apply']:
+            room = Room.objects.filter(meeting=meeting, name__iexact='ROOM XI').first()
+            if not room:
+                room = Room.objects.create(meeting=meeting, name='ROOM XI')
+            elif room.name != 'ROOM XI':
+                room.name = 'ROOM XI'
+                room.save(update_fields=['name'])
+            dinner_room, _ = Room.objects.get_or_create(meeting=meeting, name='TBC')
         if options['apply'] and not meeting.schedule_id:
             meeting.schedule = Schedule.objects.create(meeting=meeting, name='official', owner=actor, public=True, visible=True)
             meeting.save(update_fields=['schedule'])
@@ -74,6 +82,7 @@ class Command(BaseCommand):
             slot = assignment.timeslot if assignment and not assignment.timeslot.sessionassignments.exclude(pk=assignment.pk).exists() else TimeSlot(meeting=meeting, type_id='session')
             slot.time, slot.name = start, title
             slot.duration = end-start if end else timedelta(0)
+            slot.location = dinner_room if 'dinner' in title.lower() else room
             slot.save()
             if assignment:
                 assignment.timeslot = slot

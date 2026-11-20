@@ -170,12 +170,12 @@ def _trust_admin_file(data, filename, actor, source_digest=''):
     record = FileScan.objects.select_for_update().get(pk=digest)
     kind = format_key(filename)
     try:
-        inspect_file(data, kind)
+        inspect_publication(data, kind)
     except ValidationError as error:
         record.rejected_formats = sorted(set(record.rejected_formats) | {kind})
         record.formats = [value for value in record.formats if value != kind]
         record.status = record.status if record.status in {'clean', 'admin'} and record.formats else 'blocked'
-        record.detail = f'Administrator upload failed structural checks for {kind}.'
+        record.detail = f'Administrator upload exceeds file limits or uses unsupported media: {kind}.'
         failure = error
     else:
         revoke_exceptions(record, actor=actor, reason='An administrator uploaded these exact bytes; administrator upload policy now applies.')
@@ -183,7 +183,7 @@ def _trust_admin_file(data, filename, actor, source_digest=''):
         record.engine = ''
         record.formats = sorted(set(record.formats) | {kind})
         record.rejected_formats = [value for value in record.rejected_formats if value != kind]
-        record.detail = 'Administrator upload: structural checks passed; antivirus scan skipped.'
+        record.detail = 'Administrator upload: publication limits passed; antivirus scan skipped.'
         if source_digest:
             record.detail += ' Derived from ' + source_digest + '.'
         failure = None
@@ -230,7 +230,7 @@ def approve_false_positive(digest, user, reason, *, expected_detection):
     """Authorize one known finding for these exact bytes after privileged review.
 
     The caller must reauthenticate the superuser. There is no blanket filename,
-    uploader or signature allowlist, and structural checks cannot be waived.
+    uploader or signature allowlist, and publication limits cannot be waived.
     """
     if not user.is_active or not user.is_superuser:
         raise PermissionDenied
@@ -241,7 +241,7 @@ def approve_false_positive(digest, user, reason, *, expected_detection):
     if record.detail != expected_detection:
         raise ValidationError('The finding changed. Review the current finding before granting an exception.')
     if record.status != 'rejected':
-        raise ValidationError('Only a specific antivirus finding can receive an exception. Scanner errors and structural rejections cannot.')
+        raise ValidationError('Only a specific antivirus finding can receive an exception. Scanner errors and file-limit/media rejections cannot.')
     finding = record.detail
     if finding.startswith(('Heuristics.Limits.', 'Heuristics.Encrypted.')):
         raise ValidationError('Scanning limits and encrypted content cannot be overridden.')
@@ -269,11 +269,11 @@ def approve_false_positive(digest, user, reason, *, expected_detection):
             raise ValidationError('The scanner result changed or is unavailable. Review the new result before trying again.')
         kind = format_key(record.filename)
         try:
-            inspect_file(data, kind)
+            inspect_publication(data, kind)
         except ValidationError:
             record.rejected_formats = sorted(set(record.rejected_formats) | {kind})
             record.save(update_fields=['rejected_formats'])
-            record_event(record, 'denied', kind=kind, actor=user, detail='Exception denied: structural checks failed. ' + reason)
+            record_event(record, 'denied', kind=kind, actor=user, detail='Exception denied: publication limits failed. ' + reason)
             failure = True
         else:
             failure = False
@@ -283,7 +283,7 @@ def approve_false_positive(digest, user, reason, *, expected_detection):
                 'detection': finding, 'reason': reason, 'approved_by': user, 'revoked_at': None})
             record_event(record, 'exception', kind=kind, actor=user, detail=reason)
     if failure:
-        raise ValidationError('Structural checks failed. This file remains blocked; an antivirus exception cannot waive those checks.')
+        raise ValidationError('Publication limits failed. This file remains blocked; an antivirus exception cannot waive those checks.')
     return True
 
 
@@ -335,20 +335,20 @@ def validate_file(data, filename, *, force=False):
                 record.formats = []
                 if has_exception(record, kind):
                     try:
-                        inspect_file(data, kind)
+                        inspect_publication(data, kind)
                     except ValidationError as error:
                         structure_error = error
                         record.rejected_formats = sorted(set(record.rejected_formats) | {kind})
-                        revoke_exceptions(record, reason='Structural validation failed during rescan.')
+                        revoke_exceptions(record, reason='Publication limits failed during rescan.')
             else:
                 try:
-                    inspect_file(data, kind)
+                    inspect_publication(data, kind)
                 except ValidationError as error:
                     structure_error = error
                     record.rejected_formats = sorted(set(record.rejected_formats) | {kind})
                     record.formats = [item for item in record.formats if item != kind]
                     record.status = 'clean' if record.formats else 'blocked'
-                    record.detail = f'Unsafe document structure for {kind}.'
+                    record.detail = f'File limits or unsupported media for {kind}.'
                 else:
                     record.status = 'clean'
                     record.formats = sorted(set(record.formats) | {kind})
@@ -374,6 +374,15 @@ def inspect_file(data, kind):
                        capture_output=True, timeout=20, check=True, env=environment())
     except (OSError, subprocess.SubprocessError) as error:
         raise ValidationError('This file contains unsupported, active, encrypted or unsafe content. Export a plain document and try again.') from error
+
+
+def inspect_publication(data, kind):
+    from .parser_process import environment
+    try:
+        subprocess.run([sys.executable, '-m', 'ietf.fgtida.safety_worker', kind, 'publication'], input=data,
+                       capture_output=True, timeout=20, check=True, env=environment())
+    except (OSError, subprocess.SubprocessError) as error:
+        raise ValidationError('The file exceeds processing/archive limits or uses an unsupported media type.') from error
 
 
 def allowed(data, filename):
@@ -443,7 +452,7 @@ def safe_document_text(snapshot):
     try:
         text = extract_text(data, filename)
     except ValidationError:
-        return None
+        return '' if allowed(data, filename) else None
     if len(text.encode('utf-8')) < 500000:
         cache.set(key, text, 3600)
     return text

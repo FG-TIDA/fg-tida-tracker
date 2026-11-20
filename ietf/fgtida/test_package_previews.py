@@ -82,7 +82,7 @@ class PackageAccessTests(TestCase):
 
     def submission(self):
         data = source()
-        response = self.client.post('/submit/', {'title': 'Illustrated proposal', 'group': Group.objects.get(acronym='tidawg1').pk,
+        response = self.client.post('/submit/', {'title': 'Illustrated proposal', 'meeting': native_tests.open_submission_meeting().pk, 'group': Group.objects.get(acronym='tidawg1').pk,
             'submission_method': 'rst', 'publication_consent': 'on', 'entry_document': 'index.rst',
             'upload': SimpleUploadedFile('proposal.zip', data)})
         self.assertEqual(response.status_code, 302)

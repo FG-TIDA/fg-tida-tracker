@@ -102,12 +102,12 @@ class ScanExceptionTests(TestCase):
             self.assertContains(response, 'finding changed')
             scan.assert_not_called()
 
-    def test_structurally_unsafe_files_never_receive_an_exception(self):
-        record = self.reject(b'Not a genuine PDF.', 'unsafe.pdf')
-        with self.assertRaisesMessage(ValidationError, 'Structural checks failed'):
+    def test_unsupported_media_never_receive_an_exception(self):
+        record = self.reject(b'Not a genuine SVG.', 'invalid.svg')
+        with self.assertRaisesMessage(ValidationError, 'Publication limits failed'):
             self.approve(record)
         self.assertFalse(record.exceptions.exists())
-        self.assertFalse(allowed(b'Not a genuine PDF.', 'unsafe.pdf'))
+        self.assertFalse(allowed(b'Not a genuine SVG.', 'invalid.svg'))
         self.assertTrue(record.events.filter(operation='denied').exists())
 
     def test_staff_and_scanner_errors_cannot_be_overridden(self):
@@ -160,11 +160,11 @@ class ScanExceptionTests(TestCase):
         self.assertFalse(allowed(self.data, record.filename))
         self.assertFalse(record.exceptions.filter(revoked_at__isnull=True).exists())
 
-    def test_updated_structural_checks_can_revoke_an_existing_exception(self):
+    def test_updated_publication_limits_can_revoke_an_existing_exception(self):
         record = self.reject()
         self.approve(record)
         with patch('ietf.fgtida.file_safety.scan_stream', return_value=('ClamAV test', record.detail)), \
-                patch('ietf.fgtida.file_safety.inspect_file', side_effect=ValidationError('Unsafe structure')):
+                patch('ietf.fgtida.file_safety.inspect_publication', side_effect=ValidationError('Archive limit exceeded')):
             with self.assertRaises(ValidationError):
                 validate_file(self.data, record.filename, force=True)
         self.assertFalse(allowed(self.data, record.filename))

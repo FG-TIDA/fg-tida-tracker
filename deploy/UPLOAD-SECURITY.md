@@ -1,21 +1,22 @@
 # File scanning on Render
 
-Uploads from ordinary users and automated integrations pass structural checks
-and a private ClamAV scan before conversion or publication. Documents, source
+Uploads from ordinary users and automated integrations pass file/archive limits
+and a private ClamAV scan before publication. Optional preview compatibility
+does not block publication of an antivirus-clean original. Documents, source
 packages and hosted media are covered. Existing
 originals, alternative formats, GitHub artifacts and session archives require a
 successful scan before download, unless a superuser has approved the specific
-antivirus finding for those exact bytes as described below. Structural checks
-always apply. Contribution emails contain links only.
+antivirus finding for those exact bytes as described below. Archive limits and
+isolated preview/conversion checks remain in place. Contribution emails contain links only.
 Accounts can make up to 20 submission or revision attempts per 15 minutes to
 limit repeated expensive file checks.
 
 ### Administrator upload policy
 
 As requested, files actually uploaded by an authenticated, active staff
-administrator are exempt from antivirus scanning. They still pass file-type,
-macro/active-content, archive and resource-limit checks before conversion or
-publication. The admin list labels them **Administrator trusted — antivirus
+administrator are exempt from antivirus scanning. They still pass archive and
+resource limits before publication. Previewing/conversion retain their own
+content checks. The admin list labels them **Administrator trusted — antivirus
 skipped**, with an audit event identifying the uploader; this does not certify
 them as antivirus clean. Administrators are responsible for checking their
 upload sources and protecting their accounts/devices.
@@ -30,6 +31,31 @@ implemented are not automatically reclassified based on guesses about their
 origin. The existing reviewed exception flow remains available for those.
 
 See [Backend contribution entry and Word conversion](CONTRIBUTION-ADMIN.md).
+
+## Release earlier document compatibility holds
+
+Migration 0041 queues earlier document-format holds for fresh antivirus checks.
+It does not mark files clean or create missing contributions. Malware rejections
+and scanner errors are not waived. After deploying, run in Render Shell:
+
+```sh
+python ietf/manage.py scan_fgtida_files --limit 1000 --skip-checks
+```
+
+The existing maintenance scheduler also processes queued files in batches.
+Published document records become downloadable after their files pass. Versions,
+document IDs, review states and content bytes are retained. Unsupported previews
+show a preview-unavailable message; active SVG is still excluded from inline
+rendering. File-size/archive-expansion limits remain enforced. The former generic
+"Unsafe document structure" status is replaced by a file-limit/media status for
+the remaining publication checks.
+
+Uploads rejected before the submission form was saved cannot be reconstructed
+from held bytes alone: their contributor, title, group and publication consent
+may never have been saved. These need resubmission through the normal form.
+The RST submission workflow still needs a valid entry document and referenced
+source files; Word conversion can still require source corrections. Such workflow
+errors are separate from publication permission for existing antivirus-clean files.
 
 ## Create the private scanner first
 
@@ -170,7 +196,7 @@ For a suspected false positive:
    action. For an existing archived file, an operator can instead run a
    targeted rescan below. Replace the placeholder with the record's full
    lowercase 64-character checksum. This rescans only matching bytes and still
-   requires both antivirus and structural checks to pass.
+   requires both antivirus and file/archive-limit checks to pass.
 
 ```sh
 python ietf/manage.py scan_fgtida_files --sha256 CHECKSUM_FROM_ADMIN --force --reason "Reviewed detection after signature update" --skip-checks
@@ -201,9 +227,9 @@ responsibility for allowing access despite the antivirus finding.
    local password before using this action.
 3. Click **Approve this exact-file exception**. A fresh scan must reproduce the
    reviewed finding with working self-tests and fresh signatures. The held
-   bytes must match the checksum and pass structural validation. Scanner errors,
-   limits, encryption, active documents and other structural rejections cannot
-   be overridden. If the fresh scan is clean, no exception is needed.
+   bytes must match the checksum and pass publication limits. Scanner errors,
+   limits and encryption findings cannot be overridden. Preview compatibility
+   is checked separately. If the fresh scan is clean, no exception is needed.
 4. Check **Active manual exception** and the read-only history. An exception
    applies only to the exact checksum, inspected format and finding. It is not
    an uploader, filename or signature allowlist. Different bytes, edited revisions,
@@ -216,7 +242,7 @@ responsibility for allowing access despite the antivirus finding.
    finding remains. Already downloaded copies cannot be recalled.
 
 Approved exceptions continue through periodic rescanning. A changed finding,
-new structural failure, or a true clean verdict revokes the earlier exception.
+new publication-limit failure, or a true clean verdict revokes the earlier exception.
 Quarantine expiry/removal preserves the scanner verdict, exception and history;
 it removes only privately held bytes. If originals have expired before approval,
 rescan the archived file or ask the contributor to resubmit so the exact bytes

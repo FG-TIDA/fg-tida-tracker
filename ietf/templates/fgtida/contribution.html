@@ -1,6 +1,7 @@
 {% extends 'base.html' %}{% load fgtida %}
 {% block content %}
 <h1>{{ submission.title }}</h1>
+{% if submission.meeting %}<p><strong>Meeting:</strong> <a href="{% url 'fgtida:meeting' submission.meeting.number %}">{{ submission.meeting.display_title }}</a> · {{ submission.meeting.date|date:'j F Y' }}</p>{% endif %}
 {% if submission.reference %}<p class="lead">{{ submission.reference }}</p>{% endif %}
 {% if can_revise %}<p><a class="btn btn-primary" href="{% url 'fgtida:contribution-revise' submission.pk %}">Submit a new version</a></p>{% endif %}
 <p>{% if submission.document %}{% document_states submission.document %}{% else %}{{ submission.get_status_display }}{% endif %} · {{ submission.created }}</p>

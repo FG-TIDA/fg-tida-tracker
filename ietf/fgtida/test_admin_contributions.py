@@ -25,7 +25,7 @@ class AdminContributionTests(TestCase):
     setUp = native_tests.NativeDatatrackerTests.setUp
 
     def payload(self):
-        return {'title': 'Contribution by an external expert',
+        return {'title': 'Contribution by an external expert', 'meeting': native_tests.open_submission_meeting().pk,
             'group': Group.objects.get(acronym='tidawg1').pk, 'submission_method': 'rst',
             'contact_name': 'Example Expert', 'contact_email': 'expert@example.test',
             'contact_affiliation': 'Example Research Institute',

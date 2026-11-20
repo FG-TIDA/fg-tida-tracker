@@ -109,6 +109,8 @@ class Contribution(models.Model):
     contact_affiliation = models.CharField(max_length=255, blank=True)
     notifications_queued = models.BooleanField(default=True, editable=False)
     group = models.ForeignKey('group.Group', on_delete=models.PROTECT)
+    meeting = models.ForeignKey('meeting.Meeting', null=True, blank=True, on_delete=models.PROTECT,
+        related_name='tida_contributions', help_text='Meeting this contribution is submitted for.')
     number_prefix = models.CharField(max_length=50, blank=True, editable=False, db_default='')
     sequence_number = models.PositiveBigIntegerField(null=True, validators=[MinValueValidator(1)],
         help_text='Position in the submission list. Moving this item shifts the other display numbers.')
@@ -518,7 +520,7 @@ class FileScan(models.Model):
     size = models.PositiveBigIntegerField()
     status = models.CharField(max_length=12, default='pending', choices=[
         ('pending', 'Quarantined'), ('clean', 'Passed checks'), ('rejected', 'Malware rejected'),
-        ('blocked', 'Unsafe document structure'), ('error', 'Scanner unavailable'),
+        ('blocked', 'File limits or unsupported media'), ('error', 'Scanner unavailable'),
         ('admin', 'Administrator trusted — antivirus skipped')])
     created = models.DateTimeField(auto_now_add=True)
     checked = models.DateTimeField(null=True, blank=True)
@@ -557,3 +559,34 @@ class FileScanException(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['scan', 'format'], name='fgtida_scan_exception_format_unique')]
+
+
+class MeetingSubmissionWindow(models.Model):
+    meeting = models.OneToOneField('meeting.Meeting', on_delete=models.CASCADE, related_name='submission_window')
+    accepting_submissions = models.BooleanField(default=True)
+    deadline = models.DateTimeField(null=True, blank=True, help_text='UTC. Blank closes at the start of the meeting.')
+    reopen_until = models.DateTimeField(null=True, blank=True, help_text='UTC. Extend the deadline to this date; enable Accepting submissions to reopen.')
+
+    def __str__(self):
+        return f'Submissions for {self.meeting.display_title}'
+
+
+class MeetingParticipant(models.Model):
+    meeting = models.ForeignKey('meeting.Meeting', on_delete=models.CASCADE, related_name='tida_participants')
+    first_name = models.CharField(max_length=255)
+    last_name = models.CharField(max_length=255)
+    affiliation = models.CharField(max_length=255, blank=True, verbose_name='Organization / affiliation')
+    country = models.CharField(max_length=100, blank=True, verbose_name='Country / territory')
+    attendance = models.CharField(max_length=8, choices=[('onsite', 'Onsite'), ('remote', 'Remote')])
+    published = models.BooleanField(default=False, help_text='Publish only participant data authorized for the public list.')
+
+    class Meta:
+        ordering = ['last_name', 'first_name', 'pk']
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.meeting_id and self.meeting.type_id != 'tida':
+            raise ValidationError({'meeting': 'Select an FG-TIDA meeting.'})
+
+    def __str__(self):
+        return f'{self.first_name} {self.last_name}'

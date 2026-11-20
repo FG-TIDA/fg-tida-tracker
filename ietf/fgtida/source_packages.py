@@ -163,8 +163,8 @@ def convert_word(data):
 
 def package_text(data):
     files = unpack(data)
-    entry = next((name for name in files if name.endswith('.rst')), '')
-    validate_sources(files, entry)
+    # Reading is independent of the build-package submission rules. Supporting
+    # files remain inert; only RST text is rendered by the restricted previewer.
     return '\n\n'.join(text for name, text in rst_chapters(files))[:2000000]
 
 

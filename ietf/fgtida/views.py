@@ -33,8 +33,18 @@ def floor_plan(request, num, pk):
 
 def home(request):
     from .document_types import search_type_choices
-    return render(request, 'fgtida/home.html', {'types': search_type_choices().items(),
+    return render(request, 'fgtida/home.html', {'types': search_type_choices().items(), 'meetings': core.meetings().order_by('-date'),
         'groups': core.groups().exclude(acronym='tida'), 'categories': core.categories()})
+
+
+def participants(request, num):
+    meeting = get_object_or_404(core.meetings(), number=num)
+    records = meeting.tida_participants.filter(published=True)
+    attendance = request.GET.get('attendance', '')
+    if attendance in ('onsite', 'remote'):
+        records = records.filter(attendance=attendance)
+    return render(request, 'fgtida/participants.html', {'meeting': meeting, 'section': 'participants',
+        'participants': records, 'selected_attendance': attendance})
 
 
 def database_access(request):
@@ -52,8 +62,8 @@ def incubation(request):
 
 contribution_numbers = Prefetch('contribution_set',
     queryset=Contribution.objects.filter(sequence_number__isnull=False).only(
-        'document_id', 'number_prefix', 'sequence_number',
-    ).order_by('pk'), to_attr='numbered_contributions')
+        'document_id', 'number_prefix', 'sequence_number', 'meeting',
+    ).select_related('meeting').order_by('pk'), to_attr='numbered_contributions')
 
 
 def search(request, acronym=None, incubation=False, category_slug=None):
@@ -72,6 +82,9 @@ def search(request, acronym=None, incubation=False, category_slug=None):
     group = acronym or request.GET.get('group', '')
     kind = request.GET.get('type', '')
     category = category_slug or request.GET.get('category', '')
+    selected_meeting = request.GET.get('meeting', '')[:255]
+    if selected_meeting:
+        docs = docs.filter(Q(contribution__meeting__number=selected_meeting) | Q(tida_listing__meeting__number=selected_meeting) | Q(session__meeting__number=selected_meeting))
     collection = request.GET.get('collection', '')
     collection = collection if collection in {'input', 'output'} else ''
     if collection:
@@ -140,7 +153,7 @@ def search(request, acronym=None, incubation=False, category_slug=None):
         'recent': recent, 'sort': sort,
         'query': query, 'selected_group': group, 'selected_type': kind, 'selected_category': category,
         'author': author, 'selected_state': state, 'groups': core.groups().exclude(acronym='tida').order_by('name'),
-        'types': types.items(),
+        'types': types.items(), 'meetings': core.meetings().order_by('-date'), 'selected_meeting': selected_meeting,
         'states': State.objects.filter(type_id__in=core.DOCUMENT_TYPES).values('slug', 'name').distinct().order_by('name'),
         'categories': core.categories(), 'queryargs': params.urlencode(),
         'incubation': incubation,

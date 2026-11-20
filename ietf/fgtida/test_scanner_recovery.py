@@ -101,15 +101,15 @@ class ScannerRecoveryTests(TestCase):
         self.assertEqual(record.events.get(operation='review').actor_id, self.user.pk)
         self.assertEqual(record.events.order_by('pk').first().detail, 'Example.Detection')
 
-    def test_review_never_bypasses_structural_rejection(self):
-        data = b'This is not a PDF.'
+    def test_review_never_bypasses_unsupported_media_checks(self):
+        data = b'This is not an SVG.'
         with patch('ietf.fgtida.file_safety.scan_stream', return_value=('ClamAV test', '')):
             for _ in range(2):
                 with self.assertRaises(ValidationError):
-                    validate_file(data, 'bad.pdf', force=True)
+                    validate_file(data, 'bad.svg', force=True)
         record = FileScan.objects.get(pk=hashlib.sha256(data).hexdigest())
         self.assertEqual(record.status, 'blocked')
-        self.assertFalse(allowed(data, 'bad.pdf'))
+        self.assertFalse(allowed(data, 'bad.svg'))
         self.assertEqual(record.events.count(), 2)
 
     def test_targeted_recovery_cannot_release_another_file(self):

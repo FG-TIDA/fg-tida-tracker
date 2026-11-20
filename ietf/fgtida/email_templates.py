@@ -69,9 +69,10 @@ def contribution(item, acknowledgement=False):
     details_label = 'Contribution and source preview (sign in)' if item.submitter else 'Public contribution preview'
     source_note = ('Word was automatically converted to RST. The contributor or administrator must verify the conversion before adoption.\n'
                    if item.submission_method == 'word' else '')
+    meeting_note = f'Meeting: {item.meeting.display_title} ({item.meeting.date:%d %B %Y})\n' if getattr(item, 'meeting_id', None) else ''
     return (subject, f'{salutation}\n\n{text} and recorded in the FG-TIDA Datatracker.\n\n'
         f'Contribution number: {item.reference or "Pending assignment"}\n'
-        f'Title: {item.title}\nGroup: {item.group.name}\nStatus: Submitted\n\n'
+        f'Title: {item.title}\nGroup: {item.group.name}\n{meeting_note}Status: Submitted\n\n'
         f'{item.abstract}\n\nSubmission method: {item.get_submission_method_display()}\n{source_note}'
         f'{details_label}: {details}\n\n'
         f'Public work item record: {public_record}\n\n'

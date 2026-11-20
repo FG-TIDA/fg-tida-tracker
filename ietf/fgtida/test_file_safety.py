@@ -129,9 +129,9 @@ class FileSafetyTests(TestCase):
             with patch('ietf.fgtida.file_safety.scan_stream', return_value=('ClamAV test', '')):
                 validate_file(data, 'source.txt', force=True)
             with self.assertRaises(ValidationError):
-                validate_file(data, 'spoof.pdf')
+                validate_file(data, 'unsupported.exe')
             self.assertTrue(allowed(data, 'source.txt'))
-            self.assertFalse(allowed(data, 'spoof.pdf'))
+            self.assertFalse(allowed(data, 'unsupported.exe'))
 
     def test_public_preview_original_alternatives_text_and_tar_wait_for_scan(self):
         document = self.create_doc()

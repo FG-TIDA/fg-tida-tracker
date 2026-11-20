@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import timezone as utc_timezone
 from django import forms
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
@@ -14,6 +15,9 @@ from .models import Contribution, DocumentVersion, WorkItem, GitHubJob
 
 
 class ContributionForm(forms.ModelForm):
+    meeting = forms.ModelChoiceField(queryset=core.meetings().none(), required=True,
+        empty_label='Choose an upcoming meeting', help_text='Select the meeting you are contributing to. Closed submission windows are unavailable.',
+        error_messages={'invalid_choice': 'This meeting is unavailable or its submission deadline has passed. Choose an open meeting.'})
     submission_method = forms.ChoiceField(choices=[('github', 'GitHub repository'), ('rst', 'RST source ZIP'),
         ('word', 'Word (.docx) — exceptional fallback')], label='How will you submit?')
     upload = forms.FileField(required=False, help_text='RST: upload your completed ZIP. Word fallback: upload .docx. Maximum 10 MB. Leave empty for GitHub.')
@@ -21,11 +25,14 @@ class ContributionForm(forms.ModelForm):
 
     class Meta:
         model = Contribution
-        fields = ['title', 'group', 'abstract', 'work_item_acronym', 'submission_method',
+        fields = ['title', 'group', 'meeting', 'abstract', 'work_item_acronym', 'submission_method',
                   'draft_repository_url', 'source_commit', 'source_folder', 'entry_document']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        from .meeting_submissions import open_meetings, submission_deadline
+        self.fields['meeting'].queryset = open_meetings()
+        self.fields['meeting'].label_from_instance = lambda meeting: f'{meeting.display_title} — {meeting.date:%d %b %Y} (deadline {submission_deadline(meeting).astimezone(utc_timezone.utc):%d %b %Y %H:%M UTC})'
         from django.db.models import Q
         self.fields['group'].queryset = core.groups().filter(Q(type_id='wg') | Q(acronym='incubation')).order_by('tida_configuration__number','name')
         from .templatetags.fgtida import group_label
@@ -39,6 +46,13 @@ class ContributionForm(forms.ModelForm):
         self.fields['entry_document'].help_text = 'GitHub: path from repository root, e.g. src/doc/index.rst. ZIP: full path inside the ZIP, e.g. my-contribution/src/doc/index.rst. Leave empty for Word.'
         self.fields['work_item_acronym'].help_text = 'Optional short identifier for the work item repository.'
         self.fields['upload'].help_text += ' Submitting creates a public work-item record and archives this file as version 0.0.'
+
+    def clean_meeting(self):
+        from .meeting_submissions import submissions_open
+        meeting = self.cleaned_data['meeting']
+        if not submissions_open(meeting):
+            raise forms.ValidationError('Submissions for this meeting are closed.')
+        return meeting
 
     def clean_draft_repository_url(self):
         value = self.cleaned_data.get('draft_repository_url')
@@ -107,6 +121,13 @@ def submit(request):
     if request.method == 'POST' and form.is_valid():
         # Serialize a user's submissions to enforce a bounded pending queue.
         with transaction.atomic():
+            from .meeting_submissions import lock_open_meeting
+            try:
+                meeting = lock_open_meeting(form.cleaned_data['meeting'])
+                form.cleaned_data['meeting'] = form.instance.meeting = meeting
+            except forms.ValidationError as error:
+                form.add_error('meeting', error)
+                return render(request, 'fgtida/submit.html', {'form': form, 'submissions': [], 'page': None, 'queryargs': ''})
             from django.contrib.auth import get_user_model
             get_user_model().objects.select_for_update().get(pk=request.user.pk)
             if Contribution.objects.filter(submitter=request.user, status='pending').count() >= 20:

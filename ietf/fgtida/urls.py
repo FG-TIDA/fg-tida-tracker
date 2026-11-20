@@ -82,6 +82,7 @@ urlpatterns = [
     path('meeting/important-dates/', views.important_dates, name='important-dates'),
     path('meeting/upcoming/', views.meetings, name='upcoming'),
     path('meeting/past/', views.meetings, {'scope': 'past'}, name='past'),
+    path('meeting/<slug:num>/participants/', views.participants, name='participants'),
     path('meeting/<slug:num>/agenda/', views.meeting, name='meeting'),
     path('meeting/<slug:num>/floor-plan/<int:pk>/', views.floor_plan, name='floor-plan'),
     path('meeting/<slug:num>/agenda', views.meeting),

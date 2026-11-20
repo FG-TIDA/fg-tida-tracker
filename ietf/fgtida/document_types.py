@@ -46,6 +46,7 @@ def number_use_case(doc):
     from django.db import transaction
     from ietf.doc.models import Document
     from .models import Contribution, ContributionSequence
+    from .meeting_submissions import unique_open_meeting
     with transaction.atomic():
         Document.objects.select_for_update().get(pk=doc.pk)
         if Contribution.objects.filter(document=doc).exists():
@@ -58,4 +59,5 @@ def number_use_case(doc):
             sequence.save(update_fields=['last_number'])
         Contribution.objects.create(document=doc, group=doc.group, title=doc.title,
             abstract=doc.abstract, submission_method='github', draft_repository_url=doc.external_url,
-            filename='', content=b'', status='catalogued', notifications_queued=True)
+            filename='', content=b'', status='catalogued', notifications_queued=True,
+            meeting=unique_open_meeting())

@@ -182,6 +182,7 @@ class SessionResourceInline(admin.TabularInline):
 
 
 class ContributionReviewForm(forms.ModelForm):
+    meeting = forms.ModelChoiceField(queryset=core.meetings(), required=False)
     verify_conversion = forms.BooleanField(required=False,
         label='I compared the converted RST text, figures and package with the Word original and confirm they preserve the contribution.')
     decision = forms.ChoiceField(required=False, choices=[('','Save review note'),('adopt','Adopt into a working group'),('reject','Reject proposal')])
@@ -190,7 +191,12 @@ class ContributionReviewForm(forms.ModelForm):
 
     class Meta:
         model=Contribution
-        fields=['sequence_number', 'review_note', 'contact_name', 'contact_email', 'contact_affiliation']
+        fields=['sequence_number', 'review_note', 'contact_name', 'contact_email', 'contact_affiliation', 'meeting']
+
+    def clean_meeting(self):
+        if 'meeting' not in self.data and self.instance.pk:
+            return self.instance.meeting
+        return self.cleaned_data.get('meeting')
 
     def clean_sequence_number(self):
         number = self.cleaned_data['sequence_number']
@@ -237,12 +243,12 @@ class AdminContributionForm(ContributionForm):
 class ContributionAdmin(admin.ModelAdmin):
     form=ContributionReviewForm
     list_display = ['reference', 'title', 'submitter', 'group', 'created', 'status', 'notifications_queued']
-    list_filter = ['status', 'group']
-    search_fields = ['title', 'submitter__username', 'contact_name', 'contact_email', 'contact_affiliation']
-    fields = ['reference', 'sequence_number', 'title', 'submitter', 'contact_name', 'contact_email', 'contact_affiliation', 'group', 'abstract', 'submitted_file', 'source_details', 'submission_method', 'source_commit',
+    list_filter = ['status', 'group', 'meeting']
+    search_fields = ['title', 'submitter__username', 'contact_name', 'contact_email', 'contact_affiliation', 'meeting__number', 'meeting__title']
+    fields = ['reference', 'sequence_number', 'title', 'submitter', 'contact_name', 'contact_email', 'contact_affiliation', 'group', 'meeting', 'abstract', 'submitted_file', 'source_details', 'submission_method', 'source_commit',
               'source_folder', 'entry_document', 'conversion_verified_at', 'conversion_verified_by', 'verify_conversion', 'created',
               'status', 'review_note', 'decision', 'adopt_into', 'draft_repository_url', 'reviewed_by', 'reviewed_at', 'document', 'notifications_queued']
-    readonly_fields = [field for field in fields if field not in {'sequence_number','review_note','decision','adopt_into', 'verify_conversion', 'contact_name', 'contact_email', 'contact_affiliation'}]
+    readonly_fields = [field for field in fields if field not in {'sequence_number','review_note','decision','adopt_into', 'verify_conversion', 'contact_name', 'contact_email', 'contact_affiliation', 'meeting'}]
     actions = ['accept_contributions', 'reject_contributions', 'convert_word_contributions', 'rebuild_word_packages']
     ordering = ['number_prefix', 'sequence_number', 'pk']
 
@@ -256,7 +262,7 @@ class ContributionAdmin(admin.ModelAdmin):
             return []
         fields = list(self.readonly_fields)
         if not request.user.has_perm('doc.change_document'):
-            fields += ['contact_name', 'contact_email', 'contact_affiliation']
+            fields += ['contact_name', 'contact_email', 'contact_affiliation', 'meeting']
         return fields
 
     def get_form(self, request, obj=None, **kwargs):
@@ -277,7 +283,7 @@ class ContributionAdmin(admin.ModelAdmin):
             obj.conversion_verified_at = timezone.now()
             obj.conversion_verified_by = request.user
         obj.save(update_fields=['review_note', 'contact_name', 'contact_email', 'contact_affiliation',
-            'conversion_verified_at', 'conversion_verified_by'])
+            'conversion_verified_at', 'conversion_verified_by', 'meeting'])
         if any(field in form.changed_data for field in ('contact_name', 'contact_email', 'contact_affiliation')):
             from .contributions import sync_contact_metadata
             sync_contact_metadata(obj, clear=True, previous=form.initial)
@@ -1255,7 +1261,12 @@ class FgMeetingForm(forms.ModelForm):
         fields = '__all__'
 
 
+from .meeting_admin import WindowInline, WindowAdmin, ParticipantAdmin
+from .models import MeetingSubmissionWindow, MeetingParticipant
+
+
 class FgMeetingAdmin(MeetingAdmin):
+    inlines = [WindowInline, *MeetingAdmin.inlines]
     form = FgMeetingForm
     search_fields = ['title', 'number']
     list_display = ['display_title', 'number', 'category', 'date', 'location', 'time_zone']
@@ -1562,7 +1573,7 @@ def configure_admin():
     if not admin.site.is_registered(SecurityQuestion):
         admin.site.register(SecurityQuestion, SecurityQuestionAdmin)
     for model, cls in [(User, FgUserAdmin), (Person, FgPersonAdmin), (Contribution, ContributionAdmin), (ContributionRecipient, ContributionRecipientAdmin), (SessionResource, SessionResourceAdmin), (OutgoingMail, OutgoingMailAdmin),
-        (PublicDocumentType, PublicDocumentTypeAdmin), (FileScan, FileScanAdmin),
+        (MeetingSubmissionWindow, WindowAdmin), (MeetingParticipant, ParticipantAdmin), (PublicDocumentType, PublicDocumentTypeAdmin), (FileScan, FileScanAdmin),
         (GitHubAccount,GitHubAccountAdmin),(WorkingGroupConfiguration,WorkingGroupConfigurationAdmin),
         (GitHubRepository,GitHubRepositoryAdmin),(GitHubSource,GitHubSourceAdmin),(WorkItem,WorkItemAdmin),
         (WorkItemRelease,WorkItemReleaseAdmin),(GitHubJob,GitHubJobAdmin),(EmailVerification,EmailVerificationAdmin)]:

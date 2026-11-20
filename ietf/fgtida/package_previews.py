@@ -44,6 +44,14 @@ def image_response(data, path):
     content = unpack(data).get(path)
     if content is None:
         raise Http404
+    # Download permission for the ZIP does not grant permission to render any
+    # particular image. Keep active SVG and image resource checks at this boundary.
+    from .file_safety import inspect_file
+    from django.core.exceptions import ValidationError, PermissionDenied
+    try:
+        inspect_file(content, PurePosixPath(path).suffix.lower().lstrip('.'))
+    except ValidationError as error:
+        raise PermissionDenied('This image cannot be previewed safely.') from error
     response = HttpResponse(content, content_type=mime)
     response['Content-Disposition'] = content_disposition_header(False, PurePosixPath(path).name)
     response['X-Content-Type-Options'] = 'nosniff'
