@@ -171,6 +171,8 @@ def record_submission(item, form, user):
         DocumentAuthor.objects.create(document=doc, person=core.actor_for(item.submitter), order=1)
     item.document = doc
     item.save(update_fields=['document'])
+    from .file_safety import retire_private_after_archive
+    retire_private_after_archive(bytes(item.content), item.filename, contribution_id=item.pk)
     sync_contact_metadata(item)
     WorkItem.objects.create(document=doc, short_name=item.work_item_acronym or slugify(item.title)[:48] or f'item-{item.pk}')
     queue_notifications(item.pk)
@@ -198,9 +200,17 @@ def sync_contact_metadata(item, clear=False, previous=None):
             if getattr(item, contact_field):
                 lines.append(getattr(item, contact_field))
             values[key] = '\n'.join(dict.fromkeys(lines))
+        provenance = dict(attribution.credit_provenance or {})
+        updates = []
         for key, value in values.items():
+            mode = provenance.get(key, {}).get('mode')
+            if not clear and (mode in ('manual', 'profiles') or (not created and mode is None and getattr(attribution, key))):
+                continue
             setattr(attribution, key, value)
-        attribution.save(update_fields=list(values))
+            provenance[key] = {'mode': 'manual'} if clear else {'mode': 'source', 'value': value}
+            updates.append(key)
+        attribution.credit_provenance = provenance
+        attribution.save(update_fields=[*updates, 'credit_provenance'])
 
 
 @transaction.atomic

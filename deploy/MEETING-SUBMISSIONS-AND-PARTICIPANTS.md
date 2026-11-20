@@ -7,11 +7,10 @@ meeting selection. Archived revisions keep their existing meeting association.
 
 ## Local validation before deployment
 
-The new database regression run was declined by the execution permission check.
-Run these tests against the local development container before deploying:
+Run these regression tests against the local development container before deploying:
 
 ```powershell
-docker exec fg-tida-datatracker-app-1 python ietf/manage.py test ietf.fgtida.test_meeting_submissions ietf.fgtida.test_source_submissions.SubmissionTests ietf.fgtida.test_admin_contributions ietf.fgtida.test_document_lists --testrunner django.test.runner.DiscoverRunner --keepdb --noinput
+docker exec fg-tida-datatracker-app-1 python ietf/manage.py test ietf.fgtida.test_credit_accuracy ietf.fgtida.test_meeting_submissions ietf.fgtida.test_source_submissions.SubmissionTests ietf.fgtida.test_admin_contributions ietf.fgtida.test_document_lists --testrunner django.test.runner.DiscoverRunner --keepdb --noinput
 ```
 
 No tests should be run against the production database.
@@ -93,3 +92,66 @@ Later open **Admin → Meeting participants → Add**, choose the meeting, enter
 the supplied names/affiliation/country and select Remote or Onsite. An account is
 not required. Check **Published** only when the data has been authorized for
 public listing. Unpublished records remain invisible on the public page.
+
+## Metadata corrections and missing upload investigations
+
+Migration 0044 records automatic metadata separately from deliberate editor
+choices. In **Documents → document → Public metadata**, enter one author per
+line. Saving a changed field makes it authoritative, even if deliberately
+cleared. Changing the assigned author profiles instead makes those profiles
+authoritative unless Public metadata is also edited in the same save.
+GitHub synchronization does not overwrite these choices.
+
+After deploying and migrating, repair old malformed imported credits with:
+
+```sh
+python ietf/manage.py refresh_fgtida_collections --no-sync --apply --skip-checks
+```
+
+This uses explicit source declarations, ignores Markdown/RST separator rows,
+and splits labelled Name/Organization/Country/Email blocks into their fields.
+Unstated author identities remain unset. It preserves deliberate editor choices.
+The client label is **Author(s)**. Meeting links are not shown on contribution
+detail pages; the meeting association remains available to search and admin.
+
+For uploads from 18–20 November, including files whose status changed after
+rescanning, run this **read-only** report in Render Shell:
+
+```sh
+python ietf/manage.py audit_fgtida_uploads --since 2026-11-18 --until 2026-11-21 --match-originals --skip-checks
+```
+
+The end date is exclusive and all report dates are UTC. It lists scan records
+created, checked or audited within that range across **all statuses**, retained
+private originals, saved contribution associations and recent saved contributions.
+`--match-originals` also hashes the stored contribution originals/source packages
+to match older records that predate checksum metadata. It reads those bytes once
+without parsing, executing, publishing or sending them anywhere.
+It does not open or release a file, expose contributor account details, create
+a contribution or send email. Filenames and document identifiers are included;
+keep the report in the authorized administrator context.
+
+In **Admin → File scans**, clear existing filters, use the created/checked date
+filters and inspect **Original file in private quarantine** and **Linked
+contributions**. Rescanning changes a verdict; it does not delete the scan row.
+If a file is clean and linked, check its document page. If it is unlinked, confirm
+whether the form failed before a contribution was saved; a fresh submission may
+be required. If no scan row exists, check server logs for that submission rather
+than assuming antivirus removed it. File validation can fail before scanning.
+
+Check `quarantine_directory` in the report against the Render persistent disk
+mount. `temporary_quarantine_warning: true` means the directory is under `/tmp`
+and can disappear on deploy. The documented production configuration uses
+`FGTIDA_DATA_DIR=/data` and `/data/quarantine`, outside public media. Do not change
+the directory until any retained files in the old location have been accounted
+for. Private quarantine files expire after seven days; verdict/audit records stay.
+Uploads from 18–20 November are not seven days old on 20 November.
+
+Previously, passing a scan immediately deleted the quarantine copy, even if a
+later submission validation failed. The revised cleanup retains unlinked clean
+originals privately for the bounded seven-day recovery period. Duplicate copies
+are removed only after commit and verification of the saved archive's SHA-256;
+the scan history records that cleanup. This cannot recover copies already
+deleted by the old code: check existing contribution archives/backups first,
+then request the original again if none survives. The 250 MB private queue limit
+and normal expiry remain enforced.

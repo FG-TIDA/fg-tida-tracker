@@ -225,20 +225,10 @@ def document(request, name, rev=None):
     version_metadata = selected_version.source_metadata if selected_version else {}
     authors = list(doc.documentauthor_set.select_related('person').order_by('order'))
     override = getattr(doc, 'tida_attribution', None)
-    from .github_attribution import CREDIT_FIELDS, source_attribution
-    credits = source_attribution(body)
-    editor_credits = set()
-    for key in CREDIT_FIELDS:
-        entered = [line.strip() for line in getattr(override, key, '').splitlines() if line.strip()]
-        if entered:
-            credits[key] = entered
-            editor_credits.add(key)
-        elif not credits.get(key):
-            credits[key] = version_metadata.get(key, [])
-            if snapshot is doc and not credits[key]:
-                credits[key] = list(dict.fromkeys(value for source in source_records for value in source.source_metadata.get(key, [])))
-    if 'authors' in editor_credits or (credits.get('authors') and len(authors) == 1 and authors[0].person.user_id
-            and doc.contribution_set.filter(submitter_id=authors[0].person.user_id).exists()):
+    from .credits import resolve_credits
+    credits, editor_credits, use_profiles = resolve_credits(body, override, version_metadata,
+        source_records if snapshot is doc else [])
+    if not use_profiles and ('authors' in editor_credits or credits.get('authors')):
         authors = []
     return render(request, 'fgtida/document.html', {'doc': doc, 'snapshot': snapshot,
         'revisions': ordered, 'file_available': file_available,'display_abstract':abstract,

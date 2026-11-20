@@ -81,6 +81,8 @@ class Command(BaseCommand):
                 if self.check(data, snapshot.uploaded_filename):
                     metadata = {**version.source_metadata, 'file_sha256': hashlib.sha256(data).hexdigest()}
                     DocumentVersion.objects.filter(pk=version.pk, source_metadata=version.source_metadata).update(source_metadata=metadata)
+                    from ietf.fgtida.file_safety import retire_private_after_archive
+                    retire_private_after_archive(data, snapshot.uploaded_filename, archive_path=path)
         for alternative in DocumentFormat.objects.filter(document__in=documents).iterator():
             if self.attempted >= limit:
                 break
@@ -92,7 +94,9 @@ class Command(BaseCommand):
                 break
             for data, filename in [(item.content, item.filename), (item.source_archive, 'source.zip')]:
                 if data:
-                    self.check(bytes(data), filename)
+                    if self.check(bytes(data), filename):
+                        from ietf.fgtida.file_safety import retire_private_after_archive
+                        retire_private_after_archive(bytes(data), filename, contribution_id=item.pk)
         for release in WorkItemRelease.objects.select_related('work_item').iterator():
             if self.attempted >= limit:
                 break
@@ -126,7 +130,7 @@ class Command(BaseCommand):
             for path in root.iterdir():
                 if re.fullmatch(r'[0-9a-f]{64}', path.name) and path.is_file() and time.time() - path.stat().st_mtime > 7 * 86400:
                     path.unlink(missing_ok=True)
-                    for record in FileScan.objects.filter(pk=path.name).exclude(status='clean'):
+                    for record in FileScan.objects.filter(pk=path.name):
                         record_event(record, 'expired', detail='Private upload expired; scanner verdict retained. Resubmit if the original is needed.')
         except OSError as error:
             raise CommandError('The private quarantine directory is unavailable.') from error

@@ -665,6 +665,15 @@ class DocumentFormatInline(admin.TabularInline):
 
 
 class PublicDocumentMetadataForm(forms.ModelForm):
+    def clean_authors(self):
+        from .credits import clean_values
+        return '\n'.join(clean_values(self.cleaned_data['authors'], 'authors'))
+
+    def save(self, commit=True):
+        from .credits import record_editor_changes
+        record_editor_changes(self.instance, self.changed_data)
+        return super().save(commit=commit)
+
     def clean_contact_emails(self):
         from django.core.validators import validate_email
         addresses = list(dict.fromkeys(address.strip() for address in self.cleaned_data['contact_emails'].splitlines() if address.strip()))
@@ -678,7 +687,8 @@ class DocumentAttributionInline(admin.StackedInline):
     form = PublicDocumentMetadataForm
     verbose_name = 'Public metadata'
     verbose_name_plural = 'Public metadata'
-    extra = 0
+    extra = 1
+    max_num = 1
 
     def has_add_permission(self, request, obj=None):
         return request.user.has_perm('doc.change_document') or request.user.has_perm('doc.add_document')
@@ -745,13 +755,29 @@ class FileScanExceptionInline(FileScanEventInline):
 
 
 class FileScanAdmin(admin.ModelAdmin):
-    list_display = ['filename', 'status', 'manual_exception', 'size', 'checked', 'attempts']
-    list_filter = ['status']
+    list_display = ['filename', 'status', 'manual_exception', 'size', 'created', 'checked', 'attempts']
+    list_filter = ['status', 'created', 'checked']
+    date_hierarchy = 'created'
     search_fields = ['sha256', 'filename']
-    fields = ['sha256', 'filename', 'size', 'status', 'formats', 'rejected_formats', 'created', 'checked', 'attempts', 'engine', 'detail']
+    fields = ['sha256', 'filename', 'size', 'status', 'formats', 'rejected_formats', 'created', 'checked', 'attempts', 'engine', 'detail', 'retained_file', 'linked_contributions']
     readonly_fields = fields
     actions = ['retry_checks', 'approve_exception', 'revoke_exception', 'discard_private_uploads']
     inlines = [FileScanExceptionInline, FileScanEventInline]
+
+    @admin.display(description='Original file in private quarantine')
+    def retained_file(self, obj):
+        from .upload_audit import scan_inventory
+        report = scan_inventory(obj)
+        return 'Retained privately; not published by this screen.' if report['private_file_retained'] else 'Not in private quarantine. Check the linked document archive or ask for resubmission.'
+
+    @admin.display(description='Linked contributions')
+    def linked_contributions(self, obj):
+        from .upload_audit import related_contributions
+        from django.urls import reverse
+        from django.utils.html import format_html_join
+        rows = [(reverse('admin:fgtida_contribution_change', args=[item.pk]), item.reference or str(item.pk))
+                for item in related_contributions(obj).only('pk', 'number_prefix', 'sequence_number')]
+        return format_html_join(', ', '<a href="{}">{}</a>', rows) if rows else 'No saved contribution association found. Run audit_fgtida_uploads with --match-originals for older records before requesting resubmission.'
 
     @admin.display(boolean=True, description='Active manual exception')
     def manual_exception(self, obj):
@@ -810,7 +836,7 @@ class FileScanAdmin(admin.ModelAdmin):
             record.refresh_from_db()
         else:
             self.log_change(request, record, 'False-positive review: ' + form.cleaned_data['reason'])
-            self.message_user(request, 'Exact-file antivirus exception approved. Structural protections remain enforced.' if granted
+            self.message_user(request, 'Exact-file antivirus exception approved. File and archive limits remain enforced.' if granted
                 else 'The new scan passed. No manual exception was needed.')
             return
         return self._exception_form_response(request, record, form, ACTION_CHECKBOX_NAME)
@@ -978,6 +1004,25 @@ class FgDocumentAdmin(DocumentAdmin):
 
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
+        from ietf.doc.models import DocumentAuthor
+        edited_metadata = set()
+        profiles_changed = False
+        for formset in formsets:
+            if formset.model == DocumentAttribution:
+                for credit_form in formset.forms:
+                    if not credit_form.cleaned_data.get('DELETE'):
+                        edited_metadata.update(credit_form.changed_data)
+            if formset.model == DocumentAuthor:
+                profiles_changed = any(author_form.has_changed() for author_form in formset.forms)
+        if profiles_changed:
+            metadata, _ = DocumentAttribution.objects.get_or_create(document=form.instance)
+            provenance = dict(metadata.credit_provenance or {})
+            for field in ('authors', 'affiliations'):
+                if field not in edited_metadata:
+                    setattr(metadata, field, '')
+                    provenance[field] = {'mode': 'profiles'}
+            metadata.credit_provenance = provenance
+            metadata.save()
         values = form.cleaned_data
         if values.get('document_direction'):
             from django.utils import timezone

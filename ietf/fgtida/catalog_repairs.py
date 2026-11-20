@@ -22,6 +22,7 @@ def repair_catalog(apply=False):
     from ietf.group.models import Group
     from .document_types import assign_source_type
     from .file_safety import safe_document_text
+    from .credits import clean_values
     stats = Counter()
     wg0 = Group.objects.get(acronym='tidawg0', parent__acronym='tida')
     identifiers = list(use_case_documents().values_list('pk', flat=True))
@@ -60,25 +61,34 @@ def repair_catalog(apply=False):
         for source in doc.github_sources.filter(sync_mode='automatic'):
             for field in CREDIT_FIELDS:
                 if not credits.get(field) and source.source_metadata.get(field):
-                    credits[field] = source.source_metadata[field]
+                    credits[field] = clean_values(source.source_metadata[field], field)
         native = list(doc.documentauthor_set.select_related('person'))
         if not credits.get('affiliations'):
             credits['affiliations'] = list(dict.fromkeys(author.affiliation for author in native if author.affiliation))
         meta = getattr(doc, 'tida_attribution', None) or DocumentAttribution(document=doc)
         changed = []
+        provenance = dict(meta.credit_provenance or {})
         for field in CREDIT_FIELDS:
             current = getattr(meta, field).strip()
-            if current and current.casefold() not in {'not entered', 'not provided', 'see submission contact below', 'tbd', 'tbc', 'unknown'}:
+            mode = provenance.get(field, {}).get('mode')
+            if mode in ('manual', 'profiles'):
                 continue
-            if field == 'authors' and native:
+            cleaned = '\n'.join(clean_values(current, field))
+            malformed = bool(current and cleaned != current)
+            if current and not malformed and mode != 'source' and current.casefold() not in {'not entered', 'not provided', 'see submission contact below', 'tbd', 'tbc', 'unknown'}:
                 continue
-            if credits.get(field):
-                setattr(meta, field, '\n'.join(credits[field]))
+            if field == 'authors' and native and not malformed and not credits.get('authors'):
+                continue
+            replacement = '\n'.join(clean_values(credits.get(field, []), field)) or cleaned
+            if replacement != current or (replacement and mode != 'source'):
+                setattr(meta, field, replacement)
+                provenance[field] = {'mode': 'source', 'value': replacement}
                 changed.append(field)
         if changed:
             stats['documents_with_metadata_completed'] += 1
             stats['metadata_fields_completed'] += len(changed)
             if apply:
+                meta.credit_provenance = provenance
                 meta.save()
         if not meta.authors and not native and not credits.get('authors'):
             stats['documents_without_explicit_author_evidence'] += 1

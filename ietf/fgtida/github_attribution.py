@@ -17,10 +17,13 @@ EMAIL = re.compile(r'[\w.!#$%&\x27*+/=?^_`{|}~-]+@[\w.-]+\.[a-z]{2,}', re.IGNORE
 
 def plain_value(value):
     value = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', value)
-    value = EMAIL.sub('', value).strip(' \t*_.,;–—-\u200b\u200c\u200d\ufeff')
+    value = EMAIL.sub('', value).strip(' \t|*_.,;–—-\u200b\u200c\u200d\ufeff')
+    if not re.search(r'[^\W\d_]', value, re.UNICODE):
+        return ''  # Markdown/RST separators and empty table cells are not people.
     if value.startswith('<') and value.endswith('>') and '<' not in value[1:-1] and '>' not in value[1:-1]:
         value = value[1:-1].strip(' \t*_.,;–—-')
     if value.startswith('<') or value.casefold() in {'none', 'n/a', 'tbd', 'tbc', 'no response', 'summary',
+            'not entered', 'not provided', 'unknown', 'see submission contact below', '(system)',
             'name', 'your name', 'contact name', 'organization', 'your organization', 'affiliation',
             'name(s)', 'name(s) and affiliation(s)', 'name and affiliation', 'name / organization',
             'name / affiliation', 'your full name', 'first last', 'first name last name',
@@ -36,6 +39,31 @@ def document_attribution(body):
     prefix = re.sub(r'(?mi)^#{1,6}\s+([^\n]+)\n\s*<!--\s*Name\(s\) and affiliation\(s\) of whoever',
                     r'## Proposer(s)\n\n\1\n<!-- Name(s) and affiliation(s) of whoever', prefix)
     text = re.sub(r'<!--.*?-->', '', prefix, flags=re.DOTALL)
+    text = re.sub(rf'(?mi)^(\s*\*\*(?:{FIELDS}))\*\*[ \t]+(?=\S)', r'\1:** ', text)
+    # A proposer field may contain a complete labelled identity, rather than
+    # just a name. Split its fields before matching so country/email never
+    # become part of the author. Only normalize Name inside this explicit block.
+    identity = re.compile(r'(?i)\b(Name|Organization|Organisation|Country|E-mail|Email)\s*:')
+    normalized = []
+    identity_block = False
+    for row in text.splitlines():
+        unmarked = re.sub(r'\*\*', '', row).strip().lstrip('>- ').strip()
+        if re.match(rf'(?i)(?:{AUTHOR})\s*:', unmarked):
+            identity_block = True
+        elif unmarked.startswith('#'):
+            identity_block = bool(re.search(r'(?i)identification|proposer|author|contact', unmarked))
+        if identity_block and identity.search(unmarked):
+            matches = list(identity.finditer(unmarked))
+            # Do not interpret "Contact name:" twice or arbitrary prose.
+            if matches and (matches[0].start() == 0 or re.fullmatch(rf'(?:{AUTHOR})\s*:\s*', unmarked[:matches[0].start()], re.I)):
+                labels = {'name': 'Author', 'organization': 'Organization', 'organisation': 'Organization',
+                          'country': 'Country', 'e-mail': 'Contact email', 'email': 'Contact email'}
+                for pos, match in enumerate(matches):
+                    end = matches[pos+1].start() if pos+1 < len(matches) else len(unmarked)
+                    normalized.append(f"{labels[match[1].lower()]}: {unmarked[match.end():end].strip(' /|;')}")
+                continue
+        normalized.append(row)
+    text = '\n'.join(normalized)
     # Some submissions omit the colon after a bold metadata label.
     text = re.sub(rf'(?mi)^(\s*\*\*(?:{FIELDS}))\*\*[ \t]+(?=\S)', r'\1:** ', text)
     lines = text.splitlines()
@@ -65,6 +93,19 @@ def document_attribution(body):
             if not following.startswith('#') and not FIELD.fullmatch(following):
                 value = following.removeprefix('- ')
         label = match['label'].casefold()
+        if value and re.fullmatch(AUTHOR, label) and re.match(r'(?i)^\s*Name\s*:', value):
+            parts = list(identity.finditer(value))
+            for pos, part in enumerate(parts):
+                end = parts[pos+1].start() if pos+1 < len(parts) else len(value)
+                declared = value[part.end():end].strip(' /|;')
+                key = part[1].casefold()
+                if key == 'name' and (name := plain_value(declared)):
+                    authors.append(name)
+                elif key in ('organization', 'organisation') and (organization := plain_value(declared)):
+                    affiliations.append(organization)
+                elif key in ('email', 'e-mail'):
+                    contact_emails.extend(EMAIL.findall(declared))
+            continue
         if label.startswith(('contact email', 'contact e-mail')):
             contact_emails.extend(EMAIL.findall(value or ''))
         elif label in {'contact', 'contacts'}:

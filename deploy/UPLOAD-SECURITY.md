@@ -99,8 +99,10 @@ FGTIDA_QUARANTINE_DIR=/data/quarantine
 
 Use the existing `/data` disk for quarantine, outside static, media and document
 directories. The private queue holds at most 250 MB. Temporary files expire
-after seven days. Files that pass leave quarantine; rejected and structurally
-blocked upload bytes remain private for this limited review window. No raw
+after seven days. A passing scan alone does not delete its private original.
+Duplicate copies leave quarantine only after a committed document/contribution
+archive is verified by SHA-256. Unlinked clean files, rejected files and blocked
+upload bytes remain private for the limited recovery window. No raw
 quarantine download is exposed by the admin interface. A failed new submission
 does not reserve its full form metadata: contributors should retain their
 original and resubmit after a reviewed recovery. Existing archived documents

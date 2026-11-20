@@ -95,7 +95,7 @@ class ScannerRecoveryTests(TestCase):
         record.refresh_from_db()
         self.assertEqual(record.status, 'clean')
         self.assertTrue(allowed(data, record.filename))
-        self.assertFalse(quarantine_path(record.pk).exists())
+        self.assertTrue(quarantine_path(record.pk).exists())  # No saved archive: preserve recovery bytes.
         self.assertEqual(list(record.events.order_by('pk').values_list('operation', 'status')),
                          [('scan', 'rejected'), ('review', 'rejected'), ('scan', 'clean')])
         self.assertEqual(record.events.get(operation='review').actor_id, self.user.pk)

@@ -475,10 +475,12 @@ class PublicDocumentType(models.Model):
 class DocumentAttribution(models.Model):
     """Optional editor override for the credits displayed on a document."""
     document = models.OneToOneField('doc.Document', on_delete=models.CASCADE, related_name='tida_attribution')
-    authors = models.TextField(blank=True, help_text='One author per line. Leave empty to use the document’s assigned author profiles, if any.')
+    authors = models.TextField('Author(s)', blank=True, help_text='One author per line. Your edits override imported metadata, including an explicitly cleared value.')
     affiliations = models.TextField(blank=True, help_text='One organization per line.')
     contacts = models.TextField(blank=True, help_text='One public contact name per line.')
     contact_emails = models.TextField(blank=True, help_text='One public contact email per line. Addresses entered here appear on the public document page.')
+    credit_provenance = models.JSONField(default=dict, editable=False,
+        help_text='Tracks automatic values and deliberate editor overrides independently.')
     public_type = models.ForeignKey(PublicDocumentType, null=True, blank=True, on_delete=models.SET_NULL,
         help_text='Choose the type shown publicly. Leave blank to use the default from the document’s workflow.')
     additional_types = models.ManyToManyField(PublicDocumentType, blank=True, related_name='additional_attributions',

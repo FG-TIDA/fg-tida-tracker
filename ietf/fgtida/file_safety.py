@@ -353,8 +353,8 @@ def validate_file(data, filename, *, force=False):
                     record.status = 'clean'
                     record.formats = sorted(set(record.formats) | {kind})
                     record.rejected_formats = [item for item in record.rejected_formats if item != kind]
-            if record.status == 'clean' and structure_error is None:
-                path.unlink(missing_ok=True)
+            # A clean scan is not proof the submission was saved. Keep the
+            # private original until an archive commits, or normal expiry.
         record.checked = timezone.now()
         record.attempts += 1
         record.save()
@@ -365,6 +365,40 @@ def validate_file(data, filename, *, force=False):
     if record.status != 'clean' and not has_exception(record, kind):
         raise ValidationError('This file was rejected by the security checks.' if record.status == 'rejected' else
                               'Your file is held privately while scanning is unavailable. Please retry your submission after scanning is restored.')
+
+
+def retire_private_after_archive(data, filename, *, archive_path=None, contribution_id=None):
+    """Remove a duplicate only after a committed archive is verified by hash."""
+    if not required():
+        return
+    digest, kind = hashlib.sha256(data).hexdigest(), format_key(filename)
+
+    def cleanup():
+        private = quarantine_path(digest)
+        if not private.is_file():
+            return
+        record = FileScan.objects.filter(pk=digest, status='clean').first()
+        if not record or kind not in record.formats or kind in record.rejected_formats:
+            return
+        found = False
+        if archive_path:
+            from .models import DocumentVersion
+            if DocumentVersion.objects.filter(source_metadata__file_sha256=digest).exists():
+                try:
+                    with Path(archive_path).open('rb') as source:
+                        found = hashlib.file_digest(source, 'sha256').hexdigest() == digest
+                except OSError:
+                    return
+        elif contribution_id:
+            from .models import Contribution
+            stored = Contribution.objects.filter(pk=contribution_id).values_list('content', 'source_archive').first()
+            found = bool(stored and any(value and hashlib.sha256(bytes(value)).hexdigest() == digest for value in stored))
+        if found:
+            private.unlink(missing_ok=True)
+            record_event(record, 'archived', kind=kind,
+                detail='Private duplicate removed after a committed archive was verified by SHA-256. The archived original is retained.')
+
+    transaction.on_commit(cleanup, robust=True)
 
 
 def inspect_file(data, kind):

@@ -116,7 +116,7 @@ class DocumentListTests(TestCase):
         self.assertContains(response, f'>{title}</h1>', count=1)
         self.assertNotContains(response, f'>{title}</h2>')
         self.assertContains(response, 'Keep the rest of the document here.', count=1)
-        self.assertContains(response, '<th scope="row">Authors</th><td>Example Author</td>')
+        self.assertContains(response, '<th scope="row">Author(s)</th><td>Example Author</td>')
         self.assertContains(response, '<th scope="row">Affiliation</th><td>Individual expert</td>')
         self.assertContains(response, '<th scope="row">Submission contact</th><td><a href="mailto:author@example.test">')
 
@@ -131,7 +131,7 @@ class DocumentListTests(TestCase):
         self.assertEqual(saved.status_code, 302)
         detail = self.client.get(url + 'revision/0.0/')
         self.assertNotContains(detail, '<th scope="row">Type</th>')
-        self.assertContains(detail, '<th scope="row">Authors</th><td>Edited Author</td>')
+        self.assertContains(detail, '<th scope="row">Author(s)</th><td>Edited Author</td>')
         self.assertContains(detail, 'mailto:editor@example.test')
         self.assertContains(self.client.get('/doc/', {'type': f'public-{public_type.pk}'}), title)
         self.assertEqual(self.client.get(url + 'download/0.0/').status_code, 200)

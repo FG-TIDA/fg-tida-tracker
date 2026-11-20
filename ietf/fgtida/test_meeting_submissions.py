@@ -60,7 +60,7 @@ class MeetingSubmissionTests(TestCase):
         self.assertEqual(self.client.post('/submit/', self.payload()).status_code, 302)
         item = Contribution.objects.get()
         self.assertEqual(item.meeting_id, self.meeting.pk)
-        self.assertContains(self.client.get(f'/doc/{item.document.name}/'), self.meeting.display_title)
+        self.assertNotContains(self.client.get(f'/doc/{item.document.name}/'), '<strong>Meeting:</strong>')
 
     def test_deadline_closes_automatically_and_admin_can_reopen_until_exact_time(self):
         moment = timezone.now()
@@ -101,7 +101,7 @@ class MeetingSubmissionTests(TestCase):
     def test_admin_window_form_uses_explicit_utc(self):
         from .meeting_admin import WindowForm
         with timezone.override('Europe/Paris'):
-            form = WindowForm(data={'meeting': self.meeting.pk, 'accepting_submissions': 'on',
+            form = WindowForm(instance=self.window, data={'meeting': self.meeting.pk, 'accepting_submissions': 'on',
                 'deadline': '2026-11-23 23:59 UTC', 'reopen_until': ''})
             self.assertTrue(form.is_valid(), form.errors)
             self.assertEqual(form.cleaned_data['deadline'], datetime(2026,11,23,23,59,tzinfo=utc_timezone.utc))

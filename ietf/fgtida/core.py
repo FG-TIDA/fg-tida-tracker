@@ -118,4 +118,6 @@ def save_document(doc, actor, note, data=None, filename=None, state=None, sessio
         DocumentVersion.objects.create(document=doc, revision=doc.rev, version=public_version, recorded=event.time,
             source_metadata={**source_attribution(text), **(source_metadata or {}), 'file_sha256': hashlib.sha256(data).hexdigest()})
         doc.__dict__.pop('_version_labels',None)
+        from .file_safety import retire_private_after_archive
+        retire_private_after_archive(data, filename, archive_path=artifact)
     return doc
