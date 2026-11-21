@@ -146,3 +146,24 @@ cannot be invented or recovered if they were never supplied.
 
 Inspect the new default version and its ZIP after repair. An explicitly selected
 old historical version retains its old package; earlier archives are immutable.
+
+## Reading previews and abstracts
+
+The submission form does not request a separate abstract. Existing catalogue
+abstracts remain editable in the backend, but are hidden in a reading preview
+when the source already contains an abstract section or the same summary text.
+Original documents and historical versions are not rewritten for this change.
+
+Figures resolve relative to the RST chapter that references them. Plain local
+RST/text includes are expanded in memory within bounded size/depth limits, so
+their figures retain the correct paths and included chapters do not appear twice.
+Includes with unsupported options, missing assets and include cycles show notices;
+the renderer never reads the server filesystem or fetches external images.
+
+Mermaid, Graphviz, PlantUML/UML and draw.io directives can use a supplied static
+image export. For example, `diagram.mmd` and `diagram.svg` in the same folder,
+referenced with `.. mermaid:: diagram.mmd`, show that SVG after the normal safety
+checks. A diagram without a supported export shows its source and a notice,
+rather than disappearing. Uploaded diagram programs/configuration are not run.
+Keep a PNG/JPEG/GIF/safe-SVG export in the package for a visual preview. Scan and
+revision permissions continue to apply to every image URL, including direct URLs.

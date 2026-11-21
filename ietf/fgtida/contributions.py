@@ -44,7 +44,7 @@ class ContributionForm(forms.ModelForm):
 
     class Meta:
         model = Contribution
-        fields = ['title', 'group', 'meeting', 'authors', 'affiliations', 'abstract', 'work_item_acronym', 'submission_method',
+        fields = ['title', 'group', 'meeting', 'authors', 'affiliations', 'work_item_acronym', 'submission_method',
                   'draft_repository_url', 'source_commit', 'source_folder', 'entry_document']
 
     def __init__(self, *args, **kwargs):
@@ -377,7 +377,10 @@ def detail(request, pk, download=False, source=False):
             legacy_text = extract_text(bytes(item.content), item.filename)
         except forms.ValidationError:
             pass  # Keep the original download available when extraction is unsupported.
+    from .rendering import preview_abstract
+    display_abstract = preview_abstract(item.abstract, [text for _, text, _ in chapters] + [legacy_text])
     return render(request, 'fgtida/contribution.html', {'submission': item, 'chapters': chapters, 'assets': assets,
+        'display_abstract': display_abstract,
         'security_pending': security_pending, 'original_available': allowed(bytes(item.content), item.filename),
         'legacy_text': legacy_text, 'legacy_extension': Path(item.filename).suffix.lower(),
         'can_revise': can_revise(item, request.user),

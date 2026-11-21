@@ -22,6 +22,26 @@ def main():
             self.state.nested_parse(self.content, self.content_offset, container)
             return list(container.children)
     directives.register_directive('only', Only)
+    class Diagram(Directive):
+        optional_arguments = 1
+        final_argument_whitespace = True
+        has_content = True
+        option_spec = {name: directives.unchanged for name in (
+            'caption', 'alt', 'name', 'align', 'width', 'height', 'scale', 'filename',
+            'format', 'class', 'figwidth', 'figclass', 'zoom', 'config')}
+        def run(self):
+            message = nodes.note('', nodes.paragraph(text='Diagram source is shown below. Include a PNG or safe SVG export for a visual preview; uploaded diagram programs are not executed.'))
+            source = '\n'.join(self.content)
+            output = [message]
+            if self.arguments:
+                output.append(nodes.paragraph(text='Diagram: ' + self.arguments[0]))
+            if self.options.get('caption'):
+                output.append(nodes.paragraph(text=self.options['caption']))
+            if source:
+                output.append(nodes.literal_block(source, source))
+            return output
+    for name in ('mermaid', 'graphviz', 'uml', 'plantuml', 'drawio'):
+        directives.register_directive(name, Diagram)
     def reference_role(name, rawtext, text, lineno, inliner, options=None, content=None):
         match = re.fullmatch(r'(.+?)\s*<([^>]+)>', text)
         title, target = match.groups() if match else (text, text)

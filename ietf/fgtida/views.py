@@ -219,13 +219,14 @@ def document(request, name, rev=None):
                 lambda path: reverse('fgtida:document-image', args=[doc.name, snapshot.rev, path]))
         else:
             security_pending, body = True, ''
-    from .rendering import without_duplicate_title
+    from .rendering import without_duplicate_title, preview_abstract
     package_chapters = [(name, without_duplicate_title(text, snapshot.title),
                          context | {'source_url': snapshot.external_url})
                         for name, text, context in package_chapters]
     if abstract and body and body.lstrip().startswith(abstract.strip()):
         abstract = ''  # The catalogue used the start of the source as its abstract.
     abstract = without_duplicate_title(abstract, snapshot.title)
+    abstract = preview_abstract(abstract, [body] + [text for _, text, _ in package_chapters])
     source_records = list(doc.github_sources.exclude(sync_mode='excluded').select_related('repository'))
     selected_version = version_rows.get(snapshot.rev)
     version_metadata = selected_version.source_metadata if selected_version else {}

@@ -14,7 +14,7 @@ def fragment_key(kind, text, source_url, image_urls=()):
     import hashlib
     import json
     context = json.dumps([text, str(source_url), sorted(image_urls)], ensure_ascii=True)
-    return 'fgtida:html:' + kind + ':v1:' + hashlib.sha256(context.encode()).hexdigest()
+    return 'fgtida:html:' + kind + ':v2:' + hashlib.sha256(context.encode()).hexdigest()
 
 
 @register.filter
@@ -204,7 +204,7 @@ def rich_rst(value, source_url=''):
     cleaned = cache.get(clean_key)
     if cleaned is not None:
         return format_html('<div class="fg-tida-rich-text">{}</div>', mark_safe(cleaned))
-    key='fgtida:rst:v3:'+hashlib.sha256(text.encode()).hexdigest()
+    key='fgtida:rst:v4:'+hashlib.sha256(text.encode()).hexdigest()
     rendered=cache.get(key)
     if rendered is None:
         try:

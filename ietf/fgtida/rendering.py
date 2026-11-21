@@ -9,6 +9,24 @@ from unicodedata import normalize
 from ietf.utils.html import acceptable_tags
 
 
+def preview_abstract(abstract, bodies):
+    """Prefer the source's abstract; suppress a second catalogue copy."""
+    if not abstract or not abstract.strip():
+        return ''
+    bodies = list(bodies)
+    # Recognize ordinary RST and Markdown abstract sections, including numbered
+    # sections. Leave all original source text and archive bytes unchanged.
+    heading = re.compile(r'(?im)^\s*(?:#{1,6}\s+|(?:\d+[.)]?\s+))?(?:\*\*)?abstract(?:\*\*)?\s*:?[ \t]*(?:\r?\n[ \t]*[=~^+#*-]{3,}[ \t]*$|$)')
+    if any(heading.search(body) for body in bodies):
+        return ''
+    def plain(value):
+        return ' '.join(re.sub(r'[^\w\s]', ' ', unescape(value)).casefold().split())
+    summary = plain(abstract)
+    if summary and any(' ' + summary + ' ' in ' ' + plain(body) + ' ' for body in bodies):
+        return ''
+    return abstract
+
+
 def without_duplicate_title(body, title):
     """Suppress an opening title already rendered by the page template."""
     lines = body.splitlines(keepends=True)

@@ -10,7 +10,7 @@ from ietf.group.models import Group
 from . import core, tests as native_tests
 from .models import Contribution
 from .package_previews import chapters
-from .source_packages import pack
+from .source_packages import pack, unpack
 from .templatetags.fgtida import rich_rst
 
 
@@ -31,6 +31,55 @@ def source(color='red'):
 
 @override_settings(CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
 class PackageRenderingTests(SimpleTestCase):
+    def test_included_sections_keep_figures_and_are_not_displayed_twice(self):
+        payload = pack({'index.rst': b'Abstract\n========\n\nOne summary.\n\n.. include:: chapters/detail.rst\n',
+            'chapters/detail.rst': b'Included details.\n\n.. figure:: ../figures/a.png\n\n   Included figure caption.\n',
+            'figures/a.png': image_bytes('red')})
+        rows = chapters(payload, lambda path: '/safe/' + path)
+        self.assertEqual(len(rows), 1)
+        _, text, context = rows[0]
+        rendered = str(rich_rst(text, context))
+        self.assertIn('src="/safe/figures/a.png"', rendered)
+        self.assertEqual(rendered.count('Included figure caption.'), 1)
+        self.assertIn('Included details.', rendered)
+
+    def test_cyclic_and_external_includes_show_notices_without_reading_files(self):
+        payload = pack({'index.rst': b'.. include:: nested.rst\n\n.. include:: /etc/passwd\n',
+            'nested.rst': b'.. include:: index.rst\n'})
+        _, text, context = chapters(payload, lambda path: '/safe/' + path)[0]
+        rendered = str(rich_rst(text, context))
+        self.assertIn('cyclic or too deep', rendered)
+        self.assertIn('cannot be previewed safely', rendered)
+        self.assertNotIn('root:', rendered)
+
+    def test_unavailable_figure_and_include_options_do_not_hide_the_notices(self):
+        payload = pack({'index.rst': b'.. figure:: missing.png\n   :alt: Missing visual\n\n.. include:: detail.rst\n   :start-line: 2\n',
+            'detail.rst': b'Retained complete section.'})
+        rendered = ''.join(str(rich_rst(text, context)) for _, text, context in chapters(payload, lambda path: '/safe/' + path))
+        self.assertIn('A referenced visual is unavailable', rendered)
+        self.assertIn('cannot be previewed safely', rendered)
+        self.assertIn('Retained complete section.', rendered)
+
+    def test_diagram_export_is_shown_and_unexported_source_is_not_silently_lost(self):
+        payload = pack({'index.rst': b'.. mermaid:: diagram.mmd\n   :caption: Exported architecture.\n\n.. mermaid::\n\n   flowchart LR\n     User --> Tracker\n',
+            'diagram.mmd': b'flowchart LR\n A --> B',
+            'diagram.svg': b'<svg xmlns="http://www.w3.org/2000/svg"/>'})
+        _, text, context = chapters(payload, lambda path: '/safe/' + path)[0]
+        rendered = str(rich_rst(text, context))
+        self.assertIn('src="/safe/diagram.svg"', rendered)
+        self.assertIn('Exported architecture.', rendered)
+        self.assertIn('Diagram source is shown below', rendered)
+        self.assertIn('flowchart LR', rendered)
+        self.assertIn('User --&gt; Tracker', rendered)
+
+    def test_source_abstract_prevents_duplicate_metadata_without_deleting_it(self):
+        from .rendering import preview_abstract
+        for body in ['Abstract\n========\n\nA different source summary.', '## Abstract\n\nA different source summary.',
+                     'A **shared** abstract paragraph.']:
+            self.assertEqual(preview_abstract('A shared abstract paragraph.', [body]), '')
+        self.assertEqual(preview_abstract('A separate summary.', ['Detailed content only.']), 'A separate summary.')
+        self.assertEqual(preview_abstract('AI', ['A training document.']), 'AI')
+
     def test_word_conversion_images_use_the_same_preview_routes(self):
         import subprocess
         import tempfile
@@ -80,13 +129,30 @@ class PackageRenderingTests(SimpleTestCase):
 class PackageAccessTests(TestCase):
     setUp = native_tests.NativeDatatrackerTests.setUp
 
-    def submission(self):
-        data = source()
+    def submission(self, data=None):
+        data = source() if data is None else data
         response = self.client.post('/submit/', {'title': 'Illustrated proposal', 'meeting': native_tests.open_submission_meeting().pk, 'group': Group.objects.get(acronym='tidawg1').pk,
             'submission_method': 'rst', 'publication_consent': 'on', 'entry_document': 'index.rst',
             'upload': SimpleUploadedFile('proposal.zip', data)})
         self.assertEqual(response.status_code, 302)
         return Contribution.objects.get()
+
+    def test_submission_does_not_ask_for_an_abstract_and_old_abstracts_show_once(self):
+        form = self.client.get('/submit/').context['form']
+        self.assertNotIn('abstract', form.fields)
+        files = unpack(source())
+        files['index.rst'] += b'\nAbstract\n--------\n\nA unique preserved summary.\n'
+        item = self.submission(pack(files))
+        item.abstract = 'A unique preserved summary.'
+        item.save(update_fields=['abstract'])
+        item.document.abstract = item.abstract
+        core.save_document(item.document, core.actor_for(self.user), 'Existing catalogue abstract retained.')
+        for url in [f'/submit/{item.pk}/', f'/doc/{item.document.name}/']:
+            page = self.client.get(url)
+            self.assertEqual(page.status_code, 200)
+            self.assertEqual(page.content.decode().count('A unique preserved summary.'), 1)
+        item.refresh_from_db()
+        self.assertEqual(item.abstract, 'A unique preserved summary.')
 
     def test_public_and_private_previews_and_asset_permissions(self):
         item = self.submission()

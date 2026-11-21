@@ -22,6 +22,7 @@ class ScannerProtocolTests(SimpleTestCase):
                                       'RESEND_API_KEY': 'example-only', 'PATH': '/usr/bin'}):
             values = environment()
         self.assertEqual(values['PATH'], '/usr/bin')
+        self.assertEqual(values['FGTIDA_RELEASE_VERSION'], 'parser')
         self.assertFalse(set(values).intersection({'FGTIDA_DB_PASSWORD', 'FGTIDA_SECRET_KEY', 'RESEND_API_KEY'}))
     @override_settings(FGTIDA_UPLOAD_SCAN_REQUIRED=True)
     def test_health_check_requires_detection_and_a_clean_control(self):
@@ -101,7 +102,7 @@ class FileSafetyTests(TestCase):
         self.assertEqual(response['Retry-After'], '900')
         form.assert_not_called()
 
-    def test_scanner_outage_keeps_original_private_and_requires_resubmission(self):
+    def test_scanner_outage_keeps_original_private_until_an_archive_is_committed(self):
         data = b'Private source awaiting scanning'
         with tempfile.TemporaryDirectory() as root, override_settings(FGTIDA_UPLOAD_SCAN_REQUIRED=True, FGTIDA_QUARANTINE_DIR=root):
             with patch('ietf.fgtida.file_safety.scan_stream', side_effect=OSError):
@@ -115,7 +116,10 @@ class FileSafetyTests(TestCase):
             with patch('ietf.fgtida.file_safety.scan_stream', return_value=('ClamAV test', '')):
                 validate_file(data, 'source.txt')
             self.assertTrue(allowed(data, 'source.txt'))
-            self.assertFalse((Path(root) / digest).exists())
+            # A clean scan alone must not erase an upload that has not yet
+            # reached durable document/contribution storage. Normal expiry or
+            # retire_private_after_archive removes this recovery copy later.
+            self.assertEqual((Path(root) / digest).read_bytes(), data)
 
     def test_detection_rejects_files_and_a_bad_extension_cannot_revoke_a_clean_file(self):
         data = b'Example text document'

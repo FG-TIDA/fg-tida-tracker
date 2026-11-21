@@ -36,6 +36,7 @@
   <li>Confirm the conversion on your contribution page. Editors cannot adopt it until you confirm. If tables, equations, drawings or references are missing or incorrect, contact the secretariat; do not confirm an inaccurate conversion.</li></ol>
   <p>The Word original remains archived. Verified RST is used for subsequent standards work. Conversion is not technical approval.</p>
 </details>
+<p>Include figures in your source package and reference them with RST image or figure directives. PNG, JPEG, GIF and safe SVG files appear in the reading preview. For diagram source files, include a PNG or SVG export with the same filename stem; without an export, the preview shows the diagram source and a notice.</p>
 <p>For assistance, contact <a href="mailto:{{ platform_content.secretariat_email }}">the secretariat</a>. Receipt and WG notifications use the same mail workflow for all three routes.</p>
 {% if not form.meeting.field.queryset.exists %}<p class="alert alert-info">No upcoming meetings are currently accepting submissions. Please contact the secretariat.</p>{% endif %}
 <form method="post" enctype="multipart/form-data">{% csrf_token %}{% bootstrap_form form %}<button class="btn btn-primary" type="submit">Submit for review</button></form>
