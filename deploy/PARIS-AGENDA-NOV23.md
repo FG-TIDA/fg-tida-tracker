@@ -1,5 +1,7 @@
 # Paris agenda revision of 23 November 2026
 
+**Superseded by the [DCO revision](PARIS-AGENDA-DCO-NOV23.md). Use that guide for the current agenda and Word download replacement.**
+
 The 27 rows in `ietf/fgtida/paris_agenda_2026.json` were transcribed from the
 provided revised Word agenda. They retain its event text, presenters, outcomes
 and clock times. Per the administrator's correction, sessions with an explicit

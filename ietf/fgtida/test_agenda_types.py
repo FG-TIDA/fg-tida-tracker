@@ -17,6 +17,42 @@ from .templatetags.fgtida import document_type
 class AgendaTypeTests(TestCase):
     setUp = native_tests.NativeDatatrackerTests.setUp
 
+    def test_downloadable_agenda_is_replaced_once_with_old_bytes_and_locations_preserved(self):
+        import subprocess, tempfile
+        from pathlib import Path
+        from ietf.meeting.models import Room, TimeSlot, Schedule, SchedTimeSessAssignment
+        from . import core
+        meeting = Meeting.objects.create(number='paris-file-test', type_id='tida', date=date(2026, 11, 30), days=2, time_zone='Europe/Paris')
+        session = Session.objects.create(meeting=meeting, group=self.root, name='Session 1 – High-level session', purpose_id='regular', type_id='session')
+        room = Room.objects.create(meeting=meeting, name='Existing assigned room')
+        schedule = Schedule.objects.create(meeting=meeting, name='official', owner=core.actor_for(), public=True, visible=True)
+        meeting.schedule = schedule
+        meeting.save(update_fields=['schedule'])
+        from datetime import datetime, timedelta
+        from zoneinfo import ZoneInfo
+        slot = TimeSlot.objects.create(meeting=meeting, type_id='session', time=datetime(2026,11,30,9,tzinfo=ZoneInfo('Europe/Paris')), duration=timedelta(minutes=30), location=room)
+        SchedTimeSessAssignment.objects.create(schedule=schedule, session=session, timeslot=slot)
+        doc = Document(name='paris-download-agenda', title='Paris meeting agenda', type_id='tida', group=self.root)
+        core.save_document(doc, core.actor_for(), 'Previous agenda', data=b'Previous agenda bytes', filename='agenda.txt', session=session)
+        old_path = Path(doc.get_file_name())
+        word = subprocess.run(['pandoc','-f','rst','-t','docx'], input=b'Revised Paris agenda\n====================\n', capture_output=True, check=True).stdout
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder)/'revised.docx'
+            source.write_bytes(word)
+            call_command('update_paris_agenda', agenda_file=str(source), stdout=StringIO())
+            self.assertEqual(old_path.read_bytes(), b'Previous agenda bytes')
+            call_command('update_paris_agenda', agenda_file=str(source), apply=True, stdout=StringIO())
+            doc = Document.objects.get(pk=doc.pk)
+            self.assertEqual(Path(doc.get_file_name()).read_bytes(), word)
+            self.assertEqual(old_path.read_bytes(), b'Previous agenda bytes')
+            revision = doc.rev
+            call_command('update_paris_agenda', agenda_file=str(source), apply=True, stdout=StringIO())
+            doc = Document.objects.get(pk=doc.pk)
+            self.assertEqual(doc.rev, revision)
+        slot.refresh_from_db()
+        self.assertEqual(slot.location_id, room.pk)
+        self.assertEqual(Document.objects.filter(session__meeting=meeting, name=doc.name).distinct().count(), 1)
+
     def test_all_leadership_roles_can_use_a_person_without_a_login_account(self):
         from ietf.person.models import Person, Email
         from ietf.group.models import Role
@@ -40,7 +76,7 @@ class AgendaTypeTests(TestCase):
         for number, wg, topic in [(4, 0, 'Terminology and Use Cases'), (6, 1, 'Continuous Attestation'), (11, 2, 'Identity-Behaviour-Enforcement')]:
             originals[wg] = Session.objects.create(meeting=meeting, group=self.root,
                 name=f'Session {number} – WG{wg}: {topic}', purpose_id='regular', type_id='session').pk
-        originals[6] = Session.objects.create(meeting=meeting, group=self.root,
+        originals[5] = Session.objects.create(meeting=meeting, group=self.root,
             name='Session 16: ICAP', purpose_id='regular', type_id='session').pk
         feedback = Session.objects.create(meeting=meeting, group=self.root,
             name='Session 18 – Feedback and future directions', purpose_id='regular', type_id='session')
@@ -49,7 +85,7 @@ class AgendaTypeTests(TestCase):
             session = Session.objects.get(pk=pk)
             self.assertTrue(session.on_agenda)
             self.assertIn(f'WG{wg}', session.name)
-            self.assertEqual(session.agenda_presenters, 'WGZ Co-Chairs' if wg == 6 else f'Co-Chairs WG{wg}')
+            self.assertEqual(session.agenda_presenters, f'WG{wg} Co-Chairs')
         self.assertEqual(meeting.session_set.filter(name__icontains='ICAP').count(), 1)
         feedback.refresh_from_db()
         self.assertEqual(feedback.name, 'Session 18 – Feedback and future directions')
@@ -66,7 +102,7 @@ class AgendaTypeTests(TestCase):
         self.assertEqual(first.agenda_outcome, 'Agenda adopted')
         self.assertIn('1.2 Address by the French Government', first.agenda_note)
         self.assertEqual(meeting.session_set.filter(agenda_open_ended=True).count(), 0)
-        for wg, label in [('WG3', 'WGX Co-Chairs'), ('WG4', 'WGY Co-Chairs'), ('WG5', 'WGZ Co-Chairs'), ('WG6', 'WGZ Co-Chairs')]:
+        for wg, label in [('WG3', 'WG3 Co-Chairs'), ('WG4', 'WG4 Co-Chairs'), ('WG5', 'WG5 Co-Chairs'), ('WG6', 'WG6 Co-Chairs')]:
             self.assertEqual(meeting.session_set.get(name__contains=wg + ':').agenda_presenters, label)
         from pathlib import Path
         import json, re

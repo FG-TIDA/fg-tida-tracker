@@ -9,7 +9,7 @@
   {
     "day": 0,
     "time": "09:30–10:15",
-    "event": "Session 2 – Terms of reference, objectives and current state of the Working Groups\n2.1 Terms of reference -\n2.2 Objectives-\n2.3 Current state of the Working Groups\n2.4 Calendar",
+    "event": "Session 2 – Terms of reference, objectives and current state of the Working Groups\n2.1 Terms of reference\n2.2 Objectives\n2.3 Current state of the Working Groups\n2.4 Calendar",
     "presenters": "Co-Chairs",
     "outcome": "—"
   },
@@ -30,8 +30,8 @@
   {
     "day": 0,
     "time": "11:15–12:45",
-    "event": "Session 4 –  WG2: Identity-Behaviour-Enforcement Mismatch for AI Agents\n4.1 Approval of WG2 charter\n4.2 Selected contributions discussion",
-    "presenters": "Co-Chairs WG2",
+    "event": "Session 4 – WG2: Identity, Behaviour and Enforcement for AI Agents (IBEA)\n4.1 Approval of WG2 charter\n4.2 Selected contributions discussion",
+    "presenters": "WG2 Co-Chairs",
     "outcome": "—"
   },
   {
@@ -44,15 +44,15 @@
   {
     "day": 0,
     "time": "14:00–15:30",
-    "event": "Session 6 – WG0 Terminology and Use Cases\n6.1 Approval of WG0 charter\n6.2 Terminology – selected contributions discussion\n6.3 Use Cases – selected use cases contribution discussion",
-    "presenters": "Co-Chairs WG0",
+    "event": "Session 5 – WG0: Use Cases and Terminology (UCT)\n5.1 Approval of WG0 charter\n5.2 Terminology – selected contributions discussion",
+    "presenters": "WG0 Co-Chairs",
     "outcome": "—"
   },
   {
     "day": 0,
     "time": "15:30–16:00",
-    "event": "Session 5 – WG0: Use Cases (fireside format)\nUse cases preselected through the Dispatch",
-    "presenters": "Co-Chairs WG0",
+    "event": "Session 6 – WG0: Use Cases (fireside format)\nUse cases preselected through the Dispatch",
+    "presenters": "WG0 Co-Chairs",
     "outcome": "—"
   },
   {
@@ -65,14 +65,14 @@
   {
     "day": 0,
     "time": "16:30–17:15",
-    "event": "Session 8 – Working methods\n8.1 Tutorial on FG working methods (Recommendation ITU-T A.7)\n8.2 Deliverable lifecycle, open-development approach and decision process",
+    "event": "Session 7 – Working methods\n7.1 Tutorial on FG working methods (Recommendation ITU-T A.7)\n7.2 Deliverable lifecycle, open-development approach and decision process",
     "presenters": "ITU-T Secretariat and Co-Chairs",
     "outcome": "—"
   },
   {
     "day": 0,
     "time": "17:15–17:30",
-    "event": "Session 9 – Conclusion of Day 1",
+    "event": "Session 8 – Conclusion of Day 1",
     "presenters": "Co-Chairs",
     "outcome": "—"
   },
@@ -86,22 +86,22 @@
   {
     "day": 1,
     "time": "09:00–09:15",
-    "event": "Session 10 – Opening of Day 2\n10.1 Welcome to Day 2\n10.2 Address by the Chair of ITU-T SG17",
-    "presenters": "10.1 Co-Chairs\n10.2 Chair, ITU-T SG17",
+    "event": "Session 9 – Opening of Day 2\n9.1 Welcome to Day 2\n9.2 Address by the Chair of ITU-T SG17",
+    "presenters": "9.1 Co-Chairs\n9.2 Chair, ITU-T SG17",
     "outcome": "—"
   },
   {
     "day": 1,
     "time": "09:15–10:45",
-    "event": "Session 11 – WG1: Continuous Attestation\n11.1 Approval of WG1 charter\n11.2 Selected contributions discussion",
-    "presenters": "Co-Chairs WG1",
+    "event": "Session 10 – WG1: Continuous and Dynamic Remote Attestation for Agentic AI (CDRA)\n10.1 Approval of WG1 charter\n10.2 Selected contributions discussion",
+    "presenters": "WG1 Co-Chairs",
     "outcome": "Decision: new WG or amended Charter"
   },
   {
     "day": 1,
     "time": "10:45–11:15",
-    "event": "Session 12 – Plenary: New WG or amended Charter?\nNew Work Items (NWI) that do not fit an existing WG",
-    "presenters": "WG2 Co-Chairs",
+    "event": "Session 11– Plenary: New WG or amended Charter?\nNew Work Items (NWI) that do not fit an existing WG",
+    "presenters": "Co-Chairs",
     "outcome": "—"
   },
   {
@@ -114,8 +114,8 @@
   {
     "day": 1,
     "time": "11:30–12:30",
-    "event": "Session 13 – WG3: Discovery\n13.1 – WG proponents presentations\n13.2 - Proposal of charter",
-    "presenters": "WGX Co-Chairs",
+    "event": "Session 12 – WG3: Discovery\n12.1 – WG proponents presentations\n12.2 - Proposal of charter",
+    "presenters": "WG3 Co-Chairs",
     "outcome": "Discussion for Approval"
   },
   {
@@ -128,16 +128,18 @@
   {
     "day": 1,
     "time": "13:45–14:30",
-    "event": "Session 15 – WG5: Governance / Cross-Border / Interoperable Credentials\n15.1 – WG proponents presentations\n15.2 - Proposal of charter",
-    "presenters": "WGZ Co-Chairs",
-    "outcome": "Discussion for Approval"
+    "event": "Session 13 – WG4: Governance / Cross-Border / Interoperable Credentials\n13.1 – WG proponents presentations\n13.2 - Proposal of charter",
+    "presenters": "WG4 Co-Chairs",
+    "outcome": "Discussion for Approval",
+    "match_topic": "Governance"
   },
   {
     "day": 1,
     "time": "14:30–15:00",
-    "event": "Session 16 – WG6: ICAP\n16.1 – WG proponents presentations\n16.2 - Proposal of charter",
-    "presenters": "WGZ Co-Chairs",
-    "outcome": "Discussion for Approval"
+    "event": "Session 14 – WG5: ICAP\n14.1 – WG proponents presentations\n14.2 - Proposal of charter",
+    "presenters": "WG5 Co-Chairs",
+    "outcome": "Discussion for Approval",
+    "match_topic": "ICAP"
   },
   {
     "day": 1,
@@ -149,23 +151,26 @@
   {
     "day": 1,
     "time": "15:30–16:00",
-    "event": "Session 17 – WGA: Regulated domains /\nAthena\n17.1 – WG proponents presentations\n17.2 - Proposal of charter",
-    "presenters": "Co-Chairs WGA",
-    "outcome": "Discussion for Approval"
+    "event": "Session 15 – WG6: Regulated domains: Athena\n15.1 – WG proponents presentations\n15.2 - Proposal of charter",
+    "presenters": "WG6 Co-Chairs",
+    "outcome": "Discussion for Approval",
+    "match_topic": "Athena"
   },
   {
     "day": 1,
     "time": "16:00–16:30",
-    "event": "Session 18 – WGB: Protected groups\nChild Online Protection\n18.1 – WG proponents presentations\n18.2 - Proposal of charter",
-    "presenters": "Co-Chairs WGB",
-    "outcome": "Discussion for Approval"
+    "event": "Session 16 – WG7: Protected groups: Child Online Protection\n16.1 – WG proponents presentations\n16.2 - Proposal of charter",
+    "presenters": "WG7 Co-Chairs",
+    "outcome": "Discussion for Approval",
+    "match_topic": "Protected groups"
   },
   {
     "day": 1,
     "time": "16:30–16:45",
-    "event": "Session 19 – WG4: Control Plane potentials - Arnaud\n19.1 – WG proponents presentations\n19.2 - Proposal of charter",
-    "presenters": "WGY Co-Chairs",
-    "outcome": ""
+    "event": "Session 17 – WG8: Control Plane potentials - Arnaud\n17.1 – WG proponents presentations\n17.2 - Proposal of charter",
+    "presenters": "WG8 Co-Chairs",
+    "outcome": "",
+    "match_topic": "Control Plane"
   },
   {
     "day": 1,
@@ -184,7 +189,7 @@
   {
     "day": 1,
     "time": "17:30–18:15",
-    "event": "Network & Trustech dinner party for those who registered",
+    "event": "Networking & Trustech dinner party for those who registered",
     "presenters": "—",
     "outcome": "—"
   }
