@@ -82,6 +82,13 @@ class SecurityQuestionAdmin(admin.ModelAdmin):
 class FgPersonAdmin(PersonAdmin):
     inlines = [FgEmailInline, AliasInline, PersonUUIDInline]
 
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        field = super().formfield_for_foreignkey(db_field, request, **kwargs)
+        if db_field.name == 'user':
+            field.required = False
+            field.help_text = 'Optional login account. Leave blank for a chair, co-chair, editor or rapporteur who does not use the platform.'
+        return field
+
 
 def can_delete_account_credential(request, obj=None):
     return (obj is not None and request.user.is_superuser

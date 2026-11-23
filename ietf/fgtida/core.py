@@ -13,7 +13,7 @@ TYPE_LABELS = [('tida', 'FG-TIDA document'), ('agenda', 'Agenda'), ('minutes', '
                ('slides', 'Slide'), ('charter', 'Charter'), ('tida-template', 'Template'),
                ('recording', 'Recording')]
 DOCUMENT_TYPES = [slug for slug, label in TYPE_LABELS]
-GROUP_ROLES = {'chair': 'Chair', 'cochair': 'Co-Chair', 'secr': 'Secretariat', 'editor': 'Editor', 'member': 'Member'}
+GROUP_ROLES = {'chair': 'Chair', 'cochair': 'Co-Chair', 'secr': 'Secretariat', 'editor': 'Editor', 'rapporteur': 'Rapporteur', 'member': 'Member'}
 CATEGORIES = [('deliverables', 'Deliverables'), ('themes', 'Themes'), ('use-cases', 'Use cases'),
               ('templates', 'Templates'), ('resources', 'Resources')]
 

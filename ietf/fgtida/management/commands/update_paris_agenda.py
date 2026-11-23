@@ -46,12 +46,34 @@ class Command(BaseCommand):
             lines = row['event'].splitlines()
             title = lines[0].strip()
             short = f'paris2026-{index:02}'
-            # Prefer a prior import key, then the same numbered session. Breaks
-            # are matched by local date/time, never by their repeated title alone.
-            session = Session.objects.filter(meeting=meeting, short=short).first()
+            # A revised agenda can move topics AND reuse session numbers. Match
+            # WG topics before row positions, preserving their linked materials.
+            candidates = Session.objects.filter(meeting=meeting).exclude(pk__in=matched)
+            if candidates.filter(on_agenda=True).exists():
+                candidates = candidates.filter(on_agenda=True)
+            session = candidates.filter(name=title).first() if title.lower() not in {'coffee break', 'lunch'} else None
+            if not session and 'ICAP' in title:
+                icap = candidates.filter(name__icontains='ICAP')
+                if icap.count() > 1:
+                    raise CommandError('Ambiguous ICAP session; review existing rows first.')
+                session = icap.first()
+            wg = re.search(r'\bWG([0-9]+|[A-Z])\b', row['event'])
+            if not session and wg:
+                topics = candidates.filter(name__iregex=rf'(^|[^A-Za-z0-9])WG{wg[1]}([^A-Za-z0-9]|$)')
+                topics = topics.filter(name__icontains='fireside') if 'fireside' in title.lower() else topics.exclude(name__icontains='fireside')
+                if topics.count() > 1:
+                    raise CommandError(f'Ambiguous WG{wg[1]} session; review existing rows first.')
+                session = topics.first()
             number = re.match(r'Session (\d+)\b', title)
-            if not session and number:
+            if not session and number and not wg:
+                topic = re.sub(r'^Session \d+\s*[:–-]\s*', '', title)
+                by_topic = candidates.filter(name__iendswith=topic)
+                if by_topic.count() > 1:
+                    raise CommandError(f'Ambiguous topic {topic}; review existing rows first.')
+                session = by_topic.first()
+            if not session and number and not wg and 'ICAP' not in title:
                 candidates = Session.objects.filter(meeting=meeting, name__iregex=rf'^Session {number[1]}(?:\D|$)')
+                candidates = candidates.exclude(pk__in=matched)
                 if candidates.count() > 1:
                     raise CommandError(f'Ambiguous session {number[1]}; review existing rows first.')
                 session = candidates.first()
@@ -59,10 +81,12 @@ class Command(BaseCommand):
             start = datetime.combine(meeting.date + timedelta(days=row['day']), datetime.strptime(times[0].replace('.', ':'), '%H:%M').time(), ZoneInfo(meeting.time_zone or 'Europe/Paris'))
             end = datetime.combine(start.date(), datetime.strptime(times[1].replace('.', ':'), '%H:%M').time(), start.tzinfo) if len(times) > 1 else None
             if not session:
-                entries = SchedTimeSessAssignment.objects.filter(schedule_id=meeting.schedule_id, session__meeting=meeting, timeslot__time=start).exclude(session_id__in=matched)
+                entries = SchedTimeSessAssignment.objects.filter(schedule_id=meeting.schedule_id, session__meeting=meeting, session__name=title, timeslot__time=start).exclude(session_id__in=matched)
                 if entries.count() == 1:
                     session = entries.first().session
             self.stdout.write(f'{start:%Y-%m-%d %H:%M} {title}')
+            if session:
+                matched.add(session.pk)
             if not options['apply']:
                 continue
             if not session:
