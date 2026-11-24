@@ -20,6 +20,11 @@ Actual working groups are not created or renamed by the agenda update.
 
 ## Production after deployment
 
+Migration `0047_remove_wg5_from_working_groups` removes WG5 from the working
+group roster and submission choices. Its administrative record and linked data
+are retained, and its agenda session is unchanged. The normal pre-deploy
+`migrate` command applies this change; setup commands no longer seed WG5.
+
 Back up the database and files. In Render → web service → Shell:
 
 ```sh

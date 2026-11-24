@@ -43,15 +43,11 @@ class Command(BaseCommand):
             'description': 'ITU-T Focus Group on Trust and Identity for Humans and Agentic AI.'})
         for acronym, name in [('tidawg0', 'Use Cases, Taxonomy, and Terminology'),
                               ('tidawg1', 'Continuous and Dynamic Remote Attestation for Agentic AI'),
-                              ('tidawg5', 'Implementation Conditions and Adoption Pathways for Trusted Agentic AI'),
                               ('tidawg2', 'Identity, Behaviour and Enforcement for AI Agents'), ('incubation', INCUBATION_NAME)]:
             Group.objects.get_or_create(acronym=acronym, defaults={'name': name,
                 'parent': root, 'type_id': 'team' if acronym == 'incubation' else 'wg',
                 'state_id': 'active'})
         Group.objects.filter(parent=root, acronym='incubation', name='No working group yet').update(name=INCUBATION_NAME)
-        from ietf.fgtida.models import WorkingGroupConfiguration
-        WorkingGroupConfiguration.objects.get_or_create(group=Group.objects.get(acronym='tidawg5'),
-            defaults={'number': 5, 'topic_acronym': 'icap'})
         for slug, label in TYPE_LABELS:
             DocTypeName.objects.update_or_create(slug=slug, defaults={'name': label})
             kind, _ = StateType.objects.get_or_create(slug=slug, defaults={'label': 'Document state'})
