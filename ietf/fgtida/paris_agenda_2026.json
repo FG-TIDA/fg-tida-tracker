@@ -44,7 +44,7 @@
   {
     "day": 0,
     "time": "14:00–15:30",
-    "event": "Session 5 – WG0: Use Cases and Terminology (UCT)\n5.1 Approval of WG0 charter\n5.2 Terminology – selected contributions discussion",
+    "event": "Session 5 – WG0: Use Cases, Taxonomy, and Terminology (UCT)\n5.1 Approval of WG0 charter\n5.2 Terminology – selected contributions discussion",
     "presenters": "WG0 Co-Chairs",
     "outcome": "—"
   },
@@ -136,7 +136,7 @@
   {
     "day": 1,
     "time": "14:30–15:00",
-    "event": "Session 14 – WG5: ICAP\n14.1 – WG proponents presentations\n14.2 - Proposal of charter",
+    "event": "Session 14 – WG5: Implementation Conditions and Adoption Pathways for Trusted Agentic AI (ICAP)\n14.1 – WG proponents presentations\n14.2 - Proposal of charter",
     "presenters": "WG5 Co-Chairs",
     "outcome": "Discussion for Approval",
     "match_topic": "ICAP"

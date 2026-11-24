@@ -5,7 +5,7 @@ from ietf.group.models import Group
 from django.db import transaction
 
 GROUPS = [
-    (0, 'Use Cases and Terminology', 'uct'),
+    (0, 'Use Cases, Taxonomy, and Terminology', 'uct'),
     (1, 'Continuous and Dynamic Remote Attestation for Agentic AI', 'cdra'),
     (2, 'Identity, Behaviour and Enforcement for AI Agents', 'ibea'),
 ]

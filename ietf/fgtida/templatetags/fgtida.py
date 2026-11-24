@@ -242,7 +242,8 @@ def group_label(group):
     number=group_number(group)
     if number:
         acronym = group.tida_configuration.topic_acronym.upper()
-        return f'{number.upper()} ({acronym}) : {group.name}' if acronym else f'{number.upper()} : {group.name}'
+        suffix = f' ({acronym})' if acronym and not group.name.rstrip().endswith(f'({acronym})') else ''
+        return f'{number.upper()}: {group.name}{suffix}'
     return group.name
 
 

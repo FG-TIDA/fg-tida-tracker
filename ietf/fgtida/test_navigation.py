@@ -29,7 +29,7 @@ class NavigationTests(TestCase):
         wg = Group.objects.get(acronym='tidawg1')
         WorkingGroupConfiguration.objects.update_or_create(group=wg, defaults={'number':1, 'topic_acronym':'cdra'})
         page = self.client.get('/')
-        for label in ['Groups', 'WG1 (CDRA)', 'NWI for Incubation', 'LS Inputs', 'LS Outputs', 'Floor plan']:
+        for label in ['Groups', 'WG1: Continuous and Dynamic Remote Attestation for Agentic AI (CDRA)', 'NWI for Incubation', 'LS Inputs', 'LS Outputs', 'Floor plan']:
             self.assertContains(page, label)
         for label in ['WGs Charters', 'Request a session', 'Session requests', 'Meeting items', 'Incubation - approval']:
             self.assertNotContains(page, label)

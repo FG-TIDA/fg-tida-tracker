@@ -6,6 +6,14 @@ Athena, WG7 Protected Groups/Child Online Protection and WG8 Control Plane.
 Presenter labels follow that document. The Opening of Day 2 presenter references
 were corrected from 10.1/10.2 to 9.1/9.2 to match Session 9.
 
+On 24 November, WG0 was renamed to Use Cases, Taxonomy, and Terminology (UCT),
+WG1 was confirmed as Continuous and Dynamic Remote Attestation for Agentic AI (CDRA), and WG5 was renamed to
+Implementation Conditions and Adoption Pathways for Trusted Agentic AI (ICAP).
+The agenda data includes these approved names. Migration 0046 updates existing
+group names, topic acronyms and live agenda text while preserving group/session
+IDs, repository mappings and archived documents. Normal deployment migrations
+apply those naming updates; fresh installations use the updated defaults.
+
 Existing room assignments are retained; new assignments default to ROOM XI,
 with dinners TBC. Session/material identities follow topics when numbering changes.
 Actual working groups are not created or renamed by the agenda update.
