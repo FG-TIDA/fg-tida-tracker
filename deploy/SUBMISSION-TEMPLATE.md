@@ -72,9 +72,10 @@ updates the code; it does not copy edited local contributions to Render.
 
 If the secretariat deliberately wants to publish formatting adaptations before
 authors supply missing details, the legacy-only option below permits that.
-Missing text is explicitly marked rather than invented. The public page and
-version history identify the adaptation as awaiting author verification, and
-incomplete adaptations explicitly say they are not fully template-compliant.
+Missing text is explicitly marked rather than invented. The version history
+records the adaptation. Only incomplete adaptations display the public author
+verification notice and say they are not fully template-compliant. Adaptations
+that passed the template checks do not display that notice.
 New submissions and author revisions still require full template validation.
 
 After backing up the production database/files and deploying, run in Render Shell:

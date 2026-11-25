@@ -138,6 +138,9 @@ class TemplateSubmissionTests(TestCase):
         self.assertFalse(OutgoingMail.objects.exists())
         again, _, _ = prepare(Contribution.objects.select_related('document').get(pk=item.pk))
         self.assertEqual(again['state'], 'awaiting_author_review')
+        page = self.client.get(f'/doc/{doc.name}/')
+        self.assertNotContains(page, 'Editorial template adaptation — author verification pending.')
+        self.assertNotContains(page, 'not fully template-compliant')
 
     def test_catalogue_sources_are_not_overwritten(self):
         item = Contribution.objects.create(submitter=self.user, group=self.root, title='Catalogue', status='catalogued')
