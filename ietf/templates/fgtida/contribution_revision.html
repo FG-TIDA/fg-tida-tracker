@@ -3,6 +3,9 @@
 {% block content %}
 <h1>Submit a new version</h1>
 <p><a href="{% url 'fgtida:contribution' submission.pk %}">{{ submission.reference }} · {{ submission.title }}</a></p>
-<p>The source at this GitHub commit will be archived on the existing work item. Its reference, earlier versions and review status are preserved.</p>
-<form method="post">{% csrf_token %}{% bootstrap_form form %}<button class="btn btn-primary" type="submit">Archive version</button></form>
+<p>Upload your revised <strong>RST ZIP package</strong> or <strong>Word (.docx) document</strong>. You can also archive a revision from a public GitHub commit. The existing work item, submitting account, meeting, reference and earlier versions are retained.</p>
+<p>Follow the <a href="https://github.com/FG-TIDA/spec-template/blob/main/src/doc/index.rst">FG-TIDA specification template</a>. Use an X.Y version higher than the latest archived version and enter the same version in History. An unapproved draft may leave Approval blank.</p>
+<p>For RST, include the main RST file and every supporting image/asset in the ZIP. Enter the main file’s full path inside the ZIP. For Word, embed images, use heading styles and leave the entry-document field blank. Clear GitHub-only fields when uploading a file. Revised Word conversions must be checked again before adoption.</p>
+<p>Update this existing item; do not submit a duplicate NWI.</p>
+<form method="post" enctype="multipart/form-data">{% csrf_token %}{% bootstrap_form form %}<button class="btn btn-primary" type="submit">Archive version</button></form>
 {% endblock %}

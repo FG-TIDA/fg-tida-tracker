@@ -6,16 +6,19 @@
 {% if can_revise %}<p><a class="btn btn-outline-primary" href="{% url 'fgtida:contribution-authors' submission.pk %}">Edit author details</a></p>{% endif %}
 <p>{% if submission.document %}{% document_states submission.document %}{% else %}{{ submission.get_status_display }}{% endif %} · {{ submission.created }}</p>
 {% if display_abstract %}<h2>Abstract</h2><div>{{ display_abstract|rich_text }}</div>{% endif %}
-<p>Submission method: <strong>{{ submission.get_submission_method_display }}</strong></p>
+<p>Original submission method: <strong>{{ submission.get_submission_method_display }}</strong></p>
+<p>Current source: <strong>{{ current_source_method_display }}</strong></p>
 {% if security_pending %}<p role="status">This submission is awaiting security checks. Its preview and files will be available after the checks pass.</p>{% endif %}
 {% if original_available %}<p><a href="{% url 'fgtida:contribution-download' submission.pk %}">Download original submission ({{ submission.filename }})</a></p>{% endif %}
 {% if submission.source_archive and not security_pending %}
 <p><a href="{% url 'fgtida:contribution-source' submission.pk %}">Download maintained RST source package and assets</a></p>
+{% if private_original_zip %}<p><a href="{% url 'fgtida:contribution-original' submission.pk private_original_zip.revision %}">Download original ZIP uploaded for this version (private)</a></p>{% endif %}
 <p>Source package checksum: <code class="text-break">{{ submission.source_manifest.sha256 }}</code></p>
 {% endif %}
 {% if submission.draft_repository_url %}<p><a href="{{ submission.draft_repository_url }}">Original personal GitHub repository</a> · commit <code>{{ submission.source_commit }}</code></p>{% endif %}
-{% if submission.submission_method == 'word' %}
+{% if word_conversion %}
 <div class="alert alert-warning">
+{% if current_word_format %}<p><a href="{% url 'fgtida:document-format' current_word_format.pk %}">Download the current Word original for comparison</a></p>{% endif %}
 {% if submission.conversion_verified_at %}Conversion checked on {{ submission.conversion_verified_at }}.
 {% else %}<strong>Conversion needs your verification before adoption.</strong> Compare all text, tables, equations, references and figures with your Word original. Check the extracted assets below and the source package. If anything is missing or wrong, contact <a href="mailto:{{ platform_content.secretariat_email }}">the secretariat</a> before confirming.{% endif %}
 </div>{% endif %}
@@ -24,7 +27,8 @@
 {% if legacy_text %}<section><h2>Full contribution</h2>{% if legacy_extension == '.rst' %}{{ legacy_text|rich_rst }}{% elif legacy_extension == '.md' %}{{ legacy_text|rich_text }}{% else %}<p>Extracted reading text. Download the original submission for its complete layout and figures.</p><pre class="text-break" style="white-space:pre-wrap">{{ legacy_text }}</pre>{% endif %}</section>{% elif not chapters %}<p>A reading preview is unavailable. Download the original submission to read the full contribution.</p>{% endif %}
 {% if assets %}<h2>Supporting files and figures</h2><ul>{% for name in assets %}<li><a href="{% url 'fgtida:contribution-asset' submission.pk name %}">{{ name }}</a></li>{% endfor %}</ul>{% endif %}
 {% if can_verify %}<form method="post" action="{% url 'fgtida:contribution-verify' submission.pk %}">{% csrf_token %}
-<label class="d-block mb-2"><input type="checkbox" name="verified" value="yes" required> I have checked the converted text and supporting figures against my Word original and confirm that they preserve my contribution.</label>
+  <input type="hidden" name="revision" value="{{ submission.document.rev }}">
+  <label class="d-block mb-2"><input type="checkbox" name="verified" value="yes" required> I have checked the converted text and supporting figures against my Word original and confirm that they preserve my contribution.</label>
 <button class="btn btn-primary" type="submit">Confirm conversion accuracy</button></form>{% endif %}
 {% if submission.review_note %}<h2>Editor feedback</h2><p>{{ submission.review_note|linebreaksbr }}</p>{% endif %}
 {% if submission.document %}<p class="mt-3"><a href="{% url 'fgtida:document' submission.document.name %}">Work item record and revision history</a></p>{% endif %}

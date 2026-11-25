@@ -101,6 +101,12 @@ class Command(BaseCommand):
             data = bytes(alternative.content)
             if self.check(data, alternative.filename):
                 DocumentFormat.objects.filter(pk=alternative.pk).update(sha256=hashlib.sha256(data).hexdigest())
+        from ietf.fgtida.models import ContributionRevisionOriginal
+        for original in ContributionRevisionOriginal.objects.all().iterator(chunk_size=1):
+            if self.attempted >= limit:
+                break
+            if self.needs_bytes(original.sha256, original.filename):
+                self.check(bytes(original.content), original.filename)
         for item in Contribution.objects.defer('abstract', 'content', 'source_archive').iterator():
             if self.attempted >= limit:
                 break

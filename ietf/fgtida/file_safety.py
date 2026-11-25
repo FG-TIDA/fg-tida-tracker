@@ -393,6 +393,10 @@ def retire_private_after_archive(data, filename, *, archive_path=None, contribut
             from .models import Contribution
             stored = Contribution.objects.filter(pk=contribution_id).values_list('content', 'source_archive').first()
             found = bool(stored and any(value and hashlib.sha256(bytes(value)).hexdigest() == digest for value in stored))
+            if not found:
+                from .models import ContributionRevisionOriginal
+                original = ContributionRevisionOriginal.objects.filter(contribution_id=contribution_id, sha256=digest).first()
+                found = bool(original and hashlib.sha256(bytes(original.content)).hexdigest() == digest)
         if found:
             private.unlink(missing_ok=True)
             record_event(record, 'archived', kind=kind,
@@ -457,7 +461,7 @@ def preview_source(snapshot):
     """Use a maintained same-version RST package when the original is Word."""
     document = snapshot.doc if snapshot.is_dochistory() else snapshot
     if Path(snapshot.uploaded_filename or '').suffix.lower() != '.zip':
-        package = document.tida_formats.filter(revision=snapshot.rev, kind='zip').first()
+        package = document.tida_formats.filter(revision=snapshot.rev, kind='zip', is_public=True).first()
         if package:
             return bytes(package.content), package.filename
     if not snapshot.uploaded_filename:

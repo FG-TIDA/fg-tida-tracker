@@ -3,7 +3,7 @@ import io
 from pathlib import Path
 from django import forms
 from django.forms.models import BaseInlineFormSet
-from django.http import FileResponse
+from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_safe
 from . import core
@@ -78,6 +78,12 @@ class DocumentFormatFormSet(BaseInlineFormSet):
 @require_safe
 def download(request, pk):
     record = get_object_or_404(DocumentFormat.objects.select_related('document').defer('content'), pk=pk, document__in=core.documents())
+    if not record.is_public:
+        user = request.user
+        owner = user.is_authenticated and record.document.contribution_set.filter(submitter=user).exists()
+        editor = user.is_authenticated and user.has_perm('fgtida.change_contribution') and user.has_perm('doc.change_document')
+        if not (owner or editor):
+            raise Http404
     from .versioning import public_version
     filename = f'{record.document.name}-{public_version(record.document, record.revision)}.{record.kind}'
     from .file_safety import require_clean

@@ -158,7 +158,8 @@ def apply_fit(pk, report, archive, previous, reason, *, allow_incomplete_legacy=
     for original in original_formats:
         if original.kind != 'zip':
             DocumentFormat.objects.get_or_create(document=doc, revision=doc.rev, kind=original.kind,
-                defaults={'filename': original.filename, 'content': bytes(original.content), 'sha256': original.sha256})
+                defaults={'filename': original.filename, 'content': bytes(original.content), 'sha256': original.sha256,
+                          'is_public': original.is_public})
     if filename.lower().endswith('.docx'):
         DocumentFormat.objects.get_or_create(document=doc, revision=doc.rev, kind='docx', defaults={
             'filename': filename, 'content': previous, 'sha256': hashlib.sha256(previous).hexdigest()})

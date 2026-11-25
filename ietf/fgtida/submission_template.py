@@ -67,7 +67,7 @@ def problems(text):
         if not substantive(body) or PLACEHOLDER.search(body) or re.fullmatch(r'TBD|TBC|TODO|N/?A', body.strip(), re.I):
             issues.append(f'Complete {label}; remove empty cells, instructions and template placeholders.')
         if label == 'History' and not declared_version(body):
-            issues.append('History must include a document version in X.Y notation, e.g. 0.0. Do not invent approval dates.')
+            issues.append('History must include a Version column with an X.Y value (e.g. 0.0), or a Version: 0.0 field. Leave the approval date blank for an unapproved draft.')
     if positions != sorted(positions):
         issues.append('Use this front-matter order: ' + ', '.join(SECTIONS) + '.')
     return issues

@@ -7,7 +7,7 @@ from django.core.paginator import Paginator
 from django.http import HttpResponse, Http404
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_safe
 from ietf.doc.models import Document, DocumentAuthor, State
 from . import core
 from .files import MAX_BYTES
@@ -90,42 +90,16 @@ class ContributionForm(forms.ModelForm):
         values = super().clean()
         if self.errors:
             return values
-        from .source_packages import prepare_zip, github_snapshot, convert_word
+        from .submission_sources import prepare_source
         method = values['submission_method']
-        upload = values.get('upload')
         try:
+            prepared = prepare_source(method, upload=values.get('upload'), repository=values.get('draft_repository_url', ''),
+                commit=values.get('source_commit', ''), folder=values.get('source_folder', ''), entry=values.get('entry_document', ''))
+            self.source_archive, self.manifest = prepared['archive'], prepared['manifest']
+            self.content, self.filename = prepared['content'], prepared['filename']
             if method == 'github':
-                if upload or not all(values.get(key) for key in ('draft_repository_url', 'source_commit', 'source_folder', 'entry_document')):
-                    raise forms.ValidationError('For GitHub, provide the repository URL, full commit SHA, source folder and entry document. Do not upload a file.')
-                self.source_archive, self.manifest = github_snapshot(values['draft_repository_url'], values['source_commit'],
-                    values['source_folder'], values['entry_document'])
                 values['source_commit'] = self.manifest['commit']
-                self.content = self.source_archive
-                self.filename = 'github-source.zip'
-            else:
-                if not upload:
-                    raise forms.ValidationError('Choose your completed ZIP or Word document to upload.')
-                if any(values.get(key) for key in ('draft_repository_url', 'source_commit', 'source_folder')):
-                    raise forms.ValidationError('Repository URL, commit and source folder are for the GitHub route only. Clear them for an upload.')
-                self.content = upload.read(MAX_BYTES + 1)
-                self.filename = Path(upload.name).name
-                if method == 'rst':
-                    if Path(upload.name).suffix.lower() != '.zip':
-                        raise forms.ValidationError('Upload an RST source ZIP with all supporting files.')
-                    entry = values.get('entry_document', '')
-                    from pathlib import PurePosixPath
-                    folder = str(PurePosixPath(entry).parent)
-                    self.source_archive, self.manifest = prepare_zip(self.content, entry, '' if folder == '.' else folder, complete=True)
-                else:
-                    if Path(upload.name).suffix.lower() != '.docx':
-                        raise forms.ValidationError('The Word fallback requires a .docx file.')
-                    self.source_archive, self.manifest = convert_word(self.content)
-                    values['entry_document'] = 'index.rst'
-            from .submission_template import check_archive
-            check_archive(self.source_archive, self.manifest, word=method == 'word')
-            import hashlib
-            self.manifest['original_sha256'] = hashlib.sha256(self.content).hexdigest()
-            self.manifest['method'] = method
+            values['entry_document'] = prepared['entry']
         except forms.ValidationError as error:
             self.add_error(None, error)
         return values
@@ -264,6 +238,9 @@ def convert_existing_word(pk, user, *, rebuild=False, reason=''):
     previous_package = bytes(item.source_archive)
     if previous_package and not rebuild:
         return False
+    if previous_package and item.document_id and item.document.tida_versions.filter(
+            revision=item.document.rev, source_metadata__has_key='snapshot').exists():
+        raise forms.ValidationError('This item has a revised source. Review the current version instead of rebuilding from the initial Word submission.')
     from .word_scaffold import PROFILE
     if previous_package and item.source_manifest.get('package_profile') == PROFILE:
         from .word_scaffold import package_gaps
@@ -381,13 +358,37 @@ def detail(request, pk, download=False, source=False):
             pass  # Keep the original download available when extraction is unsupported.
     from .rendering import preview_abstract
     display_abstract = preview_abstract(item.abstract, [text for _, text, _ in chapters] + [legacy_text])
+    if item.source_manifest.get('template_validation'):
+        display_abstract = ''  # The checked source already contains its current Abstract.
+    word_data, word_filename, word_format = current_word_original(item)
+    word_checked = bool(word_data) and allowed(word_data, word_filename)
+    private_original = item.revision_originals.filter(revision=item.document.rev).first() if item.document_id else None
     return render(request, 'fgtida/contribution.html', {'submission': item, 'chapters': chapters, 'assets': assets,
         'display_abstract': display_abstract,
         'security_pending': security_pending, 'original_available': allowed(bytes(item.content), item.filename),
         'legacy_text': legacy_text, 'legacy_extension': Path(item.filename).suffix.lower(),
         'can_revise': can_revise(item, request.user),
-        'can_verify': item.submission_method == 'word' and item.submitter_id == request.user.pk and not item.conversion_verified_at
-                      and not security_pending and allowed(bytes(item.content), item.filename)})
+        'word_conversion': latest_source_method(item) == 'word', 'current_word_format': word_format if word_checked else None,
+        'private_original_zip': private_original,
+        'current_source_method_display': dict(Contribution._meta.get_field('submission_method').choices).get(latest_source_method(item), latest_source_method(item)),
+        'can_verify': latest_source_method(item) == 'word' and item.submitter_id == request.user.pk and not item.conversion_verified_at
+                      and not security_pending and word_checked})
+
+
+def latest_source_method(item):
+    return item.source_manifest.get('method') or item.submission_method
+
+
+def current_word_original(item):
+    if latest_source_method(item) != 'word':
+        return b'', '', None
+    if item.document_id:
+        record = item.document.tida_formats.filter(revision=item.document.rev, kind='docx').first()
+        if record:
+            return bytes(record.content), record.filename, record
+    if item.submission_method == 'word' and Path(item.filename).suffix.lower() == '.docx':
+        return bytes(item.content), item.filename, None
+    return b'', '', None
 
 
 def can_revise(item, user):
@@ -448,36 +449,80 @@ def edit_credits(request, pk):
 
 
 class ContributionRevisionForm(forms.Form):
-    repository = forms.URLField(max_length=300, label='Public GitHub repository')
-    commit = forms.RegexField(r'\A[0-9a-fA-F]{40}\Z', min_length=40, max_length=40, label='Full commit SHA')
-    source_folder = forms.CharField(max_length=255, initial='src/doc')
-    entry_document = forms.CharField(max_length=255, initial='src/doc/index.rst')
-    version = forms.CharField(max_length=32, help_text='Use X.Y notation. The version must be higher than the latest archived version.')
+    submission_method = forms.ChoiceField(choices=[('rst', 'RST source ZIP'), ('word', 'Word (.docx)'), ('github', 'GitHub repository')])
+    upload = forms.FileField(required=False, widget=forms.ClearableFileInput(attrs={'accept': '.zip,.docx'}),
+        help_text='Upload the revised RST ZIP or Word document, up to 10 MB. Leave empty for GitHub.')
+    repository = forms.URLField(required=False, max_length=300, label='Public GitHub repository', help_text='GitHub route only; leave blank for an uploaded file.')
+    commit = forms.RegexField(r'\A[0-9a-fA-F]{40}\Z', required=False, min_length=40, max_length=40, label='Full commit SHA')
+    source_folder = forms.CharField(required=False, max_length=255, help_text='GitHub route only, normally src/doc.')
+    entry_document = forms.CharField(required=False, max_length=255,
+        help_text='ZIP: full path inside the archive, e.g. index.rst or proposal/src/doc/index.rst. GitHub: normally src/doc/index.rst. Leave blank for Word.')
+    version = forms.CharField(max_length=32, help_text='Use a higher X.Y version than every archived version, and enter the same version in the document’s History.')
     publication_consent = forms.BooleanField(label='I confirm these source files and this revision will be public.')
 
+    def __init__(self, data=None, files=None, *, document=None, **kwargs):
+        # Existing GitHub-only clients did not send a route selector.
+        if data is not None and 'submission_method' not in data:
+            data = data.copy()
+            data['submission_method'] = 'github'
+        self.document = document
+        super().__init__(data, files, **kwargs)
+
     def clean_version(self):
-        from .versioning import parts
+        from .versioning import parts, next_version
         version = self.cleaned_data['version']
         parts(version)
+        if self.document:
+            next_version(self.document, version)
         return version
+
+    def clean(self):
+        values = super().clean()
+        if self.errors:
+            return values
+        from .submission_sources import prepare_source
+        from .source_packages import package_text
+        from .versioning import declared_version
+        try:
+            self.prepared = prepare_source(values['submission_method'], upload=values.get('upload'),
+                repository=values.get('repository', ''), commit=values.get('commit', ''),
+                folder=values.get('source_folder', ''), entry=values.get('entry_document', ''))
+            manifest = self.prepared['manifest']
+            if self.document and manifest.get('commit') and DocumentVersion.objects.filter(document=self.document,
+                    source_metadata__snapshot__commit=manifest['commit'], source_metadata__snapshot__sha256=manifest['sha256']).exists():
+                raise forms.ValidationError('This GitHub commit and source package are already archived for this work item.')
+            if declared_version(package_text(self.prepared['archive'])) != values['version']:
+                raise forms.ValidationError('The revision version must match the latest X.Y version in the document’s History. Update History and retry.')
+        except forms.ValidationError as error:
+            self.add_error(None, error)
+        return values
 
 
 def archive_github_revision(pk, actor, repository, commit, source_folder, entry_document, version):
-    from .github_client import repository_name
-    from .github_attribution import source_attribution
-    from .source_packages import github_snapshot, unpack
+    from .submission_sources import prepare_source
     from .versioning import next_version
-
-    repository = 'https://github.com/' + repository_name(repository)
-    commit = commit.lower()
     item = Contribution.objects.select_related('document').get(pk=pk)
     if not can_revise(item, actor):
         raise forms.ValidationError('Only the submitter or an authorized editor can revise a work item awaiting review.')
     next_version(item.document, version)
-    archive, manifest = github_snapshot(repository, commit, source_folder, entry_document)
+    prepared = prepare_source('github', repository=repository, commit=commit, folder=source_folder, entry=entry_document)
+    return archive_source_revision(pk, actor, prepared, version)
+
+
+def archive_source_revision(pk, actor, prepared, version):
+    from .github_attribution import source_attribution
+    from .source_packages import package_text
     from .submission_template import check_archive
-    check_archive(archive, manifest)
-    credits = source_attribution(unpack(archive)[manifest['entry_document']].decode('utf-8-sig'))
+    from .versioning import declared_version
+    from .file_safety import allowed
+    from .models import DocumentFormat, ContributionRevisionOriginal
+    archive, manifest = prepared['archive'], prepared['manifest']
+    method, commit = manifest['method'], manifest.get('commit')
+    check_archive(archive, manifest, word=method == 'word')
+    body = package_text(archive)
+    if declared_version(body) != version:
+        raise forms.ValidationError('The revision version must match the document’s History.')
+    credits = source_attribution(body)
     with transaction.atomic():
         item = Contribution.objects.select_for_update().get(pk=pk)
         if not can_revise(item, actor):
@@ -486,13 +531,31 @@ def archive_github_revision(pk, actor, repository, commit, source_folder, entry_
         from .work_items import state_of
         if state_of(document) != 'submitted':
             raise forms.ValidationError('Only a work item in Submitted state can receive a revision through this form.')
-        if DocumentVersion.objects.filter(document=document, source_metadata__snapshot__commit=commit,
+        if not allowed(archive, 'source.zip') or not allowed(prepared['content'], prepared['filename']):
+            raise forms.ValidationError('The revised source must pass the file security checks before it can be archived.')
+        if commit and DocumentVersion.objects.filter(document=document, source_metadata__snapshot__commit=commit,
                 source_metadata__snapshot__sha256=manifest['sha256']).exists():
             raise forms.ValidationError('This GitHub commit and source package are already archived for this work item.')
-        if item.source_manifest.get('commit') == commit and item.source_manifest.get('sha256') == manifest['sha256']:
+        if commit and item.source_manifest.get('commit') == commit and item.source_manifest.get('sha256') == manifest['sha256']:
             raise forms.ValidationError('This is the original submission commit and source package.')
-        core.save_document(document, core.actor_for(actor), f'Archived work item revision {version} from {repository}/commit/{commit}.',
+        note = f'Archived work item revision {version} from ' + (f"{manifest['repository']}/commit/{commit}." if commit else f'{method} upload.')
+        core.save_document(document, core.actor_for(actor), note,
             data=archive, filename='source.zip', version=version, source_metadata={**credits, 'snapshot': manifest})
+        if method == 'word':
+            import hashlib
+            DocumentFormat.objects.create(document=document, revision=document.rev, kind='docx',
+                filename=prepared['filename'], content=prepared['content'], sha256=hashlib.sha256(prepared['content']).hexdigest())
+        elif method == 'rst':
+            import hashlib
+            ContributionRevisionOriginal.objects.create(contribution=item, revision=document.rev,
+                filename=prepared['filename'], content=prepared['content'], sha256=hashlib.sha256(prepared['content']).hexdigest())
+        # Original submission bytes, original route, ownership, meeting and numbering
+        # remain immutable. The maintained preview and adoption source follow latest.
+        item.source_archive, item.source_manifest = archive, manifest
+        item.conversion_verified_at = item.conversion_verified_by = None
+        item.save(update_fields=['source_archive', 'source_manifest', 'conversion_verified_at', 'conversion_verified_by'])
+        from .file_safety import retire_private_after_archive
+        retire_private_after_archive(prepared['content'], prepared['filename'], contribution_id=item.pk)
         return document
 
 
@@ -505,29 +568,58 @@ def revise(request, pk):
     if request.method == 'POST' and not allow_attempt(f'file-submission:{request.user.pk}', limit=20):
         return HttpResponse('Too many file submissions. Please wait 15 minutes before trying again.', status=429,
                             headers={'Retry-After': '900'})
-    form = ContributionRevisionForm(request.POST if request.method == 'POST' else None, initial={
-        'repository': item.draft_repository_url,
-        'source_folder': item.source_folder or 'src/doc',
-        'entry_document': item.entry_document if item.submission_method == 'github' else 'src/doc/index.rst',
+    method = item.source_manifest.get('method') or item.submission_method
+    method = method if method in {'rst', 'word', 'github'} else 'rst'
+    github_folder = item.source_manifest.get('source_folder') or item.source_folder or 'src/doc'
+    github_entry = github_folder.rstrip('/') + '/' + item.source_manifest.get('entry_document', 'index.rst')
+    form = ContributionRevisionForm(request.POST if request.method == 'POST' else None,
+        request.FILES if request.method == 'POST' else None, document=item.document, initial={
+        'submission_method': method,
+        'repository': (item.source_manifest.get('repository') or item.draft_repository_url) if method == 'github' else '',
+        'source_folder': github_folder if method == 'github' else '',
+        'entry_document': github_entry if method == 'github' else 'index.rst' if method == 'rst' else '',
     })
     if request.method == 'POST' and form.is_valid():
-        values = {key: value for key, value in form.cleaned_data.items() if key != 'publication_consent'}
         try:
-            document = archive_github_revision(item.pk, request.user, **values)
+            document = archive_source_revision(item.pk, request.user, form.prepared, form.cleaned_data['version'])
         except forms.ValidationError as error:
             form.add_error(None, error)
         else:
-            return redirect('fgtida:revision', name=document.name, rev=values['version'])
+            return redirect('fgtida:revision', name=document.name, rev=form.cleaned_data['version'])
     return render(request, 'fgtida/contribution_revision.html', {'submission': item, 'form': form})
+
+
+@login_required
+@require_safe
+def revision_original(request, pk, rev):
+    from django.http import FileResponse
+    from .models import ContributionRevisionOriginal
+    from .file_safety import require_clean
+    import io
+    records = Contribution.objects.defer('content', 'source_archive')
+    if not (request.user.has_perm('fgtida.change_contribution') and request.user.has_perm('doc.change_document')):
+        records = records.filter(submitter=request.user)
+    item = get_object_or_404(records, pk=pk)
+    original = get_object_or_404(ContributionRevisionOriginal, contribution=item, revision=rev)
+    require_clean(bytes(original.content), original.filename)
+    return FileResponse(io.BytesIO(bytes(original.content)), as_attachment=True, filename='submitted-source.zip',
+        content_type='application/zip', headers={'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, no-store'})
 
 
 @login_required
 @require_POST
 @transaction.atomic
 def verify_conversion(request, pk):
-    item = get_object_or_404(Contribution.objects.select_for_update(), pk=pk, submitter=request.user, submission_method='word', status='pending')
+    item = get_object_or_404(Contribution.objects.select_for_update(), pk=pk, submitter=request.user, status='pending')
+    if latest_source_method(item) != 'word' or not item.document_id:
+        raise Http404
+    if request.POST.get('revision') and request.POST['revision'] != item.document.rev:
+        return HttpResponse('The version changed. Review the current Word conversion before confirming.', status=409)
+    word_data, word_filename, _ = current_word_original(item)
+    if not word_data:
+        raise Http404
     from .file_safety import require_clean
-    require_clean(bytes(item.content), item.filename)
+    require_clean(word_data, word_filename)
     require_clean(bytes(item.source_archive), 'source.zip')
     if request.POST.get('verified') != 'yes':
         return HttpResponse('Confirm that you checked the converted content and figures.', status=400)
@@ -577,7 +669,7 @@ def accept(pk, user, target_group=None):
     if item.source_archive:
         validate_file(bytes(item.source_archive), 'source.zip')
     from django.core.exceptions import ValidationError
-    if item.submission_method == 'word' and not item.conversion_verified_at:
+    if latest_source_method(item) == 'word' and not item.conversion_verified_at:
         raise ValidationError('The contributor must verify the Word-to-RST conversion before adoption.')
     from django.utils.text import slugify
     incubation=item.group.acronym=='incubation'

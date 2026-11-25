@@ -86,7 +86,8 @@ def bootstrap_repository(item, client):
     if source_archive:
         from .file_safety import validate_file
         validate_file(source_archive, 'source.zip')
-        if contribution.submission_method == 'word' and not contribution.conversion_verified_at:
+        if (source_manifest.get('method', getattr(contribution, 'submission_method', '')) == 'word'
+                and not getattr(contribution, 'conversion_verified_at', None)):
             raise ValidationError('Word conversion must be verified before source import.')
         metadata['submitted_source'] = source_manifest
     serialized=json.dumps(metadata,ensure_ascii=False,indent=2)+'\n'

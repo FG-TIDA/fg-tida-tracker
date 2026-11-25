@@ -55,8 +55,8 @@ def wrap_word_source(text, media):
             break
     # Adapt simple metadata assignments without importing or executing conf.py.
     config = files['conf.py'].decode('utf-8').splitlines(keepends=True)
-    versions = re.findall(r'(?im)^\s*(?:\|\s*|\*\*|:)?(?:document\s+|charter\s+)?version\s*(?:\*\*)?\s*[:|]\s*(?:\*\*)?\s*v?(\d{1,6}\.\d{1,6})\b', text)
-    release = max(versions, key=lambda value: tuple(map(int, value.split('.')))) if versions else '0.0'
+    from .source_versions import declared_version
+    release = declared_version(text) or '0.0'
     values = {'project': title, 'html_title': title, 'release': release, 'author': '',
               'cover_title': 'FG-TIDA contribution', 'cover_series': 'Focus Group contribution',
               'cover_subject': title, 'cover_subtitle': 'Converted from Word', 'copyright': ''}

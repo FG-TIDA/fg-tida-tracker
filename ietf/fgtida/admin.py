@@ -231,11 +231,14 @@ class ContributionReviewForm(forms.ModelForm):
             self.add_error('decision','This proposal already has a review decision. Use its document lifecycle for further changes.')
         if values.get('verify_conversion'):
             from .file_safety import allowed
-            if self.instance.submission_method != 'word' or not self.instance.source_archive:
+            from .contributions import current_word_original, latest_source_method
+            word_data, word_filename, _ = current_word_original(self.instance)
+            if latest_source_method(self.instance) != 'word' or not self.instance.source_archive or not word_data:
                 self.add_error('verify_conversion', 'Convert the Word submission first, then check its source preview.')
-            elif not allowed(bytes(self.instance.content), self.instance.filename) or not allowed(bytes(self.instance.source_archive), 'source.zip'):
+            elif not allowed(word_data, word_filename) or not allowed(bytes(self.instance.source_archive), 'source.zip'):
                 self.add_error('verify_conversion', 'The original and source package must pass security checks or have an authorized exception.')
-        if values.get('decision') == 'adopt' and self.instance.submission_method == 'word' and not self.instance.conversion_verified_at and not values.get('verify_conversion'):
+        from .contributions import latest_source_method
+        if values.get('decision') == 'adopt' and latest_source_method(self.instance) == 'word' and not self.instance.conversion_verified_at and not values.get('verify_conversion'):
             self.add_error('decision', 'The contributor or administrator must verify the automatic Word-to-RST conversion before adoption.')
         return values
 
@@ -685,13 +688,17 @@ class DocumentFormatInline(admin.TabularInline):
     from .document_formats import DocumentFormatForm, DocumentFormatFormSet
     form = DocumentFormatForm
     formset = DocumentFormatFormSet
-    fields = ['revision', 'kind', 'upload', 'download_link']
-    readonly_fields = ['revision', 'download_link']
+    fields = ['revision', 'kind', 'visibility', 'upload', 'download_link']
+    readonly_fields = ['revision', 'visibility', 'download_link']
     verbose_name_plural = 'Word / PDF alternatives — new rows attach to the revision saved above'
     extra = 0
 
     def get_queryset(self, request):
         return super().get_queryset(request).defer('content').order_by('-revision', 'kind')
+
+    @admin.display(description='Access')
+    def visibility(self, obj):
+        return 'Private submitted original' if obj and not obj.is_public else 'Public after security checks'
 
     def download_link(self, obj):
         if obj and obj.pk:

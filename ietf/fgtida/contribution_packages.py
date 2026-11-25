@@ -9,12 +9,14 @@ from .word_scaffold import package_gaps, complete_rst_source
 
 
 def original_word(item):
-    if item.filename.lower().endswith('.docx'):
-        return bytes(item.content or b'')
     if item.document_id:
         original = item.document.tida_formats.filter(revision=item.document.rev, kind='docx').first()
         if original:
             return bytes(original.content)
+    if item.source_manifest.get('method') not in {None, 'word', 'legacy'}:
+        return b''
+    if item.filename.lower().endswith('.docx'):
+        return bytes(item.content or b'')
     return b''
 
 
@@ -63,7 +65,8 @@ def complete_package(pk, user=None, reason=''):
         return False
     if report['state'] != 'incomplete':
         raise ValidationError('Package cannot be completed automatically: ' + report['state'])
-    if item.filename.lower().endswith('.docx') and item.content and item.submission_method in {'word', 'legacy'}:
+    revised = bool(item.document_id) and item.document.tida_versions.filter(revision=item.document.rev, source_metadata__has_key='snapshot').exists()
+    if not revised and item.filename.lower().endswith('.docx') and item.content and item.submission_method in {'word', 'legacy'}:
         from .contributions import convert_existing_word
         return convert_existing_word(pk, user, rebuild=bool(item.source_archive), reason=reason)
     previous = bytes(item.source_archive or item.content)
@@ -101,7 +104,8 @@ def complete_package(pk, user=None, reason=''):
     if original_format:
         from .models import DocumentFormat
         DocumentFormat.objects.get_or_create(document=item.document, revision=item.document.rev, kind='docx', defaults={
-            'filename': original_format.filename, 'content': bytes(original_format.content), 'sha256': original_format.sha256})
+            'filename': original_format.filename, 'content': bytes(original_format.content), 'sha256': original_format.sha256,
+            'is_public': original_format.is_public})
     item.source_archive = archive
     item.source_manifest = {**item.source_manifest, **manifest, **metadata, 'previous_package_sha256': old}
     item.save(update_fields=['source_archive', 'source_manifest'])

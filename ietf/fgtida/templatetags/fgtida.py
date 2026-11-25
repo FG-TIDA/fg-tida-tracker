@@ -283,6 +283,8 @@ def document_formats(doc, alternatives_only=False, plain=False):
             links.append(('Text', 'file-text', reverse('fgtida:text', args=[name, public_version(doc)])))
     original = doc.doc if doc.is_dochistory() else doc
     for alternative in original.tida_formats.all():
+        if not alternative.is_public:
+            continue
         if alternative.revision == doc.rev and not doc.uploaded_filename:
             unavailable_message = 'File awaiting security checks or review'
         if alternative.revision == doc.rev and allowed_digest(alternative.sha256, alternative.filename):

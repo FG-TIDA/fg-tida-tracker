@@ -230,6 +230,8 @@ def document(request, name, rev=None):
     source_records = list(doc.github_sources.exclude(sync_mode='excluded').select_related('repository'))
     selected_version = version_rows.get(snapshot.rev)
     version_metadata = selected_version.source_metadata if selected_version else {}
+    if version_metadata.get('snapshot', {}).get('template_validation'):
+        abstract = ''  # Show the revised source's Abstract, retaining catalogue metadata in admin/history.
     authors = list(doc.documentauthor_set.select_related('person').order_by('order'))
     assigned_authors = authors
     override = getattr(doc, 'tida_attribution', None)

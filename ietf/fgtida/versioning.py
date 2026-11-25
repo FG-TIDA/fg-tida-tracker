@@ -3,28 +3,7 @@ import re
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from .models import DocumentVersion, DocumentVersionAlias
-
-
-def declared_version(text):
-    """Read explicit version fields and version-history tables, never dates or section numbers."""
-    values = []
-    prefix = text[:65536]
-    field = r'(?:charter\s+|document\s+)?version'
-    for match in re.finditer(rf'(?im)^\s*(?:\|\s*|\*\*|:)?{field}\s*(?:\*\*)?\s*[:|]\s*(?:\*\*)?\s*v?(\d+\.\d+)\b', prefix):
-        values.append(match[1])
-    values.extend(re.findall(rf'(?im)^[ \t]*{field}[ \t]*:?[ \t]*\n[ \t]*v?(\d+\.\d+)[ \t]*(?:\n|$)', prefix))
-    for match in re.finditer(r'(?im)^\s*\*\s+-\s+Version\s*\n(?P<table>(?:[ \t]+[^\n]*\n|\s*\n)+)', prefix):
-        values.extend(re.findall(r'(?m)^\s*\*\s+-\s+v?(\d+\.\d+)\s*$', match['table']))
-    for match in re.finditer(r'(?im)^\s*\|\s*Version\s*\|[^\n]*\n\s*\|[- :|]+\|\s*\n(?P<table>(?:\s*\|[^\n]*\n?)+)', prefix):
-        values.extend(re.findall(r'(?m)^\s*\|\s*v?(\d+\.\d+)\s*\|', match['table']))
-    valid = []
-    for value in values:
-        try:
-            parts(value)
-        except ValidationError:
-            continue
-        valid.append(value)
-    return max(valid, key=parts) if valid else None
+from .source_versions import declared_version
 
 
 def parts(value):

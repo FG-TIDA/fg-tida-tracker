@@ -24,7 +24,41 @@ def completed_source(body='Technical requirements and supporting evidence.'):
         'Requirements\n------------\n\n' + body + '\n').encode()
 
 
+def history_table_source():
+    history = ('.. list-table::\n   :header-rows: 1\n\n'
+        '   * - Version\n     - Document\n     - Approval\n     - Focus Group\n     - Working Group\n'
+        '   * - 0.0\n     - A specification\n     -\n     - TIDA\n     - Incubation\n\n')
+    original = completed_source().decode()
+    before, rest = original.split('History\n-------\n\n', 1)
+    _, after = rest.split('Authors\n-------\n\n', 1)
+    return (before + 'History\n-------\n\n' + history + 'Authors\n-------\n\n' + after).encode()
+
+
 class TemplateValidationTests(SimpleTestCase):
+    def test_history_tables_support_grid_simple_and_nonfirst_version_columns(self):
+        from .versioning import declared_version
+        samples = [
+            ('+---------+----------+----------+\n| Version | Document | Approval |\n+=========+==========+==========+\n| 0.0     | Proposal |          |\n+---------+----------+----------+\n', '0.0'),
+            ('+----------+---------+----------+\n| Document | Version | Approval |\n+==========+=========+==========+\n| Proposal | 0.0     |          |\n+----------+---------+----------+\n', '0.0'),
+            ('======= ========== ========\nVersion Document   Approval\n======= ========== ========\n0.0     Proposal\n0.2     Updated\n======= ========== ========\n', '0.2'),
+            ('| Document | Version | Approval |\n|---|---|---|\n|Proposal|0.0||\n', '0.0'),
+            ('+---------+----------+\n| Date    | Section  |\n+=========+==========+\n| 2026.11 | 2.0      |\n+---------+----------+\n', None),
+            ('History\n-------\n\nVersion: 0.1\n\nAPI compatibility\n-----------------\n\n| Version | Note |\n|---|---|\n|9.0|API release|\n', '0.1'),
+        ]
+        for source, expected in samples:
+            with self.subTest(source=source):
+                self.assertEqual(declared_version(source), expected)
+
+    def test_real_word_history_table_with_blank_approval_passes(self):
+        from .versioning import declared_version
+        word = subprocess.run(['pandoc', '-f', 'rst', '-t', 'docx'], input=history_table_source(),
+                              capture_output=True, check=True).stdout
+        archive, manifest = convert_word(word)
+        text = unpack(archive)['chapters/01_contribution.rst'].decode()
+        self.assertEqual(declared_version(text), '0.0')
+        self.assertEqual(problems(text), [])
+        check_archive(archive, manifest, word=True)
+
     def test_complete_front_matter_and_word_round_trip(self):
         source = completed_source()
         self.assertEqual(problems(source.decode()), [])
@@ -102,6 +136,17 @@ class TemplateSubmissionTests(TestCase):
         self.assertContains(response, 'Add the Abstract heading')
         self.assertFalse(Contribution.objects.exists())
         self.assertFalse(OutgoingMail.objects.exists())
+
+    def test_word_history_table_draft_can_be_submitted_without_approval_date(self):
+        word = subprocess.run(['pandoc', '-f', 'rst', '-t', 'docx'], input=history_table_source(),
+                              capture_output=True, check=True).stdout
+        payload = self.payload(completed_source())
+        payload.update(submission_method='word', entry_document='', upload=SimpleUploadedFile('draft.docx', word))
+        response = self.client.post('/submit/', payload)
+        self.assertEqual(response.status_code, 302, response.context and response.context['form'].errors)
+        item = Contribution.objects.get()
+        self.assertEqual(bytes(item.content), word)
+        self.assertEqual(item.document.tida_versions.get(revision=item.document.rev).version, '0.0')
 
     def test_valid_submission_and_incomplete_github_revision(self):
         self.assertEqual(self.client.post('/submit/', self.payload(completed_source())).status_code, 302)

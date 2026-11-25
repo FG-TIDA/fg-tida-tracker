@@ -41,6 +41,7 @@ urlpatterns = [
     path('submit/', contributions.submit, name='submit'),
     path('submit/<int:pk>/', contributions.detail, name='contribution'),
     path('submit/<int:pk>/revision/', contributions.revise, name='contribution-revise'),
+    path('submit/<int:pk>/original/<str:rev>/', contributions.revision_original, name='contribution-original'),
     path('submit/<int:pk>/authors/', contributions.edit_credits, name='contribution-authors'),
     path('submit/<int:pk>/download/', contributions.detail, {'download': True}, name='contribution-download'),
     path('submit/<int:pk>/source/', contributions.detail, {'source': True}, name='contribution-source'),

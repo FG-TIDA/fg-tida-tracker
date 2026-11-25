@@ -509,11 +509,26 @@ class DocumentFormat(models.Model):
     filename = models.CharField(max_length=255, editable=False)
     content = models.BinaryField(editable=False)
     sha256 = models.CharField(max_length=64, blank=True, editable=False)
+    is_public = models.BooleanField(default=True, editable=False)
     updated = models.DateTimeField(auto_now=True)
     objects = DocumentFormatManager()
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['document', 'revision', 'kind'], name='fgtida_document_format_unique')]
+
+
+class ContributionRevisionOriginal(models.Model):
+    """Private unmodified ZIP, separate from all publicly served alternatives."""
+    contribution = models.ForeignKey(Contribution, on_delete=models.CASCADE, related_name='revision_originals')
+    revision = models.CharField(max_length=16)
+    filename = models.CharField(max_length=255)
+    content = models.BinaryField(editable=False)
+    sha256 = models.CharField(max_length=64)
+    created = models.DateTimeField(auto_now_add=True)
+    objects = DocumentFormatManager()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['contribution', 'revision'], name='fgtida_revision_original_unique')]
 
 
 class FileScan(models.Model):
