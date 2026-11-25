@@ -86,9 +86,20 @@ def prepare(item):
     if entry not in files:
         raise ValidationError('Specify the current RST entry document before adapting this source.')
     text = files[entry].decode('utf-8-sig')
-    if not problems(text):
-        return {'state': 'already_conforming'}, None, previous
     current = document.tida_versions.filter(revision=document.rev).first()
+    adaptation = current.source_metadata.get('template_adaptation', {}) if current else {}
+    if adaptation.get('profile') == PROFILE and adaptation.get('author_review_pending'):
+        return {'state': 'awaiting_author_review', 'issues': adaptation.get('issues', []),
+                'original_issues': adaptation.get('original_issues', []),
+                'provisional': adaptation.get('provisional', False)}, None, previous
+    from .submission_template import check_archive
+    try:
+        check_archive(archive, {'entry_document': entry})
+        original_issues = []
+    except ValidationError as error:
+        original_issues = error.messages
+    if not original_issues:
+        return {'state': 'already_conforming'}, None, previous
     sources = list(document.github_sources.all())
     override = getattr(document, 'tida_attribution', None)
     credits, _, _ = resolve_credits(text, override, current.source_metadata if current else {}, sources)
@@ -111,19 +122,20 @@ def prepare(item):
         issues = []
     except ValidationError as error:
         issues = error.messages
-    return {'state': 'needs_review' if issues else 'ready', 'issues': issues, 'entry_document': entry,
+    return {'state': 'needs_review' if issues else 'ready', 'issues': issues, 'original_issues': original_issues, 'entry_document': entry,
             'version': version, 'previous_sha256': hashlib.sha256(previous).hexdigest(), 'profile': PROFILE}, archive, previous
 
 
 @transaction.atomic
-def apply_fit(pk, report, archive, previous, reason):
+def apply_fit(pk, report, archive, previous, reason, *, allow_incomplete_legacy=False):
     from . import core
     from .file_safety import allowed, preview_source, trust_admin_derivative
     from .models import Contribution, DocumentFormat
     from ietf.doc.models import Document
     from .source_packages import prepare_zip
     from .submission_template import check_archive
-    if len(reason.strip()) < 10 or report['state'] != 'ready':
+    provisional = report['state'] == 'needs_review' and allow_incomplete_legacy
+    if len(reason.strip()) < 10 or (report['state'] != 'ready' and not provisional):
         raise ValidationError('Only a complete template adaptation can be archived; provide a review reason.')
     item = Contribution.objects.select_for_update().get(pk=pk)
     doc = Document.objects.select_for_update().get(pk=item.document_id)
@@ -136,11 +148,13 @@ def apply_fit(pk, report, archive, previous, reason):
     if source_managed(item, doc):
         raise ValidationError('GitHub-managed sources require a source pull request.')
     archive, manifest = prepare_zip(archive, item.source_manifest.get('entry_document') or report['entry_document'])
-    check_archive(archive, {'entry_document': report['entry_document']})
+    if not provisional:
+        check_archive(archive, {'entry_document': report['entry_document']})
+    adaptation = {**report, 'provisional': provisional, 'author_review_pending': True}
     original_formats = list(doc.tida_formats.filter(revision=doc.rev))
     trust_admin_derivative(archive, 'source.zip', previous, filename)
-    core.save_document(doc, core.actor_for(), 'Specification template adaptation. ' + reason.strip(),
-        data=archive, filename='source.zip', version=report['version'], source_metadata={'template_adaptation': report})
+    core.save_document(doc, core.actor_for(), 'Provisional specification template adaptation; author verification pending. ' + reason.strip(),
+        data=archive, filename='source.zip', version=report['version'], source_metadata={'template_adaptation': adaptation})
     for original in original_formats:
         if original.kind != 'zip':
             DocumentFormat.objects.get_or_create(document=doc, revision=doc.rev, kind=original.kind,
@@ -149,7 +163,7 @@ def apply_fit(pk, report, archive, previous, reason):
         DocumentFormat.objects.get_or_create(document=doc, revision=doc.rev, kind='docx', defaults={
             'filename': filename, 'content': previous, 'sha256': hashlib.sha256(previous).hexdigest()})
     item.source_archive = archive
-    item.source_manifest = {**item.source_manifest, **manifest, 'template_adaptation': report}
+    item.source_manifest = {**item.source_manifest, **manifest, 'template_adaptation': adaptation}
     item.conversion_verified_at = None
     item.conversion_verified_by = None
     item.save(update_fields=['source_archive', 'source_manifest', 'conversion_verified_at', 'conversion_verified_by'])

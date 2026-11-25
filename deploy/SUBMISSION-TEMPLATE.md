@@ -68,6 +68,51 @@ updates the code; it does not copy edited local contributions to Render.
 7. Open the contribution's public page and check front matter, version, preview,
    images and earlier archives. File safety controls still gate access.
 
+## Provisional formatting of legacy uploads and author follow-up
+
+If the secretariat deliberately wants to publish formatting adaptations before
+authors supply missing details, the legacy-only option below permits that.
+Missing text is explicitly marked rather than invented. The public page and
+version history identify the adaptation as awaiting author verification, and
+incomplete adaptations explicitly say they are not fully template-compliant.
+New submissions and author revisions still require full template validation.
+
+After backing up the production database/files and deploying, run in Render Shell:
+
+```sh
+python ietf/manage.py fit_fgtida_templates --apply --allow-incomplete-legacy --reason "Editorial template formatting of existing submissions; author verification pending." --contacts-csv /tmp/fgtida-template-review-contacts.csv --skip-checks
+```
+
+This applies eligible complete or incomplete legacy Word/RST adaptations. It
+retains original uploads, source assets, original Word/PDF alternatives and prior
+versions. Security failures and source-managed repositories are still excluded.
+Repeating the command does not produce another adaptation for a version already
+awaiting author verification. Use a fresh CSV filename for another run.
+
+The CSV is private, created with owner-only permissions, and never printed into
+the command's ordinary output. It lists contribution IDs/references, titles,
+URLs, formatting issues, actual submitting-account names/emails and separately
+the submission contact names/emails. Contact details are not inferred from a
+document's author list. An empty account field can mean an admin entered the
+submission for someone without an account; check the separate contact fields.
+Source-managed and already-conforming records are not listed as badly formatted.
+`manual_review` means inspection could not be completed, not a proven formatting
+failure. `archived_provisional` and `awaiting_author_review` require author/editor
+follow-up; no notification emails are sent automatically.
+
+To view the contact list privately in your interactive Render Shell:
+
+```sh
+cat /tmp/fgtida-template-review-contacts.csv
+```
+
+Copy it to your private records or provide it privately to the secretariat for
+follow-up. Do not commit the CSV, upload it as a public document, add it to a
+deployment command or paste it into public issue/deployment logs. `/tmp` is
+temporary, so save the report privately before redeployment. Public pages show
+the editorial notice, not this contact list. A subsequent corrected upload is a
+new revision; the original and adaptation remain in history.
+
 ## GitHub-managed contributions and use cases
 
 The command does not overwrite automatically synchronized documents or catalogue

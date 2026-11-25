@@ -247,6 +247,7 @@ def document(request, name, rev=None):
         'package_chapters': package_chapters,
         'version_records':version_rows,'selected_version':selected_version,'selected_release':releases.get(snapshot.rev),
         'source_snapshot': version_metadata.get('snapshot'),
+        'template_adaptation': version_metadata.get('template_adaptation', {}),
         'last_change':doc.docevent_set.order_by('-time','-pk').first(),
         'text': without_duplicate_title(body, snapshot.title),
         'text_is_markdown': Path(snapshot.uploaded_filename or '').suffix.lower() in ('.md', '.markdown'),

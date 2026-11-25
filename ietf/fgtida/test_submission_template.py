@@ -137,7 +137,7 @@ class TemplateSubmissionTests(TestCase):
         self.assertEqual(declared_version(unpack(bytes(item.source_archive))['index.rst'].decode()), '0.4')
         self.assertFalse(OutgoingMail.objects.exists())
         again, _, _ = prepare(Contribution.objects.select_related('document').get(pk=item.pk))
-        self.assertEqual(again['state'], 'already_conforming')
+        self.assertEqual(again['state'], 'awaiting_author_review')
 
     def test_catalogue_sources_are_not_overwritten(self):
         item = Contribution.objects.create(submitter=self.user, group=self.root, title='Catalogue', status='catalogued')
@@ -145,7 +145,7 @@ class TemplateSubmissionTests(TestCase):
             prepare(item)
         output = StringIO()
         call_command('fit_fgtida_templates', contribution=item.pk, stdout=output)
-        self.assertIn('manual_review', output.getvalue())
+        self.assertIn('source_managed', output.getvalue())
 
     def test_missing_information_cannot_be_applied(self):
         source = completed_source().decode().replace('Identity, trust', 'Not supplied — administrator review required.')
@@ -153,3 +153,52 @@ class TemplateSubmissionTests(TestCase):
         self.assertTrue(problems(fitted))
         with self.assertRaisesMessage(ValidationError, 'Only a complete'):
             apply_fit(0, {'state': 'needs_review'}, b'', b'', 'Review missing keywords before publication.')
+
+    def test_provisional_fit_and_private_submitter_report_are_repeatable(self):
+        import csv
+        import tempfile
+        from pathlib import Path
+        from ietf.doc.models import Document
+        from .management.commands.fit_fgtida_templates import spreadsheet_cell
+        original = pack({'index.rst': b'Old proposal\n============\n\nOriginal technical content.\n'})
+        doc = Document.objects.create(name='legacy-needs-review', title='Existing proposal', type_id='tida', group=self.root)
+        core.save_document(doc, core.actor_for(self.user), 'Original file.', data=original, filename='source.zip', version='0.0')
+        self.user.first_name, self.user.last_name, self.user.email = 'Actual', 'Submitter', 'submitter@example.test'
+        self.user.save()
+        item = Contribution.objects.create(submitter=self.user, group=self.root, title=doc.title,
+            document=doc, content=original, filename='original.zip', source_archive=original,
+            source_manifest={'entry_document': 'index.rst'}, contact_name='Different Submission Contact', contact_email='contact@example.test')
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / 'private.csv'
+            output = StringIO()
+            call_command('fit_fgtida_templates', contribution=item.pk, apply=True, allow_incomplete_legacy=True,
+                         reason='Editorial formatting only; authors will verify their adapted source.', contacts_csv=str(report), stdout=output)
+            self.assertIn('archived_provisional', output.getvalue())
+            self.assertNotIn('submitter@example.test', output.getvalue())
+            self.assertNotIn('contact@example.test', output.getvalue())
+            with report.open(encoding='utf-8-sig', newline='') as source:
+                row = list(csv.DictReader(source))[0]
+            self.assertEqual(row['submitter_name'], 'Actual Submitter')
+            self.assertEqual(row['submitter_email'], 'submitter@example.test')
+            self.assertEqual(row['submission_contact_email'], 'contact@example.test')
+            self.assertTrue(row['issues'])
+            self.assertEqual(report.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(spreadsheet_cell(' =HYPERLINK("bad")'), '\' =HYPERLINK("bad")')
+        item = Contribution.objects.select_related('document').get(pk=item.pk)
+        self.assertEqual(bytes(item.content), original)
+        self.assertIn(b'Original technical content.', unpack(bytes(item.source_archive))['index.rst'])
+        revision = item.document.rev
+        record = item.document.tida_versions.get(revision=revision)
+        self.assertTrue(record.source_metadata['template_adaptation']['provisional'])
+        self.assertEqual(record.version, '0.1')
+        self.assertContains(self.client.get(f'/doc/{doc.name}/'), 'author verification pending')
+        self.assertContains(self.client.get(f'/doc/{doc.name}/'), 'not fully template-compliant')
+        again = StringIO()
+        call_command('fit_fgtida_templates', contribution=item.pk, apply=True, allow_incomplete_legacy=True,
+                     reason='Repeat should not create another version.', stdout=again)
+        self.assertIn('awaiting_author_review', again.getvalue())
+        item.document.refresh_from_db()
+        self.assertEqual(item.document.rev, revision)
+        self.assertFalse(OutgoingMail.objects.exists())
+        with self.assertRaises(ValidationError):
+            check_archive(bytes(item.source_archive), {'entry_document': 'index.rst'})
