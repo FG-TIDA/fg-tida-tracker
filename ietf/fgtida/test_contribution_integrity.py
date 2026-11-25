@@ -121,7 +121,7 @@ class ContributionIntegrityTests(TestCase):
         return {'title': 'Account-owned work item', 'group': Group.objects.get(acronym='tidawg1').pk,
                 'meeting': native_tests.open_submission_meeting().pk, 'submission_method': 'rst',
                 'entry_document': 'index.rst', 'publication_consent': 'on',
-                'upload': SimpleUploadedFile('proposal.zip', pack({'index.rst': content}))}
+                'upload': SimpleUploadedFile('proposal.zip', pack({'index.rst': native_tests.template_source(content)}))}
 
     def test_only_logged_in_user_can_submit_and_cannot_forge_another_submitter(self):
         self.client.logout()

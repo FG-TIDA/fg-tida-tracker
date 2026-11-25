@@ -61,7 +61,7 @@ class CoauthorMetadataTests(TestCase):
             'meeting': native_tests.open_submission_meeting().pk, 'submission_method': 'rst', 'entry_document': 'index.rst',
             'publication_consent': 'on', 'authors': 'First Author, Second Author, Third Author',
             'affiliations': 'Example Lab, "Institute, Paris"',
-            'upload': SimpleUploadedFile('source.zip', pack({'index.rst': b'Original source content.'}))})
+            'upload': SimpleUploadedFile('source.zip', pack({'index.rst': native_tests.template_source(b'Original source content.')}))})
         self.assertEqual(response.status_code, 302)
         return Contribution.objects.get()
 

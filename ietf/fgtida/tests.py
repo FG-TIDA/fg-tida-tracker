@@ -18,6 +18,18 @@ from ietf.meeting.models import Meeting, MeetingCategory, Session, Schedule, Tim
 from . import core
 
 
+def template_source(body=b'Contribution'):
+    """Completed front matter for submission integration fixtures."""
+    text = body.decode() if isinstance(body, bytes) else body
+    return ('A specification\n===============\n\n'
+        'Abstract\n--------\n\nA description of the proposed work.\n\n'
+        'History\n-------\n\nVersion: 0.0\nDocument: A specification\nApproval: Not approved\nFocus Group: TIDA\nWorking Group: Incubation\n\n'
+        'Authors\n-------\n\nAuthor: Example Expert\nAffiliation: Example Institute\nContact: expert@example.test\n\n'
+        'Keywords\n--------\n\nIdentity, trust\n\n'
+        'Foreword\n--------\n\nThis is an individual contribution to FG-TIDA.\n\n'
+        'Requirements\n------------\n\n' + text + '\n').encode()
+
+
 def open_submission_meeting():
     meeting, _ = Meeting.objects.get_or_create(number='nwi-submission-test', defaults={
         'title': 'Upcoming submission meeting', 'type_id': 'tida', 'date': timezone.localdate() + timedelta(days=30),
@@ -529,7 +541,7 @@ class NativeDatatrackerTests(TestCase):
     def source_submission(self, text=b'Contribution'):
         from .source_packages import pack
         return {'meeting': open_submission_meeting().pk, 'submission_method': 'rst', 'publication_consent': 'on', 'entry_document': 'index.rst',
-                'upload': SimpleUploadedFile('proposal.zip', pack({'index.rst': text}))}
+                'upload': SimpleUploadedFile('proposal.zip', pack({'index.rst': template_source(text)}))}
 
     def admin_payload(self, url, values):
         if '/doc/document/' in url:
@@ -654,7 +666,9 @@ class NativeDatatrackerTests(TestCase):
         self.assertEqual(self.client.post('/submit/', {'group': group.pk, 'title': 'Proposal', **self.source_submission()}).status_code, 302)
         item = Contribution.objects.get(title='Proposal')
         path = f'/submit/{item.pk}/revision/'
-        package, manifest = prepare_zip(pack({'index.rst': b'Authors\n-------\n\n.. list-table::\n\n   * - New coauthor\n     - Example Research Lab\n'}), 'index.rst')
+        revised_source = template_source(b'Revised contribution').replace(b'Version: 0.0', b'Version: 0.3').replace(
+            b'Example Expert', b'New coauthor').replace(b'Example Institute', b'Example Research Lab')
+        package, manifest = prepare_zip(pack({'index.rst': revised_source}), 'index.rst')
         repository = 'https://github.com/example/proposal'
         values = {'repository': repository, 'commit': 'a' * 40, 'source_folder': 'src/doc',
                   'entry_document': 'src/doc/index.rst', 'version': '0.3', 'publication_consent': 'on'}
@@ -1075,7 +1089,7 @@ class NativeDatatrackerTests(TestCase):
             **self.source_submission(b'Persistent proposal')})
         item = Contribution.objects.get(title='Queued proposal')
         from .source_packages import unpack
-        self.assertEqual(unpack(bytes(item.content))['index.rst'], b'Persistent proposal')
+        self.assertEqual(unpack(bytes(item.content))['index.rst'], template_source(b'Persistent proposal'))
         notification = OutgoingMail.objects.get(recipient='wg1@example.test')
         self.assertIsNone(notification.sent)
         self.assertEqual(notification.contribution_id, item.pk)
@@ -1126,7 +1140,7 @@ class NativeDatatrackerTests(TestCase):
             self.assertFalse(mail.outbox[-1].attachments)
             self.assertIn(f'/submit/{item.pk}/', mail.outbox[-1].body)
             from .source_packages import unpack
-            self.assertEqual(unpack(bytes(item.content))['index.rst'], b'Original proposal')
+            self.assertEqual(unpack(bytes(item.content))['index.rst'], template_source(b'Original proposal'))
 
     @override_settings(FGTIDA_MAIL_ENABLED=True, FGTIDA_MAIL_IMMEDIATE=False,
                        EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
@@ -1293,7 +1307,8 @@ class NativeDatatrackerTests(TestCase):
         self.assertContains(response, 'bi-file-text')
         self.assertNotContains(response, 'bi-file-pdf')
         text = self.client.get(f'/doc/{doc.name}/text/01/')
-        self.assertEqual(b''.join(text.streaming_content), b'Updated content')
+        self.assertEqual(text.status_code, 200)
+        self.assertEqual(text.content, b'Updated content')
         diff = self.client.get(f'/doc/{doc.name}/compare/?from=00&to=01')
         self.assertContains(diff, '-Native Datatracker document content')
         self.assertContains(diff, '+Updated content')
@@ -1480,18 +1495,20 @@ class NativeDatatrackerTests(TestCase):
 
     def test_document_recency_categories_and_lifecycle_markers(self):
         from .workflow import recent_marker
+        from .models import DocumentAttribution, PublicDocumentType
         doc = self.create_doc()
-        doc.tags.add('tida-deliverables')
+        kind = PublicDocumentType.objects.get_or_create(name='Deliverable')[0]
+        DocumentAttribution.objects.update_or_create(document=doc, defaults={'public_type': kind})
         self.assertEqual(recent_marker(doc), 'New')
         self.assertContains(self.client.get('/doc/?recent=new'), doc.title)
         doc.docevent_set.update(time=timezone.now() - timedelta(days=30))
         self.assertNotContains(self.client.get('/doc/?recent=new'), doc.title)
         core.save_document(doc, core.actor_for(self.user), 'Revision for review', data=b'Revised material', filename='revision.txt',
             state=State.objects.get(type_id='tida', slug='review'))
-        page = self.client.get('/doc/?recent=updated&category=deliverables&state=review&sort=title')
+        page = self.client.get(f'/doc/?recent=updated&type=public-{kind.pk}&state=review&sort=title')
         self.assertContains(page, doc.title)
         self.assertContains(page, '>Updated</span>')
         self.assertContains(page, 'text-bg-warning')
-        self.assertContains(page, '<option value="deliverables" selected>Deliverables</option>')
+        self.assertContains(page, f'<option value="public-{kind.pk}" selected>Deliverable</option>')
         self.assertEqual(recent_marker(doc), 'Updated')
         self.assertNotContains(self.client.get('/doc/?state=published'), doc.title)

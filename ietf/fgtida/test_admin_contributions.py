@@ -30,11 +30,11 @@ class AdminContributionTests(TestCase):
             'contact_name': 'Example Expert', 'contact_email': 'expert@example.test',
             'contact_affiliation': 'Example Research Institute',
             'publication_consent': 'on', 'entry_document': 'index.rst',
-            'upload': SimpleUploadedFile('proposal.zip', pack({'index.rst': b'An external contribution.'})), '_save': 'Save'}
+            'upload': SimpleUploadedFile('proposal.zip', pack({'index.rst': native_tests.template_source(b'An external contribution.').replace(b'Example Institute', b'Example Research Institute')})), '_save': 'Save'}
 
     def word(self):
         return subprocess.run(['pandoc', '-f', 'rst', '-t', 'docx'],
-            input=b'Original proposal\n=================\n\nA preserved paragraph.', capture_output=True, check=True).stdout
+            input=native_tests.template_source(b'A preserved paragraph.'), capture_output=True, check=True).stdout
 
     def test_guest_contribution_metadata_receipt_and_admin_trust_without_scanner(self):
         users = get_user_model().objects.count()

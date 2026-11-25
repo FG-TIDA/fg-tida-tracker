@@ -20,9 +20,9 @@ def image_bytes(color):
     return stream.getvalue()
 
 
-def source(color='red'):
+def source(color='red', version='0.0'):
     return pack({
-        'index.rst': b'Illustrated proposal\n====================\n\nIntroduction.\n',
+        'index.rst': native_tests.template_source(b'Introduction.').replace(b'Version: 0.0', ('Version: ' + version).encode()),
         'chapters/detail.rst': b'Detail\n======\n\n.. figure:: ../figures/a.png\n   :alt: Architecture diagram\n\n   Diagram caption.\n\n.. |icon| image:: ../figures/vector.svg\n\nAn |icon| in the text.\n',
         'figures/a.png': image_bytes(color),
         'figures/vector.svg': b'<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"><rect width="2" height="2"/></svg>',
@@ -141,7 +141,7 @@ class PackageAccessTests(TestCase):
         form = self.client.get('/submit/').context['form']
         self.assertNotIn('abstract', form.fields)
         files = unpack(source())
-        files['index.rst'] += b'\nAbstract\n--------\n\nA unique preserved summary.\n'
+        files['index.rst'] = files['index.rst'].replace(b'A description of the proposed work.', b'A unique preserved summary.')
         item = self.submission(pack(files))
         item.abstract = 'A unique preserved summary.'
         item.save(update_fields=['abstract'])
@@ -202,7 +202,7 @@ class PackageAccessTests(TestCase):
         doc = item.document
         old_rev = doc.rev
         core.save_document(doc, core.actor_for(self.user), 'Updated illustrated version',
-                           data=source('blue'), filename='proposal.zip')
+                           data=source('blue', '0.1'), filename='proposal.zip')
         self.assertNotEqual(doc.rev, old_rev)
         for revision, color in [(old_rev, 'red'), (doc.rev, 'blue')]:
             url = reverse('fgtida:document-image', args=[doc.name, revision, 'figures/a.png'])

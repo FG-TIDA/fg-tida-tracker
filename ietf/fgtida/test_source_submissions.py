@@ -125,7 +125,7 @@ class SubmissionTests(TestCase):
         response = self.client.post('/submit/', self.payload())
         self.assertEqual(response.status_code, 302)
         item = Contribution.objects.get()
-        self.assertEqual(unpack(bytes(item.source_archive))['index.rst'], b'Contribution')
+        self.assertEqual(unpack(bytes(item.source_archive))['index.rst'], native_tests.template_source())
         self.assertEqual(item.document.states.get(type_id='tida').slug, 'submitted')
         self.assertEqual(set(OutgoingMail.objects.filter(contribution=item).values_list('purpose', flat=True)), {'group', 'submitter'})
         with override_settings(FGTIDA_MAIL_ENABLED=True, EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend'):
@@ -140,7 +140,7 @@ class SubmissionTests(TestCase):
 
     def test_word_original_retained_and_only_submitter_can_verify_before_adoption(self):
         from .contributions import accept
-        word = subprocess.run(['pandoc', '-f', 'rst', '-t', 'docx'], input=b'Proposal\n========\n\nText.', capture_output=True, check=True).stdout
+        word = subprocess.run(['pandoc', '-f', 'rst', '-t', 'docx'], input=native_tests.template_source(), capture_output=True, check=True).stdout
         payload = self.payload()
         payload.update(submission_method='word', entry_document='', upload=SimpleUploadedFile('proposal.docx', word))
         response = self.client.post('/submit/', payload)
@@ -176,7 +176,7 @@ class SubmissionTests(TestCase):
         self.assertTrue(form.is_valid(), form.errors)
 
     def test_github_form_preserves_commit_and_needs_no_upload(self):
-        source, manifest = prepare_zip(pack({'index.rst': b'Snapshot'}), 'index.rst')
+        source, manifest = prepare_zip(pack({'index.rst': native_tests.template_source(b'Snapshot')}), 'index.rst')
         manifest['commit'] = 'a'*40
         payload = self.payload()
         payload.pop('upload')

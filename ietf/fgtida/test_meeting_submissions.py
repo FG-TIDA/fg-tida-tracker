@@ -48,7 +48,7 @@ class MeetingSubmissionTests(TestCase):
     def payload(self, **changes):
         return {'title': 'Meeting-linked proposal', 'group': Group.objects.get(acronym='tidawg1').pk,
             'meeting': self.meeting.pk, 'submission_method': 'rst', 'publication_consent': 'on',
-            'entry_document': 'index.rst', 'upload': SimpleUploadedFile('source.zip', pack({'index.rst': b'Proposal content.'})), **changes}
+            'entry_document': 'index.rst', 'upload': SimpleUploadedFile('source.zip', pack({'index.rst': native_tests.template_source(b'Proposal content.')})), **changes}
 
     def test_meeting_is_required_and_open_selection_is_archived_with_submission(self):
         missing = self.payload()
@@ -128,6 +128,8 @@ class MeetingSubmissionTests(TestCase):
         paris.schedule = Schedule.objects.create(meeting=paris, name='official', owner=actor)
         paris.save()
         item = Contribution.objects.create(group=self.root, title='Existing proposal', filename='', content=b'')
+        # This migration intentionally covers records predating its cutoff.
+        Contribution.objects.filter(pk=item.pk).update(created=datetime(2026,11,22,tzinfo=utc_timezone.utc))
         number = item.reference
         for name, presenter in [('Session 6 – WG1:', 'WG1 Co-Chairs'), ('Session 13 – WG3: Discovery', 'WGX Co-Chairs'), ('Dinner', '')]:
             session = Session.objects.create(meeting=paris, name=name, group=self.root, type_id='session', purpose_id='regular', agenda_presenters=presenter)

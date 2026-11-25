@@ -121,6 +121,8 @@ class ContributionForm(forms.ModelForm):
                         raise forms.ValidationError('The Word fallback requires a .docx file.')
                     self.source_archive, self.manifest = convert_word(self.content)
                     values['entry_document'] = 'index.rst'
+            from .submission_template import check_archive
+            check_archive(self.source_archive, self.manifest, word=method == 'word')
             import hashlib
             self.manifest['original_sha256'] = hashlib.sha256(self.content).hexdigest()
             self.manifest['method'] = method
@@ -473,6 +475,8 @@ def archive_github_revision(pk, actor, repository, commit, source_folder, entry_
         raise forms.ValidationError('Only the submitter or an authorized editor can revise a work item awaiting review.')
     next_version(item.document, version)
     archive, manifest = github_snapshot(repository, commit, source_folder, entry_document)
+    from .submission_template import check_archive
+    check_archive(archive, manifest)
     credits = source_attribution(unpack(archive)[manifest['entry_document']].decode('utf-8-sig'))
     with transaction.atomic():
         item = Contribution.objects.select_for_update().get(pk=pk)
