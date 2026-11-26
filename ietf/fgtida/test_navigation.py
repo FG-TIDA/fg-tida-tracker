@@ -149,6 +149,9 @@ class LiaisonPackageTests(SimpleTestCase):
     def test_word_zip_preserves_original_and_extracts_reading_text(self):
         word = io.BytesIO()
         with zipfile.ZipFile(word, 'w') as archive:
+            archive.writestr('[Content_Types].xml', '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+                '<Override PartName="/word/document.xml" '
+                'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>')
             archive.writestr('word/document.xml', '<document><p>Liaison statement</p></document>')
         from .source_packages import pack
         original = pack({'statement.docx': word.getvalue(), 'annex.txt': b'Annex content'})

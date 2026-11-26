@@ -39,8 +39,28 @@ def title_for(data, path):
     return PurePosixPath(path).stem.replace('_',' ')[:255]
 
 
+def existing_issue(repository, key, source_url):
+    """Include removed/manual mappings and pre-transfer, unlinked records."""
+    from django.db.models import Q
+    from .classification import USE_CASES_URL, LEGACY_USE_CASES_URL
+    urls = [source_url, source_url.rstrip('/') + '/']
+    if source_url.lower().startswith(USE_CASES_URL + '/issues/'):
+        legacy = LEGACY_USE_CASES_URL + source_url[len(USE_CASES_URL):]
+        urls += [legacy, legacy + '/']
+    mappings = Q(repository=repository, source_key=key)
+    documents = Q()
+    for url in urls:
+        mappings |= Q(source_url__iexact=url)
+        documents |= Q(external_url__iexact=url)
+    if repository.full_name.lower() == 'fg-tida-wg0/use-cases':
+        mappings |= Q(repository__name='use-cases', repository__account__organization__iexact='FG-TIDA', source_key=key)
+    return GitHubSource.objects.filter(mappings).exists() or Document.objects.filter(documents).exists()
+
+
 @transaction.atomic
-def store_source(repository, key, data, filename, title, source_url, sha, category=None, kind=None, dry_run=False, source_metadata=None):
+def store_source(repository, key, data, filename, title, source_url, sha, category=None, kind=None, dry_run=False, source_metadata=None, new_only=False, template_issue=False, client=None):
+    if new_only and existing_issue(repository, key, source_url):
+        return 'existing; skipped'
     source = GitHubSource.objects.filter(repository=repository, source_key=key).first()
     digest = hashlib.sha256(data).hexdigest()
     if source and (source.sync_mode != 'automatic' or (not source.document_id and source.sha)):
@@ -48,6 +68,8 @@ def store_source(repository, key, data, filename, title, source_url, sha, catego
     from .classification import resolve, refresh, USE_CASES_URL, LEGACY_USE_CASES_URL
     assigned_group, selected_category, observed = resolve(repository, key, source_url,
         source_metadata if source_metadata is not None else (source.source_metadata if source else {}))
+    if source and source.source_metadata.get('issue_template'):
+        observed = {**observed, 'issue_template': True}
     if source and source.checksum == digest and source.document_id and source.document.uploaded_filename:
         if dry_run:
             return 'unchanged content; review classification'
@@ -64,12 +86,16 @@ def store_source(repository, key, data, filename, title, source_url, sha, catego
         return 'manual/excluded'
     linked_doc = linked_item.document if linked_item and key == 'file:src/doc/index.rst' else None
     doc = source.document if source else linked_doc or core.documents(include_uncatalogued=True).filter(external_url__in=urls).first()
+    if new_only and doc:
+        return 'existing; skipped'
     if dry_run:
         return 'update' if doc else 'create'
     if doc:
         doc = Document.objects.select_for_update().get(pk=doc.pk)
     if not source:
         source,created = GitHubSource.objects.get_or_create(repository=repository, source_key=key, defaults={'document':doc})
+        if new_only and not created:
+            return 'existing; skipped'
         if created and doc and not linked_doc and doc.docevent_set.filter(by__user__isnull=False).exists():
             source.sync_mode='manual'
             source.source_url=source_url
@@ -101,7 +127,19 @@ def store_source(repository, key, data, filename, title, source_url, sha, catego
     doc.external_url = source_url
     initial = 'draft' if repository.mode == 'workitem' or doc.type_id=='charter' else 'submitted'
     state = None if doc.pk and doc.states.exists() else State.objects.filter(type_id=doc.type_id, slug=initial if doc.type_id in {'tida','charter'} else 'active').first()
-    core.save_document(doc, core.actor_for(), f'Synchronized {repository.full_name}: {key} ({sha}).', data=data, filename=filename, state=state)
+    publication, publication_name, archive_metadata = data, filename, None
+    if key.startswith('issue:') and (template_issue or source.source_metadata.get('issue_template')):
+        from .issue_packages import prepare_issue
+        publication, archive_metadata = prepare_issue(data, title=title, credits=source_metadata or {}, client=client)
+        publication_name = 'issue-source.zip'
+        # Abstract is already part of the prepared reading content; do not
+        # repeat the first 2,000 characters of raw Markdown above that preview.
+        doc.abstract = ''
+        observed = {**observed, 'issue_template': True}
+        from .github_attribution import CREDIT_FIELDS
+        observed.update({field: archive_metadata[field] for field in CREDIT_FIELDS})
+    core.save_document(doc, core.actor_for(), f'Synchronized {repository.full_name}: {key} ({sha}).',
+        data=publication, filename=publication_name, state=state, source_metadata=archive_metadata)
     doc.tags.remove(*doc.tags.filter(slug__in=['tida-'+slug for slug, _ in core.categories()]))
     if selected_category in dict(core.categories()):
         doc.tags.add('tida-'+selected_category)
@@ -122,7 +160,7 @@ def store_source(repository, key, data, filename, title, source_url, sha, catego
     return 'updated' if doc.rev != '00' else 'created'
 
 
-def sync_repository(repository, dry_run=False, client=None, metadata=None):
+def sync_repository(repository, dry_run=False, client=None, metadata=None, *, new_only=False, template_issues=False):
     client = client or GitHubClient(repository.account)
     results = []
     if not repository.enabled or not repository.account.enabled:
@@ -141,13 +179,23 @@ def sync_repository(repository, dry_run=False, client=None, metadata=None):
         for issue in client.pages(f'/repos/{repository.full_name}/issues?state=all' + ordering):
             if 'pull_request' in issue:
                 continue
+            key = 'issue:' + str(issue['number'])
+            if new_only and existing_issue(repository, key, issue['html_url']):
+                results.append(f'issue #{issue["number"]}: existing; skipped')
+                continue
             issue_body = issue.get('body') or ''
             body = ('# '+issue['title']+'\n\n'+issue_body+'\n').encode()
             attribution = document_attribution(issue_body)
-            results.append(store_source(repository, 'issue:'+str(issue['number']), body, f'issue-{issue["number"]}.md',
+            outcome = store_source(repository, key, body, f'issue-{issue["number"]}.md',
                 issue['title'][:255], issue['html_url'], issue['updated_at'], dry_run=dry_run,
+                new_only=new_only, template_issue=template_issues, client=client,
                 source_metadata={'labels':[label['name'] for label in issue.get('labels',[])], 'state':issue.get('state',''),
-                    'created_at':issue.get('created_at',''), 'updated_at':issue['updated_at'], **attribution}))
+                    'created_at':issue.get('created_at',''), 'updated_at':issue['updated_at'], **attribution})
+            results.append(f'issue #{issue["number"]}: {outcome}' if new_only else outcome)
+            if new_only:
+                # One new catalogue entry per issue. Do not add attachment-only
+                # documents or revisit existing issues during this targeted import.
+                continue
             # Only explicitly linked GitHub-hosted document attachments are catalogued.
             for url in sorted(set(re.findall(r'https://github\.com/(?:user-attachments/files|[^\s/]+/[^\s/]+/files)/[^\s)<>\"\\]+',issue.get('body') or ''))):
                 path=urlsplit(url).path
@@ -171,7 +219,7 @@ def sync_repository(repository, dry_run=False, client=None, metadata=None):
                     if parent and attachment:
                         relation,_=DocRelationshipName.objects.get_or_create(slug='tida-material',defaults={'name':'Supporting material'})
                         RelatedDocument.objects.get_or_create(source=parent.document,target=attachment.document,relationship=relation)
-        if not dry_run:
+        if not dry_run and not new_only:
             repository.last_sync,repository.last_error=timezone.now(),''
             repository.save(update_fields=['last_sync','last_error'])
         return results

@@ -13,6 +13,8 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('--apply', action='store_true', help='Write changes; default is a read-only plan.')
         parser.add_argument('--repository', help='Limit to owner/repository.')
+        parser.add_argument('--new-only', action='store_true', help='Import only unmapped WG0 use-case issues; preserve every existing record and deliberate exclusion.')
+        parser.add_argument('--template-issues', action='store_true', help='Publish new WG0 issues as specification-template RST packages, retaining original Markdown.')
         parser.add_argument('--discover', action='store_true', help='Discover WG-numbered repositories inside administrator-configured WG organizations.')
 
     def handle(self, *args, **options):
@@ -29,6 +31,11 @@ class Command(BaseCommand):
                 cursor.execute('SELECT pg_advisory_unlock(746432, 2)')
 
     def synchronize(self, options):
+        if options.get('new_only') or options.get('template_issues'):
+            if (options['repository'] or '').lower() != 'fg-tida-wg0/use-cases' or options['discover']:
+                raise CommandError('Use --repository fg-tida-wg0/use-cases without --discover for this targeted issue import.')
+            if options.get('template_issues') and not options.get('new_only'):
+                raise CommandError('--template-issues requires --new-only; existing records must not be reformatted by this import.')
         if options['discover']:
             import re
             for group in WorkingGroupConfiguration.objects.filter(github_account__enabled=True).select_related('github_account','group'):
@@ -80,7 +87,10 @@ class Command(BaseCommand):
                 if options['apply'] and not repository.github_id:
                     repository.github_id = metadata['id']
                     repository.save(update_fields=['github_id'])
-                result = Counter(sync_repository(repository, dry_run=not options['apply'], client=client,metadata=metadata))
+                if options.get('new_only') and (repository.mode != 'issues' or repository.group.acronym != 'tidawg0'):
+                    raise ValidationError('The use-case mapping must use Issues mode and working group wg0.')
+                result = Counter(sync_repository(repository, dry_run=not options['apply'], client=client,metadata=metadata,
+                    new_only=options.get('new_only', False), template_issues=options.get('template_issues', False)))
                 self.stdout.write(f'{repository}: {dict(result)}')
             except Exception as error:
                 # Never print tokens, request bodies or upstream response contents.
