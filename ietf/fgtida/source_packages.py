@@ -108,6 +108,9 @@ def prepare_zip(data, entry, folder='', *, complete=False):
     result = pack(files)
     from .file_safety import trust_admin_derivative
     trust_admin_derivative(result, 'source.zip', data, 'source.zip')
+    # Folder extraction and template completion change the archive's bytes.
+    # Certify the prepared package as well as the original upload.
+    validate_file(result, 'source.zip')
     manifest['sha256'] = hashlib.sha256(result).hexdigest()
     manifest.update(package_metadata)
     return result, manifest

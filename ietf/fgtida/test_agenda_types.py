@@ -91,13 +91,78 @@ class AgendaTypeTests(TestCase):
         self.assertEqual(feedback.name, 'Session 18 – Feedback and future directions')
         self.assertTrue(feedback.on_agenda)
 
+    def test_paris_closing_adjustment_preserves_history_and_handles_an_already_deleted_break(self):
+        from datetime import datetime, timedelta
+        from zoneinfo import ZoneInfo
+        from ietf.meeting.models import Schedule, TimeSlot, SchedTimeSessAssignment, SessionPresentation
+        from . import core
+        meeting = Meeting.objects.create(number='tida-2026-11-30-first-focus-group-meeting', type_id='tida',
+            date=date(2026,11,30), days=2, time_zone='Europe/Paris')
+        call_command('update_paris_agenda', apply=True, stdout=StringIO())
+        meeting.refresh_from_db()
+        zone = ZoneInfo('Europe/Paris')
+        clock = lambda hour, minute: datetime(2026,12,1,hour,minute,tzinfo=zone)
+        feedback = meeting.session_set.get(name__startswith='Session 18')
+        dinner = meeting.session_set.get(name__startswith='Networking & Trustech')
+        feedback_entry = feedback.timeslotassignments.get(schedule=meeting.schedule)
+        dinner_entry = dinner.timeslotassignments.get(schedule=meeting.schedule)
+        TimeSlot.objects.filter(pk=feedback_entry.timeslot_id).update(time=clock(17,0))
+        TimeSlot.objects.filter(pk=dinner_entry.timeslot_id).update(duration=timedelta(minutes=45))
+        room = feedback_entry.timeslot.location_id
+        alternative = Schedule.objects.create(meeting=meeting, name='historical', owner=core.actor_for(self.user))
+        historical_entry = SchedTimeSessAssignment.objects.create(schedule=alternative, session=feedback, timeslot_id=feedback_entry.timeslot_id)
+        migration = import_module('ietf.fgtida.migrations.0050_adjust_paris_closing_agenda')
+        migration.adjust_closing_agenda(apps, connection.schema_editor())  # Break was already removed.
+        coffee = Session.objects.create(meeting=meeting, group=self.root, name='Coffee break', purpose_id='regular', type_id='session', on_agenda=True)
+        slot = TimeSlot.objects.create(meeting=meeting, name='Coffee break', type_id='session', time=clock(16,45), duration=timedelta(minutes=15))
+        SchedTimeSessAssignment.objects.create(schedule=meeting.schedule, session=coffee, timeslot=slot)
+        note = Document.objects.create(name='retained-coffee-note', title='Historical note', type_id='tida', group=self.root)
+        SessionPresentation.objects.create(session=coffee, document=note)
+        for _ in range(2):
+            migration.adjust_closing_agenda(apps, connection.schema_editor())
+        feedback_entry.refresh_from_db()
+        dinner_entry.refresh_from_db()
+        historical_entry.refresh_from_db()
+        coffee.refresh_from_db()
+        self.assertFalse(coffee.on_agenda)
+        self.assertFalse(coffee.timeslotassignments.filter(schedule=meeting.schedule).exists())
+        self.assertTrue(SessionPresentation.objects.filter(session=coffee, document=note).exists())
+        self.assertEqual(feedback_entry.timeslot.time, clock(16,45))
+        self.assertEqual(feedback_entry.timeslot.duration, timedelta(minutes=30))
+        self.assertEqual(feedback_entry.timeslot.location_id, room)
+        self.assertEqual(dinner_entry.timeslot.time, clock(17,30))
+        self.assertEqual(dinner_entry.timeslot.duration, timedelta(minutes=270))
+        self.assertEqual(historical_entry.timeslot.time, clock(17,0))
+
+    def test_admin_can_delete_session_and_its_hidden_scheduling_history(self):
+        from django.contrib import admin
+        from django.test import RequestFactory
+        from ietf.meeting.models import SchedulingEvent, SessionPresentation
+        from . import core
+        meeting = Meeting.objects.create(number='session-delete-test', type_id='tida', date=date(2026,11,30), days=2)
+        coffee = Session.objects.create(meeting=meeting, group=self.root, name='Coffee break', purpose_id='regular', type_id='session')
+        history = SchedulingEvent.objects.create(session=coffee, status_id='appr', by=core.actor_for(self.user))
+        document = Document.objects.create(name='session-linked-note', title='Retained document', type_id='tida', group=self.root)
+        SessionPresentation.objects.create(session=coffee, document=document)
+        request = RequestFactory().get('/')
+        request.user = self.user
+        self.assertFalse(admin.site._registry[SchedulingEvent].has_delete_permission(request, history))
+        response = self.client.get(f'/admin/meeting/session/{coffee.pk}/delete/')
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context['perms_lacking'])
+        self.assertFalse(admin.site._registry[SchedulingEvent].has_delete_permission(request, history))
+        self.assertEqual(self.client.post(f'/admin/meeting/session/{coffee.pk}/delete/', {'post':'yes'}).status_code, 302)
+        self.assertFalse(Session.objects.filter(pk=coffee.pk).exists())
+        self.assertFalse(SchedulingEvent.objects.filter(pk=history.pk).exists())
+        self.assertTrue(Document.objects.filter(pk=document.pk).exists())
+
     def test_import_is_repeatable_and_keeps_open_ended_event_and_outcomes(self):
         meeting = Meeting.objects.create(number='paris-test', type_id='tida', date=date(2026, 11, 30), days=2, time_zone='Europe/Paris')
         call_command('update_paris_agenda', stdout=StringIO())
         self.assertFalse(meeting.session_set.exists())
         call_command('update_paris_agenda', apply=True, stdout=StringIO())
         identifiers = set(meeting.session_set.values_list('pk', flat=True))
-        self.assertEqual(len(identifiers), 27)
+        self.assertEqual(len(identifiers), 26)
         first = meeting.session_set.get(short='paris2026-01')
         self.assertEqual(first.agenda_outcome, 'Agenda adopted')
         self.assertIn('1.2 Address by the French Government', first.agenda_note)
@@ -108,8 +173,8 @@ class AgendaTypeTests(TestCase):
         import json, re
         rows = json.loads(Path('ietf/fgtida/paris_agenda_2026.json').read_text())
         self.assertTrue(all(re.fullmatch(r'\d{2}:\d{2}–\d{2}:\d{2}', row['time']) for row in rows))
-        end_of_day = [row for row in rows if row['day'] == 1][-3:]
-        self.assertEqual([row['time'] for row in end_of_day], ['16:45–17:00', '17:00–17:30', '17:30–18:15'])
+        end_of_day = [row for row in rows if row['day'] == 1][-2:]
+        self.assertEqual([row['time'] for row in end_of_day], ['16:45–17:15', '17:30–22:00'])
         call_command('update_paris_agenda', apply=True, stdout=StringIO())
         self.assertEqual(identifiers, set(meeting.session_set.values_list('pk', flat=True)))
         page = self.client.get('/meeting/paris-test/agenda/')

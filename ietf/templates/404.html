@@ -1,19 +1,22 @@
-{# Copyright The IETF Trust 2007, All Rights Reserved #}
-{% extends "base.html" %}
-{% load static %}
-{% block title %}Error: Page Not Found{% endblock %}
-{% block content %}
-    {% include "logo.html" with org="ietf" classes="col-2 mb-5" only %}
-    <div class="alert alert-warning my-3">
-        <h1>The page you were looking for couldn't be found</h1>
-        <hr>
-        <p>
-            The requested URL was not found on this server. If you entered the URL
-            manually please check your spelling and try again.
-        </p>
-        <p class="mb-0">
-            If you think this is a server error, please contact
-            <a href="mailto:{{ bugreport_email }}">{{ bugreport_email }}</a>.
-        </p>
-    </div>
-{% endblock %}
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Page not found | FG-TIDA Datatracker</title>
+    <style>
+        body { margin: 0; border-top: .3rem solid #079dc6; font: 1rem/1.6 system-ui, sans-serif; color: #17212b; }
+        main { max-width: 40rem; margin: 3rem auto; padding: 0 1.25rem; }
+        a { color: #075bb0; }
+    </style>
+</head>
+<body>
+    <main>
+        <img src="{% static 'images/fg-tida-logo.png' %}" alt="FG-TIDA" width="64" height="64">
+        <p><strong>FG-TIDA Datatracker</strong></p>
+        <h1>Page not found</h1>
+        <p>The page may have moved or the address may be incorrect. Please check the address or search for the document.</p>
+        <p><a href="/">Return to Datatracker</a> · <a href="/doc/">Find a document</a> · <a href="mailto:tsbfgtida@itu.int">Contact the Secretariat</a></p>
+    </main>
+</body>
+</html>

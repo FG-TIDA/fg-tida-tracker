@@ -1,4 +1,5 @@
 import ast
+import hashlib
 import subprocess
 import tempfile
 from pathlib import Path
@@ -52,6 +53,88 @@ class UploadRevisionTests(TestCase):
             'submission_method': method, 'version': version, 'publication_consent': 'on',
             'entry_document': 'index.rst' if method == 'rst' else '',
             'upload': SimpleUploadedFile('revised.docx' if method == 'word' else 'revised.zip', upload), **extra})
+
+    def test_nested_user_zip_revision_scans_prepared_archive_and_preserves_history(self):
+        member = get_user_model().objects.create_user('scanned-source-owner')
+        self.client.force_login(member)
+        item = self.initial()
+        for version in ('0.1', '0.2'):
+            self.assertEqual(self.revise(item, version=version).status_code, 302)
+        item.refresh_from_db()
+        previous = {version.pk: (Path(item.document.get_file_path()) / f'{item.document.name}-{version.revision}.zip').read_bytes()
+                    for version in item.document.tida_versions.all()}
+        prefix = 'fg-tida-wg0-use-case-56/src/doc/'
+        chapters = {f'chapters/chapter-{number}.rst': f'Chapter {number}\n=========\n\nTechnical content.\n'.encode()
+                    for number in range(10)}
+        package = pack({prefix + 'index.rst': source('0.3'),
+                        **{prefix + name: data for name, data in chapters.items()}})
+        with tempfile.TemporaryDirectory() as directory, override_settings(
+                FGTIDA_UPLOAD_SCAN_REQUIRED=True, FGTIDA_QUARANTINE_DIR=directory), \
+                patch('ietf.fgtida.file_safety.scan_stream', return_value=('Test ClamAV', '')) as scanner:
+            response = self.revise(item, version='0.3', content=package, entry_document=prefix + 'index.rst')
+            self.assertEqual(response.status_code, 302, response.context and response.context['form'].errors)
+            item.refresh_from_db()
+            prepared = bytes(item.source_archive)
+            self.assertNotEqual(prepared, package)
+            scanned = [call.args[0] for call in scanner.call_args_list]
+            self.assertIn(package, scanned)
+            self.assertIn(prepared, scanned)
+            from .models import FileScan
+            for data in (package, prepared):
+                self.assertEqual(FileScan.objects.get(pk=hashlib.sha256(data).hexdigest()).status, 'clean')
+        files = unpack(prepared)
+        for name, data in chapters.items():
+            self.assertEqual(files[name], data)
+        self.assertEqual(item.document.tida_versions.get(revision=item.document.rev).version, '0.3')
+        self.assertEqual(item.submitter_id, member.pk)
+        for pk, data in previous.items():
+            version = item.document.tida_versions.get(pk=pk)
+            self.assertEqual((Path(item.document.get_file_path()) / f'{item.document.name}-{version.revision}.zip').read_bytes(), data)
+
+    def test_prepared_zip_rejection_or_scanner_outage_cannot_archive_revision(self):
+        member = get_user_model().objects.create_user('held-source-owner')
+        self.client.force_login(member)
+        item = self.initial()
+        original = bytes(item.source_archive)
+        count = item.document.tida_versions.count()
+        for outcome in ('Test.Malware', OSError('Scanner unavailable')):
+            package = pack({'nested/index.rst': source('0.1', str(outcome))})
+            def scan(data):
+                if data == package:
+                    return 'Test ClamAV', ''
+                if isinstance(outcome, OSError):
+                    raise outcome
+                return 'Test ClamAV', outcome
+            with self.subTest(outcome=str(outcome)), tempfile.TemporaryDirectory() as directory, override_settings(
+                    FGTIDA_UPLOAD_SCAN_REQUIRED=True, FGTIDA_QUARANTINE_DIR=directory), \
+                    patch('ietf.fgtida.file_safety.scan_stream', side_effect=scan):
+                response = self.revise(item, content=package, entry_document='nested/index.rst')
+                self.assertContains(response, 'security checks' if isinstance(outcome, str) else 'scanning is unavailable')
+                item.refresh_from_db()
+                self.assertEqual(bytes(item.source_archive), original)
+                self.assertEqual(item.document.tida_versions.count(), count)
+
+    def test_admin_can_revise_another_submitters_item_without_changing_ownership(self):
+        member = get_user_model().objects.create_user('another-source-owner')
+        self.client.force_login(member)
+        item = self.initial()
+        self.client.force_login(self.user)
+        page = self.client.get(f'/admin/fgtida/contribution/{item.pk}/change/')
+        self.assertContains(page, f'/submit/{item.pk}/revision/')
+        self.assertEqual(self.revise(item).status_code, 302)
+        item.refresh_from_db()
+        self.assertEqual(item.submitter_id, member.pk)
+        outsider = get_user_model().objects.create_user('unrelated-source-owner')
+        self.client.force_login(outsider)
+        self.assertEqual(self.revise(item, version='0.2').status_code, 404)
+
+    @override_settings(DEBUG=False)
+    def test_not_found_pages_use_fg_tida_branding(self):
+        for path in ('/not-a-real-tracker-page/', '/doc/nonexistent-tracker-document/'):
+            response = self.client.get(path)
+            self.assertContains(response, 'FG-TIDA Datatracker', status_code=404)
+            self.assertContains(response, 'images/fg-tida-logo.png', status_code=404)
+            self.assertNotContains(response, 'IETF', status_code=404)
 
     def test_rst_revision_keeps_reference_original_and_assets_and_updates_both_previews(self):
         member = get_user_model().objects.create_user('source-owner', first_name='Example', last_name='Owner')

@@ -1,6 +1,6 @@
 # Paris agenda DCO revision of 23 November 2026
 
-The 27 agenda rows follow the supplied DCO Word document: sessions 1–18 and WG3
+The agenda follows the supplied DCO Word document, with later adjustments below: sessions 1–18 and WG3
 Discovery, WG4 Governance/Cross-Border/Interoperable Credentials, WG5 ICAP, WG6
 Athena, WG7 Protected Groups/Child Online Protection and WG8 Control Plane.
 Presenter labels follow that document. The Opening of Day 2 presenter references
@@ -17,6 +17,14 @@ apply those naming updates; fresh installations use the updated defaults.
 Existing room assignments are retained; new assignments default to ROOM XI,
 with dinners TBC. Session/material identities follow topics when numbering changes.
 Actual working groups are not created or renamed by the agenda update.
+
+On 26 November, the final 1 December coffee break (16:45–17:00) was removed.
+Session 18 now runs 16:45–17:15; the networking and Trustech dinner party runs
+17:30–22:00, retaining the requested 15-minute gap. There are now 26 rows.
+Migration `0050_adjust_paris_closing_agenda` updates only these closing entries
+in the official schedule during deployment, preserving session/material links,
+rooms, earlier breaks and alternative/historical schedules. It also works if an
+administrator already deleted the final coffee break.
 
 ## Production after deployment
 

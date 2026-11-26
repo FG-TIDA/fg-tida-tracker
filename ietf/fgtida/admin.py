@@ -263,7 +263,7 @@ class ContributionAdmin(admin.ModelAdmin):
     search_fields = ['title', 'submitter__username', 'contact_name', 'contact_email', 'contact_affiliation', 'meeting__number', 'meeting__title']
     fields = ['reference', 'sequence_number', 'title', 'submitter', 'contact_name', 'contact_email', 'contact_affiliation', 'group', 'meeting', 'abstract', 'submitted_file', 'source_details', 'submission_method', 'source_commit',
               'source_folder', 'entry_document', 'conversion_verified_at', 'conversion_verified_by', 'verify_conversion', 'created',
-              'status', 'review_note', 'decision', 'adopt_into', 'draft_repository_url', 'reviewed_by', 'reviewed_at', 'document', 'notifications_queued']
+              'status', 'revision_link', 'review_note', 'decision', 'adopt_into', 'draft_repository_url', 'reviewed_by', 'reviewed_at', 'document', 'notifications_queued']
     readonly_fields = [field for field in fields if field not in {'sequence_number','review_note','decision','adopt_into', 'verify_conversion', 'submitter', 'contact_name', 'contact_email', 'contact_affiliation', 'meeting'}]
     actions = ['accept_contributions', 'reject_contributions', 'convert_word_contributions', 'rebuild_word_packages', 'complete_source_packages']
     ordering = ['number_prefix', 'sequence_number', 'pk']
@@ -271,7 +271,18 @@ class ContributionAdmin(admin.ModelAdmin):
     def get_fields(self, request, obj=None):
         if obj is None:
             return [*AdminContributionForm.Meta.fields, 'upload', 'publication_consent']
-        return super().get_fields(request, obj)
+        fields = super().get_fields(request, obj)
+        if not (request.user.has_perm('fgtida.change_contribution') and request.user.has_perm('doc.change_document')):
+            fields = [field for field in fields if field != 'revision_link']
+        return fields
+
+    @admin.display(description='Submit a revision')
+    def revision_link(self, obj):
+        from .work_items import state_of
+        if obj.document_id and obj.status == 'pending' and state_of(obj.document) == 'submitted':
+            return format_html('<a href="{}">Submit a new version for this contributor</a>',
+                               reverse('fgtida:contribution-revise', args=[obj.pk]))
+        return 'Direct revisions are available while the work item is Submitted; otherwise use its document or working-group workflow.'
 
     def get_readonly_fields(self, request, obj=None):
         if not obj:
@@ -1556,6 +1567,19 @@ class FgSessionAdmin(SessionAdmin):
     raw_id_fields = []
     inlines = [AssignmentInline, SchedulingHistoryInline, SessionResourceInline]
 
+    def has_delete_permission(self, request, obj=None):
+        return super().has_delete_permission(request, obj) and (obj is None or obj.meeting.type_id == 'tida')
+
+    def get_deleted_objects(self, objs, request):
+        # Hidden scheduling-history admins must not block an authorized parent
+        # deletion. Their standalone delete permissions remain disabled.
+        objs = list(objs)
+        request._fgtida_deleting_session_ids = {obj.pk for obj in objs if self.has_delete_permission(request, obj)}
+        try:
+            return super().get_deleted_objects(objs, request)
+        finally:
+            del request._fgtida_deleting_session_ids
+
     @admin.display(description='Documents and materials')
     def manage_materials(self, obj):
         if not obj or not obj.pk:
@@ -1653,6 +1677,14 @@ def hidden_admin_permission(request, obj=None):
     return False
 
 
+def can_delete_session_child(request, obj=None):
+    session_ids = getattr(request, '_fgtida_deleting_session_ids', ())
+    if obj is None or not session_ids:
+        return False
+    return any(field.many_to_one and field.related_model is Session
+               and getattr(obj, field.attname) in session_ids for field in obj._meta.fields)
+
+
 def can_delete_document_child(request, obj=None):
     document_ids = getattr(request, '_fgtida_deleting_document_ids', ())
     if obj is None or not document_ids:
@@ -1741,7 +1773,8 @@ def configure_admin():
             registered.has_change_permission = hidden_admin_permission
             registered.has_delete_permission = (can_delete_account_credential
                 if opts.label_lower == 'otp_totp.totpdevice' else
-                can_delete_document_child if opts.app_label == 'doc' else hidden_admin_permission)
+                can_delete_document_child if opts.app_label == 'doc' else
+                can_delete_session_child if opts.app_label == 'meeting' else hidden_admin_permission)
             registered.has_view_permission = hidden_admin_permission
             continue
         registered.list_per_page = 50
