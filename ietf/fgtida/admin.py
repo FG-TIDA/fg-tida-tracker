@@ -101,6 +101,15 @@ class FgUserAdmin(CustomUserAdmin):
         ('Contact and administrator access', {'fields': ('email', 'is_staff', 'is_superuser')}),
     )
 
+    def get_urls(self):
+        urls = super().get_urls()
+        for route in urls:
+            if route.name == 'auth_user_password_change':
+                # UserAdmin's extra route omits the model_admin marker used by
+                # the publication boundary. Keep Django's permission/CSRF wrapper.
+                route.callback.model_admin = self
+        return urls
+
     def has_add_permission(self, request):
         return request.user.is_superuser
 
