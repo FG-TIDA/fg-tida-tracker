@@ -13,6 +13,7 @@ from . import core
 from .files import MAX_BYTES
 from .models import Contribution, DocumentVersion, WorkItem, GitHubJob
 from .credit_lists import parse_credit_list, format_credit_list
+from .contribution_access import owned, is_owner
 
 
 class CreditListField(forms.CharField):
@@ -128,6 +129,15 @@ def submit(request):
                 return render(request, 'fgtida/submit.html', {'form': form, 'submissions': [], 'page': None, 'queryargs': ''})
             from django.contrib.auth import get_user_model
             get_user_model().objects.select_for_update().get(pk=request.user.pk)
+            from .contribution_duplicates import candidates
+            matches = candidates(form.cleaned_data['title'], form.cleaned_data['group'], user=request.user, manifest=form.manifest)
+            if matches:
+                from django.urls import reverse
+                from django.utils.html import format_html
+                first = matches[0]
+                target = reverse('fgtida:contribution', args=[first.pk]) if is_owner(first, request.user) else reverse('fgtida:document', args=[first.document.name])
+                form.add_error(None, format_html('This appears to update {}. Open <a href="{}">the existing work item</a> and choose Submit a new version, or contact the Secretariat if you do not have revision access. No new record was created.', first.reference, target))
+                return render(request, 'fgtida/submit.html', {'form': form, 'submissions': owned(request.user).defer('content', 'source_archive'), 'page': None})
             if Contribution.objects.filter(submitter=request.user, status='pending').count() >= 20:
                 form.add_error(None, 'You already have 20 contributions awaiting review. Contact the secretariat.')
             else:
@@ -135,7 +145,7 @@ def submit(request):
                 item.submitter = request.user
                 record_submission(item, form, request.user)
                 return redirect('fgtida:contribution', pk=item.pk)
-    page = Paginator(Contribution.objects.filter(submitter=request.user).defer('content', 'source_archive'), 25).get_page(request.GET.get('page'))
+    page = Paginator(owned(request.user).defer('content', 'source_archive'), 25).get_page(request.GET.get('page'))
     return render(request, 'fgtida/submit.html', {'form': form, 'submissions': page, 'page': page, 'queryargs': ''})
 
 
@@ -307,7 +317,7 @@ def queue_notifications(pk):
     """Leave submissions pending when recipients are not configured; retry safely later."""
     from .mail import enqueue
     item = Contribution.objects.select_for_update().get(pk=pk)
-    if item.notifications_queued:
+    if item.notifications_queued or item.duplicate_of_id:
         return
     recipients = list(item.group.contribution_recipients.filter(active=True).values_list('email', flat=True))
     if not recipients:
@@ -323,8 +333,11 @@ def queue_notifications(pk):
 @login_required
 def detail(request, pk, download=False, source=False):
     items = Contribution.objects.all()
+    alias = items.filter(pk=pk, duplicate_of__isnull=False).select_related('duplicate_of').first()
+    if alias and (is_owner(alias, request.user) or request.user.has_perm('fgtida.view_contribution')):
+        return redirect('fgtida:contribution', pk=alias.duplicate_of_id)
     if not request.user.has_perm('fgtida.view_contribution'):
-        items = items.filter(submitter=request.user)
+        items = items.filter(pk__in=owned(request.user).values('pk'))
     item = get_object_or_404(items, pk=pk)
     from .file_safety import allowed, require_clean
     if download or source:
@@ -371,7 +384,7 @@ def detail(request, pk, download=False, source=False):
         'word_conversion': latest_source_method(item) == 'word', 'current_word_format': word_format if word_checked else None,
         'private_original_zip': private_original,
         'current_source_method_display': dict(Contribution._meta.get_field('submission_method').choices).get(latest_source_method(item), latest_source_method(item)),
-        'can_verify': latest_source_method(item) == 'word' and item.submitter_id == request.user.pk and not item.conversion_verified_at
+        'can_verify': latest_source_method(item) == 'word' and is_owner(item, request.user) and not item.conversion_verified_at
                       and not security_pending and word_checked})
 
 
@@ -392,7 +405,7 @@ def current_word_original(item):
 
 
 def can_revise(item, user):
-    return item.status == 'pending' and bool(item.document_id) and (user is None or item.submitter_id == user.pk or (
+    return not item.duplicate_of_id and item.status == 'pending' and bool(item.document_id) and (user is None or is_owner(item, user) or (
         user.has_perm('fgtida.change_contribution') and user.has_perm('doc.change_document')))
 
 
@@ -405,7 +418,7 @@ class ContributionCreditsForm(forms.Form):
 def edit_credits(request, pk):
     items = Contribution.objects.select_related('document')
     if not (request.user.has_perm('fgtida.change_contribution') and request.user.has_perm('doc.change_document')):
-        items = items.filter(submitter=request.user)
+        items = items.filter(pk__in=owned(request.user).values('pk'))
     item = get_object_or_404(items, pk=pk)
     if not can_revise(item, request.user):
         return HttpResponse('Author details for an adopted or closed work item must be changed by an administrator in the backend.', status=403)
@@ -598,7 +611,7 @@ def revision_original(request, pk, rev):
     import io
     records = Contribution.objects.defer('content', 'source_archive')
     if not (request.user.has_perm('fgtida.change_contribution') and request.user.has_perm('doc.change_document')):
-        records = records.filter(submitter=request.user)
+        records = records.filter(pk__in=owned(request.user).values('pk'))
     item = get_object_or_404(records, pk=pk)
     original = get_object_or_404(ContributionRevisionOriginal, contribution=item, revision=rev)
     require_clean(bytes(original.content), original.filename)
@@ -610,7 +623,7 @@ def revision_original(request, pk, rev):
 @require_POST
 @transaction.atomic
 def verify_conversion(request, pk):
-    item = get_object_or_404(Contribution.objects.select_for_update(), pk=pk, submitter=request.user, status='pending')
+    item = get_object_or_404(owned(request.user).select_for_update(), pk=pk, status='pending')
     if latest_source_method(item) != 'word' or not item.document_id:
         raise Http404
     if request.POST.get('revision') and request.POST['revision'] != item.document.rev:
@@ -635,7 +648,7 @@ def verify_conversion(request, pk):
 def asset(request, pk, path):
     items = Contribution.objects.all()
     if not request.user.has_perm('fgtida.view_contribution'):
-        items = items.filter(submitter=request.user)
+        items = items.filter(pk__in=owned(request.user).values('pk'))
     item = get_object_or_404(items, pk=pk)
     if not item.source_archive:
         raise Http404
@@ -661,6 +674,9 @@ def asset(request, pk, path):
 @transaction.atomic
 def accept(pk, user, target_group=None):
     item = Contribution.objects.select_for_update().get(pk=pk)
+    if item.duplicate_of_id:
+        from django.core.exceptions import ValidationError
+        raise ValidationError('This record was consolidated. Review the original work item instead.')
     if item.status != 'pending':
         return
     from .file_safety import validate_file
@@ -715,6 +731,9 @@ def accept(pk, user, target_group=None):
 @transaction.atomic
 def reject(pk,user):
     item=Contribution.objects.select_for_update().get(pk=pk)
+    if item.duplicate_of_id:
+        from django.core.exceptions import ValidationError
+        raise ValidationError('This record was consolidated. Review the original work item instead.')
     if item.status!='pending':
         return
     if item.document_id:

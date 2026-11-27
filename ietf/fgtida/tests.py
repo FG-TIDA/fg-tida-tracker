@@ -596,7 +596,7 @@ class NativeDatatrackerTests(TestCase):
 
         def submit(group, title):
             response = self.client.post('/submit/', {
-                'group': groups[group].pk, 'title': title, **self.source_submission(),
+                'group': groups[group].pk, 'title': title, **self.source_submission(title.encode()),
             })
             self.assertEqual(response.status_code, 302)
             return Contribution.objects.get(title=title)

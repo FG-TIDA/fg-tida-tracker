@@ -2,6 +2,8 @@ import os
 
 bind = '0.0.0.0:' + os.environ.get('PORT', '8000')
 workers = int(os.environ.get('WEB_CONCURRENCY', '2'))
+# Opt in after a staging load test. Gunicorn uses gthread when threads > 1.
+threads = int(os.environ.get('FGTIDA_WEB_THREADS', '1'))
 timeout = 45
 graceful_timeout = 30
 max_requests = 1000

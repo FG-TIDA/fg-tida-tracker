@@ -19,6 +19,13 @@ from . import workflow
 from .models import Contribution, PublicDocumentType
 
 
+def owned_contribution(document, user):
+    if not user.is_authenticated:
+        return None
+    from .contribution_access import owned
+    return owned(user).filter(document=document, status='pending').defer('content', 'source_archive').first()
+
+
 def floor_plan(request, num, pk):
     plan = get_object_or_404(FloorPlan, pk=pk, meeting__number=num, meeting__type_id='tida')
     if not plan.image or not plan.image.storage.exists(plan.image.name):
@@ -164,7 +171,10 @@ def search(request, acronym=None, incubation=False, category_slug=None):
 
 
 def document(request, name, rev=None):
-    doc = get_object_or_404(core.documents().select_related('group', 'type', 'tida_attribution__public_type').prefetch_related('states', 'tags', contribution_numbers), name=name)
+    alias = Contribution.objects.filter(document__name=name, duplicate_of__isnull=False).select_related('duplicate_of__document').first()
+    if alias and not rev:
+        return redirect('fgtida:document', name=alias.duplicate_of.document.name)
+    doc = get_object_or_404(core.documents(include_duplicates=True).select_related('group', 'type', 'tida_attribution__public_type').prefetch_related('states', 'tags', contribution_numbers, 'tida_versions'), name=name)
     from .versioning import archive_revision, labels
     rev=archive_revision(doc,rev)
     snapshot = doc
@@ -254,7 +264,7 @@ def document(request, name, rev=None):
         'work_item':work_item,'old_revision':bool(rev and rev!=doc.rev),'show_working':not rev,
         'events': doc.docevent_set.select_related('by')[:100],
         'authors': authors, 'author_entries': author_entries, 'submitted_by': submitted_by, 'credits': credits, 'source_records': source_records,
-        'credit_edit_item': doc.contribution_set.filter(submitter=request.user, status='pending').first() if request.user.is_authenticated else None,
+        'credit_edit_item': owned_contribution(doc, request.user),
         'document_metadata_rows': 4 + bool(credits.get('affiliations')) + bool(credits.get('contact_emails') or credits.get('contacts')) + bool(submitted_by),
         'sessions': doc.session_set.select_related('meeting'),
         'relationships': RelatedDocument.objects.filter(source=doc, target__in=core.documents()).select_related('target', 'relationship'),
@@ -263,14 +273,14 @@ def document(request, name, rev=None):
 
 
 def history(request, name):
-    doc = get_object_or_404(core.documents(), name=name)
+    doc = get_object_or_404(core.documents(include_duplicates=True), name=name)
     return render(request, 'fgtida/history.html', {'doc': doc,
         'page': Paginator(doc.docevent_set.select_related('by').order_by('-time', '-pk'), 50).get_page(request.GET.get('page')),
         'revisions': doc.history_set.exclude(rev='').exclude(uploaded_filename='').exclude(uploaded_filename__isnull=True).values_list('rev', flat=True).order_by('rev').distinct()})
 
 
 def download(request, name, rev):
-    doc = get_object_or_404(core.documents(), name=name)
+    doc = get_object_or_404(core.documents(include_duplicates=True), name=name)
     if doc.type_id == 'tida-template':
         url = core.template_package_url(doc)
         if url:
@@ -286,11 +296,16 @@ def download(request, name, rev):
         raise Http404
     if not file.is_file():
         raise Http404
-    from .file_safety import require_clean
-    import io
-    data = file.read_bytes()
-    require_clean(data, snapshot.uploaded_filename)
-    response = FileResponse(io.BytesIO(data), as_attachment=True, filename=f'{doc.name}-{public_version(doc,rev)}{file.suffix}')
+    import hashlib
+    from .file_safety import require_clean_digest
+    source = file.open('rb')
+    try:
+        require_clean_digest(hashlib.file_digest(source, 'sha256').hexdigest(), snapshot.uploaded_filename)
+        source.seek(0)
+    except BaseException:
+        source.close()
+        raise
+    response = FileResponse(source, as_attachment=True, filename=f'{doc.name}-{public_version(doc,rev)}{file.suffix}')
     response['X-Content-Type-Options'] = 'nosniff'
     response['Cache-Control'] = 'no-store'
     response['Content-Security-Policy'] = "default-src 'none'; sandbox"
@@ -403,6 +418,8 @@ def current_agenda(request, section='agenda'):
     selected = selected or recent
     if not selected:
         return render(request, 'fgtida/account_form.html', {'title': 'Meeting agenda', 'message': 'No meetings have been announced yet.'})
+    if section == 'participants':
+        return redirect('fgtida:participants', num=selected.number)
     if section == 'floor-plan':
         plans = FloorPlan.objects.filter(meeting=selected).order_by('pk')
         return render(request, 'fgtida/floor_plans.html', {'meeting': selected, 'plans': plans, 'section': 'floor-plan'})
@@ -416,7 +433,7 @@ def meeting(request, num, section='agenda'):
         return redirect(reverse('fgtida:meeting', args=[target.number]) + '?' + urlencode({k: v for k, v in request.GET.items() if k not in {'meeting', 'day', 'month'}}))
     meeting = get_object_or_404(core.meetings().select_related('category'), number=num)
     sessions = Session.objects.with_current_status().filter(meeting=meeting).select_related('group').order_by('pk').prefetch_related(
-        Prefetch('materials', queryset=core.documents().select_related('type').order_by('type_id', 'title'), to_attr='public_materials'))
+        Prefetch('materials', queryset=core.documents().select_related('type').prefetch_related('tida_versions').order_by('type_id', 'title'), to_attr='public_materials'))
     if section == 'agenda':
         sessions = sessions.filter(on_agenda=True)
         zone_mode = request.GET.get('tz', 'meeting')
@@ -442,7 +459,7 @@ def meeting(request, num, section='agenda'):
         assignments = list(SchedTimeSessAssignment.objects.filter(schedule_id=meeting.schedule_id,
             session__in=sessions, timeslot__meeting=meeting).select_related(
             'timeslot', 'timeslot__location', 'session', 'session__group').prefetch_related(
-            Prefetch('session__materials', queryset=core.documents().select_related('type'), to_attr='public_materials'), 'session__tida_resources'
+            Prefetch('session__materials', queryset=core.documents().select_related('type').prefetch_related('tida_versions'), to_attr='public_materials'), 'session__tida_resources'
             ).order_by('timeslot__time', 'timeslot__location__name', 'pk'))
         days = {}
         status_by_session = dict(sessions.values_list('pk', 'current_status'))
@@ -512,7 +529,7 @@ def meeting(request, num, section='agenda'):
 
 
 def snapshot_for(name, rev):
-    doc = get_object_or_404(core.documents(), name=name)
+    doc = get_object_or_404(core.documents(include_duplicates=True), name=name)
     from .versioning import archive_revision
     rev=archive_revision(doc,rev)
     snapshot = doc if doc.rev == rev else doc.history_set.filter(rev=rev).order_by('-time', '-pk').first()
@@ -554,7 +571,7 @@ def document_text(request, name, rev):
 
 
 def compare(request, name):
-    doc = get_object_or_404(core.documents(), name=name)
+    doc = get_object_or_404(core.documents(include_duplicates=True), name=name)
     from .versioning import archive_revision,public_version
     revisions = list(doc.history_set.exclude(rev='').exclude(uploaded_filename='').exclude(uploaded_filename__isnull=True).values_list('rev', flat=True).order_by('rev').distinct())
     before = archive_revision(doc,request.GET.get('from', revisions[-2] if len(revisions) > 1 else doc.rev))

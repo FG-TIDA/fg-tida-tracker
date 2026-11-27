@@ -77,10 +77,11 @@ class DocumentFormatFormSet(BaseInlineFormSet):
 
 @require_safe
 def download(request, pk):
-    record = get_object_or_404(DocumentFormat.objects.select_related('document').defer('content'), pk=pk, document__in=core.documents())
+    record = get_object_or_404(DocumentFormat.objects.select_related('document').defer('content'), pk=pk, document__in=core.documents(include_duplicates=True))
     if not record.is_public:
         user = request.user
-        owner = user.is_authenticated and record.document.contribution_set.filter(submitter=user).exists()
+        from .contribution_access import owned
+        owner = owned(user).filter(document=record.document).exists()
         editor = user.is_authenticated and user.has_perm('fgtida.change_contribution') and user.has_perm('doc.change_document')
         if not (owner or editor):
             raise Http404

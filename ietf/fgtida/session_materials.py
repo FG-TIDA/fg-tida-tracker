@@ -13,24 +13,11 @@ from . import core
 def materials(request, pk):
     session = get_object_or_404(Session.objects.with_current_status().select_related('meeting', 'group'),
         pk=pk, meeting__type_id='tida', group__in=core.groups())
-    documents = list(core.documents().filter(session=session).distinct())
-    from .file_safety import allowed_digest, snapshot_allowed
-    archive_ready = all(not doc.uploaded_filename or snapshot_allowed(doc) for doc in documents)
-    grouped = {'agenda': [], 'slides': [], 'minutes': []}
-    for doc in documents:
-        key = 'agenda' if doc.type_id == 'agenda' else 'minutes' if doc.type_id in {'minutes', 'narrativeminutes'} else 'slides'
-        grouped[key].append({'title': doc.title, 'url': reverse('fgtida:document', args=[doc.name]), 'available': True})
-    for resource in session.tida_resources.exclude(kind='login'):
-        checked = not resource.file_size or allowed_digest(resource.sha256, resource.filename)
-        archive_ready = archive_ready and checked
-        key = 'minutes' if resource.kind in {'notes', 'minutes'} else 'slides'
-        if resource.kind == 'agenda':
-            key = 'agenda'
-        grouped[key].append({'title': resource.title, 'url': resource.resource_url,
-            'available': checked})
+    from .session_inventory import inventory
+    grouped, archive_ready = inventory(session)
     assignment = session.timeslotassignments.filter(schedule_id=session.meeting.schedule_id).select_related('timeslot__location').order_by('timeslot__time').first()
     selected = request.GET.get('tab', 'agenda')
-    if selected not in grouped:
+    if selected not in {'agenda', 'slides', 'minutes'}:
         selected = 'agenda'
     context = {'session': session, 'meeting': session.meeting, 'assignment': assignment, 'archive_ready': archive_ready,
         'ends_at': assignment.timeslot.time + assignment.timeslot.duration if assignment else None,
@@ -57,12 +44,14 @@ def attachment_chunks(resource):
 def archive(request, pk):
     session = get_object_or_404(Session, pk=pk, meeting__type_id='tida', group__in=core.groups())
     files, links = [], []
-    from .file_safety import require_clean, require_clean_digest
+    import hashlib
+    from .file_safety import require_clean_digest
     for doc in core.documents().filter(session=session).distinct():
         if doc.uploaded_filename:
             path = Path(doc.get_file_name())
             if path.is_file():
-                require_clean(path.read_bytes(), doc.uploaded_filename)
+                with path.open('rb') as source:
+                    require_clean_digest(hashlib.file_digest(source, 'sha256').hexdigest(), doc.uploaded_filename)
                 files.append((f'documents/{doc.pk}-{path.name}', path.stat().st_size, lambda p=path: file_chunks(p)))
         if doc.external_url:
             links.append(f'{doc.title}: {doc.external_url}')

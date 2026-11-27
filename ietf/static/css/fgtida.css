@@ -78,6 +78,9 @@ html { scroll-padding-top: calc(var(--fg-tida-header-height) + 24px); }
 .fgtida-agenda-table .fgtida-agenda-presenters { white-space: pre-line; vertical-align: top; }
 .fgtida-room-label { display: inline-flex; align-items: center; gap: .45rem; white-space: nowrap; }
 .fgtida-room-badge { display: inline-flex; justify-content: center; align-items: center; background: #ffe69c; border: 1px solid #ffda6a; color: #332701; font-size: .75rem; border-radius: .3rem; min-width: 1.7rem; height: 1.6rem; padding: .1rem .25rem; }
+.fgtida-agenda-table td:nth-child(2) { padding-left: 0; }
+.fgtida-agenda-table .fgtida-room-badge { border-radius: 0 .5rem .5rem 0; border-left: 0; }
+.fgtida-resource-icon.resource-session { color: var(--bs-body-color); background: transparent; }
 .fgtida-materials-dialog { width: min(70rem, calc(100% - 1.25rem)); max-height: 90dvh; border: 1px solid var(--bs-border-color); border-radius: .65rem; padding: 0; background: var(--bs-body-bg); color: var(--bs-body-color); }
 .fgtida-materials-dialog::backdrop { background: rgb(0 0 0 / .55); }
 .fgtida-materials-heading { display: flex; gap: 1rem; align-items: flex-start; justify-content: space-between; }

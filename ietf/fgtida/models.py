@@ -104,6 +104,8 @@ class ContributionSequence(models.Model):
 class Contribution(models.Model):
     """Private review metadata linked to a public submitted document."""
     submitter = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    duplicate_of = models.ForeignKey('self', null=True, blank=True, on_delete=models.PROTECT,
+        related_name='preserved_duplicates', editable=False)
     contact_name = models.CharField(max_length=255, blank=True, help_text='Contributor name; no platform account is required.')
     contact_email = models.EmailField(blank=True, help_text='Contact email; included in document metadata and used for the receipt.')
     contact_affiliation = models.CharField(max_length=255, blank=True)

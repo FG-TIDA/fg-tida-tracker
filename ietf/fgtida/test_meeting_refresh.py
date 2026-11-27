@@ -136,6 +136,26 @@ class MeetingRefreshTests(TestCase):
         self.assertEqual(fragment['Cache-Control'], 'no-store')
         self.assertEqual(self.client.post(f'/session/{session.pk}/materials/').status_code, 405)
 
+    def test_pdf_and_powerpoint_buttons_use_the_same_checked_slides_catalogue(self):
+        from .templatetags.fgtida import session_actions
+        from .session_inventory import inventory
+        meeting = self.meeting()
+        session = Session.objects.create(meeting=meeting, group=self.root, purpose_id='regular', type_id='session', name='Shared slide catalogue')
+        SessionResource.objects.create(session=session, kind='slides', title='PDF slides', url='https://example.test/slides.pdf?view=1')
+        SessionResource.objects.create(session=session, kind='slides', title='PowerPoint slides', url='https://example.test/slides.pptx')
+        SessionResource.objects.create(session=session, kind='recording', title='Recording only', url='https://example.test/video')
+        groups, ready = inventory(session)
+        self.assertEqual([row['title'] for row in groups['slides']], ['PDF slides', 'PowerPoint slides'])
+        actions = session_actions(session)['actions']
+        for key in ('pdf', 'pptx'):
+            self.assertEqual(next(row for row in actions if row['key'] == key)['links'], [('All session slides', f'/session/{session.pk}/materials/?tab=slides')])
+        with self.assertNumQueries(0):
+            session_actions(session)  # Catalogue reused within this render only.
+        response = self.client.get(f'/session/{session.pk}/materials/?tab=slides')
+        self.assertContains(response, 'PDF slides')
+        self.assertContains(response, 'PowerPoint slides')
+        self.assertNotContains(response, 'Recording only')
+
     def test_paris_v03_split_wg2_timing_and_material_identity_survive_repeated_updates(self):
         meeting = Meeting.objects.create(number='paris-v03-test', type_id='tida', date=date(2026, 11, 30), days=2, time_zone='Europe/Paris')
         old = Session.objects.create(meeting=meeting, group=self.root, purpose_id='regular', type_id='session', name='Session 4 – WG2: Identity, Behaviour and Enforcement for AI Agents (IBEA)')

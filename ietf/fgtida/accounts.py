@@ -155,8 +155,11 @@ def allowed_request(email):
 
 
 def is_retired_account_email(email):
-    return (email.origin in ACCOUNT_EMAIL_ORIGINS and email.person_id is not None
-            and email.person.user_id is None)
+    from .contribution_access import registration_contact
+    if registration_contact(email.address):
+        return not (email.person_id and email.person.user_id)
+    return (email.person_id is not None and email.person.user_id is None
+            and email.origin in ACCOUNT_EMAIL_ORIGINS)
 
 
 def address_has_account(address):

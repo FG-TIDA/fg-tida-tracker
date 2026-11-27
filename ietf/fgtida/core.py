@@ -35,8 +35,10 @@ def groups():
     return Group.objects.filter(pk__in=identifiers).select_related('tida_configuration')
 
 
-def documents(include_uncatalogued=False):
+def documents(include_uncatalogued=False, include_duplicates=False):
     records = Document.objects.filter(group__in=groups()).prefetch_related('tida_formats', 'tida_attribution__additional_types')
+    if not include_duplicates:
+        records = records.exclude(contribution__duplicate_of__isnull=False)
     return records if include_uncatalogued else records.exclude(tags__slug='tida-uncatalogued')
 
 

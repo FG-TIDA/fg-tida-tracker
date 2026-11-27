@@ -82,6 +82,7 @@ urlpatterns = [
     path('people/<int:person_id>/photo/', views.member_photo, name='photo'),
     path('meeting/calendar.ics', views.calendar, name='calendar'),
     path('meeting/agenda/', views.current_agenda, name='current-agenda'),
+    path('meeting/participants/', views.current_agenda, {'section': 'participants'}, name='current-participants'),
     path('meeting/floor-plan/', views.current_agenda, {'section': 'floor-plan'}, name='current-floor-plan'),
     path('meeting/', views.meetings, name='meetings'),
     path('meeting/registration/', views.registration, name='registration'),

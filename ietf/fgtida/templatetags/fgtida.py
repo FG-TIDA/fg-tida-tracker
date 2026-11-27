@@ -49,39 +49,21 @@ def document_version(document):
 
 @register.inclusion_tag('fgtida/session_actions.html')
 def session_actions(session):
-    groups = {key: [] for key in ('notes', 'recording', 'pdf', 'pptx', 'other')}
-    from ietf.fgtida.file_safety import allowed_digest, snapshot_allowed
-    archive_ready = True
-    docs = getattr(session, 'public_materials', None)
-    if docs is None:
-        docs = core.documents().filter(session=session)
-    for doc in docs:
-        if doc.type_id == 'agenda':
-            continue  # Meeting agendas remain available in the Materials section.
-        if doc.type_id == 'minutes':
-            groups['notes'].append((doc.title, reverse('fgtida:document', args=[doc.name])))
-        if doc.type_id == 'recording' and doc.external_url:
-            groups['recording'].append((doc.title, doc.external_url))
-        checked = not doc.uploaded_filename or snapshot_allowed(doc)
-        archive_ready = archive_ready and checked
-        if checked and doc.uploaded_filename and Path(doc.get_file_name()).is_file():
-            suffix = Path(doc.uploaded_filename).suffix.lower()
-            key = {'.pdf': 'pdf', '.pptx': 'pptx', '.ppt': 'pptx'}.get(suffix, 'other')
-            groups[key].append((doc.title, reverse('fgtida:download', args=[doc.name, doc.rev])))
-    for resource in session.tida_resources.all():
-        checked = not resource.file_size or allowed_digest(resource.sha256, resource.filename)
-        archive_ready = archive_ready and checked
-        suffix = Path(resource.filename).suffix.lower()
-        key = 'notes' if resource.kind == 'minutes' else resource.kind if resource.kind in ('notes', 'recording') else {'.pdf': 'pdf', '.pptx': 'pptx', '.ppt': 'pptx'}.get(suffix, 'other')
-        if checked and resource.kind != 'login':
-            groups[key].append((resource.title, resource.resource_url))
-    categories = [('notes', 'Session notes / summary', 'chat-left-text'),
-        ('recording', 'Session recording', 'camera-video'), ('pdf', 'PDF materials', 'file-earmark-pdf'),
-        ('pptx', 'PowerPoint presentations', 'file-earmark-ppt'), ('other', 'Other materials', 'file-earmark-text')]
-    actions = [{'key': key, 'label': label, 'icon': icon, 'links': groups[key]} for key, label, icon in categories
-        if key != 'other' or groups[key]]
+    from ietf.fgtida.session_inventory import inventory
+    grouped, archive_ready = inventory(session)
+    slides_url = reverse('fgtida:session-materials', args=[session.pk]) + '?tab=slides'
+    actions = []
+    for key, label, icon, items in [
+        ('notes', 'Session notes / summary', 'chat-left-text', grouped['minutes']),
+        ('recording', 'Session recording', 'camera-video', grouped['recording']),
+        ('pdf', 'PDF materials', 'file-earmark-pdf', [row for row in grouped['slides'] if row['format'] == '.pdf']),
+        ('pptx', 'PowerPoint presentations', 'file-earmark-ppt', [row for row in grouped['slides'] if row['format'] in {'.ppt', '.pptx'}])]:
+        links = [(row['title'], row['url']) for row in items if row['available']]
+        if key in {'pdf', 'pptx'} and links:
+            links = [('All session slides', slides_url)]
+        actions.append({'key': key, 'label': label, 'icon': icon, 'links': links,
+                        'slides': key in {'pdf', 'pptx'}})
     return {'actions': actions, 'session': session, 'archive_ready': archive_ready}
-
 
 @register.simple_tag
 def account_person(user):

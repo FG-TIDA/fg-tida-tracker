@@ -89,6 +89,16 @@ class FragmentCacheTests(SimpleTestCase):
 class ArchiveLoadTests(TestCase):
     setUp = native_tests.NativeDatatrackerTests.setUp
 
+    def test_download_streams_bytes_and_rechecks_revoked_scan_verdict(self):
+        data, scan = self.create_archives()
+        with override_settings(FGTIDA_UPLOAD_SCAN_REQUIRED=True), patch('pathlib.Path.read_bytes', side_effect=AssertionError('Whole-file copy')):
+            response = self.client.get('/doc/runtime-known-document/download/0.0/')
+            self.assertEqual(response.status_code, 200)
+            self.assertTrue(response.streaming)
+            self.assertEqual(b''.join(response.streaming_content), data)
+            FileScan.objects.filter(pk=scan.pk).update(status='rejected', detail='Fixture rejected')
+            self.assertEqual(self.client.get('/doc/runtime-known-document/download/0.0/').status_code, 403)
+
     def create_archives(self):
         data = b'Known immutable document.'
         doc = Document(name='runtime-known-document', title='Known document', type_id='tida', group=self.root)

@@ -238,6 +238,8 @@ class ContributionReviewForm(forms.ModelForm):
             self.add_error('adopt_into','Select the working group formed to adopt this proposal.')
         if values.get('decision') and self.instance.status!='pending':
             self.add_error('decision','This proposal already has a review decision. Use its document lifecycle for further changes.')
+        if values.get('decision') and self.instance.duplicate_of_id:
+            self.add_error('decision', 'This record was consolidated. Review the original work item instead.')
         if values.get('verify_conversion'):
             from .file_safety import allowed
             from .contributions import current_word_original, latest_source_method
@@ -261,6 +263,11 @@ class AdminContributionForm(ContributionForm):
         values = super().clean()
         if not values.get('submitter') and not values.get('contact_name'):
             self.add_error('contact_name', 'Enter the contributor name when no platform account is selected.')
+        if not self.errors and hasattr(self, 'manifest'):
+            from .contribution_duplicates import candidates
+            matches = candidates(values['title'], values['group'], user=values.get('submitter'), contact=values.get('contact_email', ''), manifest=self.manifest)
+            if matches:
+                self.add_error(None, 'An existing contribution matches this contact and title or file. Use its Submit a revision link instead of adding another work item.')
         return values
 
 
@@ -272,7 +279,7 @@ class ContributionAdmin(admin.ModelAdmin):
     search_fields = ['title', 'submitter__username', 'contact_name', 'contact_email', 'contact_affiliation', 'meeting__number', 'meeting__title']
     fields = ['reference', 'sequence_number', 'title', 'submitter', 'contact_name', 'contact_email', 'contact_affiliation', 'group', 'meeting', 'abstract', 'submitted_file', 'source_details', 'submission_method', 'source_commit',
               'source_folder', 'entry_document', 'conversion_verified_at', 'conversion_verified_by', 'verify_conversion', 'created',
-              'status', 'revision_link', 'review_note', 'decision', 'adopt_into', 'draft_repository_url', 'reviewed_by', 'reviewed_at', 'document', 'notifications_queued']
+              'status', 'duplicate_of', 'revision_link', 'review_note', 'decision', 'adopt_into', 'draft_repository_url', 'reviewed_by', 'reviewed_at', 'document', 'notifications_queued']
     readonly_fields = [field for field in fields if field not in {'sequence_number','review_note','decision','adopt_into', 'verify_conversion', 'submitter', 'contact_name', 'contact_email', 'contact_affiliation', 'meeting'}]
     actions = ['accept_contributions', 'reject_contributions', 'convert_word_contributions', 'rebuild_word_packages', 'complete_source_packages']
     ordering = ['number_prefix', 'sequence_number', 'pk']
@@ -288,7 +295,7 @@ class ContributionAdmin(admin.ModelAdmin):
     @admin.display(description='Submit a revision')
     def revision_link(self, obj):
         from .work_items import state_of
-        if obj.document_id and obj.status == 'pending' and state_of(obj.document) == 'submitted':
+        if not obj.duplicate_of_id and obj.document_id and obj.status == 'pending' and state_of(obj.document) == 'submitted':
             return format_html('<a href="{}">Submit a new version for this contributor</a>',
                                reverse('fgtida:contribution-revise', args=[obj.pk]))
         return 'Direct revisions are available while the work item is Submitted; otherwise use its document or working-group workflow.'
@@ -384,7 +391,7 @@ class ContributionAdmin(admin.ModelAdmin):
         if not request.user.has_perm('doc.add_document'):
             from django.core.exceptions import PermissionDenied
             raise PermissionDenied
-        for item in queryset.filter(status='pending'):
+        for item in queryset.filter(status='pending', duplicate_of__isnull=True):
             try:
                 accept(item.pk, request.user)
             except ValidationError as error:
@@ -394,7 +401,7 @@ class ContributionAdmin(admin.ModelAdmin):
     @admin.action(description='Reject selected pending contributions', permissions=['change'])
     def reject_contributions(self, request, queryset):
         from .contributions import reject
-        for item in queryset.filter(status='pending'):
+        for item in queryset.filter(status='pending', duplicate_of__isnull=True):
             reject(item.pk,request.user)
 
     @admin.action(description='Convert selected Word contributions to RST ZIP packages', permissions=['change'])
