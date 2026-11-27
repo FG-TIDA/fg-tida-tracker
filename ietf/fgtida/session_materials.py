@@ -2,10 +2,44 @@
 import tarfile
 from pathlib import Path
 from django.http import StreamingHttpResponse
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, render
+from django.urls import reverse
 from django.views.decorators.http import require_safe
 from ietf.meeting.models import Session
 from . import core
+
+
+@require_safe
+def materials(request, pk):
+    session = get_object_or_404(Session.objects.with_current_status().select_related('meeting', 'group'),
+        pk=pk, meeting__type_id='tida', group__in=core.groups())
+    documents = list(core.documents().filter(session=session).distinct())
+    from .file_safety import allowed_digest, snapshot_allowed
+    archive_ready = all(not doc.uploaded_filename or snapshot_allowed(doc) for doc in documents)
+    grouped = {'agenda': [], 'slides': [], 'minutes': []}
+    for doc in documents:
+        key = 'agenda' if doc.type_id == 'agenda' else 'minutes' if doc.type_id in {'minutes', 'narrativeminutes'} else 'slides'
+        grouped[key].append({'title': doc.title, 'url': reverse('fgtida:document', args=[doc.name]), 'available': True})
+    for resource in session.tida_resources.exclude(kind='login'):
+        checked = not resource.file_size or allowed_digest(resource.sha256, resource.filename)
+        archive_ready = archive_ready and checked
+        key = 'minutes' if resource.kind in {'notes', 'minutes'} else 'slides'
+        if resource.kind == 'agenda':
+            key = 'agenda'
+        grouped[key].append({'title': resource.title, 'url': resource.resource_url,
+            'available': checked})
+    assignment = session.timeslotassignments.filter(schedule_id=session.meeting.schedule_id).select_related('timeslot__location').order_by('timeslot__time').first()
+    selected = request.GET.get('tab', 'agenda')
+    if selected not in grouped:
+        selected = 'agenda'
+    context = {'session': session, 'meeting': session.meeting, 'assignment': assignment, 'archive_ready': archive_ready,
+        'ends_at': assignment.timeslot.time + assignment.timeslot.duration if assignment else None,
+        'selected_tab': selected, 'material_tabs': [(key, label, grouped[key]) for key, label in
+            [('agenda', 'Agenda'), ('slides', 'Slides'), ('minutes', 'Minutes')]]}
+    template = 'fgtida/session_materials_panel.html' if request.GET.get('partial') == '1' else 'fgtida/session_materials.html'
+    response = render(request, template, context)
+    response['Cache-Control'] = 'no-store'
+    return response
 
 
 def file_chunks(path):

@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block title %}Liaison Statement | FG-TIDA Datatracker{% endblock %}
+{% block content %}
+<h1>Liaison Statement</h1>
+<p>Browse liaison statements received by and sent from FG-TIDA. Select a title to read its details and materials.</p>
+<form method="get" class="mb-4">
+<label class="visually-hidden" for="{{ form.q.id_for_label }}">Search liaison statements</label><div class="input-group mb-3">{{ form.q }}<button class="btn btn-primary" type="submit"><i class="bi bi-search" aria-hidden="true"></i> Search</button></div>
+{{ form.q.errors }}
+<details class="border rounded" {% if request.GET %}open{% endif %}><summary class="p-3 bg-primary-subtle">Additional search criteria</summary><div class="p-3 row g-3">
+{% for field in form %}{% if field.name != 'q' %}<div class="col-md-6"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}</div>{% endif %}{% endfor %}
+<div class="col-12"><button class="btn btn-primary" type="submit">Search</button> <a class="btn btn-outline-secondary" href="{% url 'fgtida:liaisons' %}">Clear</a></div></div></details>
+</form>
+{% if perms.doc.add_document %}<p><a href="{% url 'admin:doc_document_add' %}" class="btn btn-outline-primary">Add liaison statement</a> <span class="small text-body-secondary">Choose incoming or outgoing in the document form.</span></p>{% endif %}
+<p>{{ page.paginator.count }} liaison statement{{ page.paginator.count|pluralize }}</p>
+<div class="table-responsive"><table class="table table-striped align-middle fg-mobile-cards fgtida-liaison-table"><thead><tr>{% for label, url in headers %}<th scope="col"><a href="{{ url }}">{{ label }} <i class="bi bi-arrow-down-up small" aria-hidden="true"></i></a></th>{% endfor %}</tr></thead><tbody>
+{% for statement in page %}<tr><td class="text-nowrap" data-label="Date">{{ statement.statement_date|date:'Y-m-d' }}</td><td data-label="From">{{ statement.source|default:'—' }}</td><td data-label="To">{{ statement.destination|default:'—' }}</td><td class="text-nowrap" data-label="Deadline">{{ statement.deadline|date:'Y-m-d'|default:'—' }}</td><td data-label="Title"><a href="{% url 'fgtida:liaison' statement.pk %}">{{ statement.document.title }}</a> <span class="badge text-bg-light border">{% if statement.direction == 'input' %}Input{% else %}Output{% endif %}</span></td></tr>{% empty %}<tr class="fg-empty"><td colspan="5">No liaison statements match these criteria.</td></tr>{% endfor %}
+</tbody></table></div>
+{% if page.has_other_pages %}<nav aria-label="Liaison pages" class="d-flex gap-3">{% if previous_url %}<a href="{{ previous_url }}">Previous</a>{% endif %}<span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>{% if next_url %}<a href="{{ next_url }}">Next</a>{% endif %}</nav>{% endif %}
+{% endblock %}

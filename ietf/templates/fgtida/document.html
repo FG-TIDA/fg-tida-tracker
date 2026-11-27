@@ -2,6 +2,13 @@
 {% block title %}{{ snapshot.title }} | FG-TIDA Datatracker{% endblock %}
 {% block content %}{% timezone "UTC" %}
 <h1 class="fg-document-title">{{ snapshot.title }}</h1>
+{% if liaison %}<p><a href="{% url 'fgtida:liaisons' %}"><i class="bi bi-arrow-left" aria-hidden="true"></i> Liaison Statement</a></p>
+<div class="table-responsive"><table class="table table-sm fg-liaison-metadata"><tbody>
+<tr><th scope="row">Direction</th><td>{% if liaison.direction == 'input' %}Input{% else %}Output{% endif %}</td></tr>
+<tr><th scope="row">Submitted date</th><td>{% if liaison.posted_date %}{{ liaison.posted_date|date:'Y-m-d' }}{% else %}{{ liaison.created|date:'Y-m-d' }}{% endif %}</td></tr>
+<tr><th scope="row">From</th><td>{{ liaison.source|default:'—' }}</td></tr><tr><th scope="row">To</th><td>{{ liaison.destination|default:'—' }}</td></tr>
+<tr><th scope="row">Deadline</th><td>{{ liaison.deadline|date:'Y-m-d'|default:'—' }}</td></tr><tr><th scope="row">Purpose</th><td>{{ liaison.purpose|default:'—' }}</td></tr>
+</tbody></table></div>{% if liaison.body %}<section class="mb-4" aria-label="Liaison message">{{ liaison.body|rich_text }}</section>{% endif %}{% endif %}
 {% if template_adaptation.author_review_pending and template_adaptation.provisional %}<div class="alert alert-warning" role="status"><strong>Editorial template adaptation — author verification pending.</strong> The original submission remains available in the version history. Authors should compare this version with their original and submit corrections if needed. Missing information is explicitly marked for author/editor review; this version is not fully template-compliant.</div>{% endif %}
 {% if security_pending %}<div class="alert alert-info" role="status">This document is awaiting security checks. Its preview and files will become available after the checks pass.</div>{% endif %}
 {% if file_available and not security_pending and not text and not package_chapters %}<div class="alert alert-info" role="status">A reading preview is unavailable for this file. Use the original file in Formats.</div>{% endif %}

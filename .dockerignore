@@ -5,6 +5,7 @@
 /svn-history
 /data
 /tmp-*
+/tmp
 /dev/security-private
 /deploy/secrets
 /deploy/production.env

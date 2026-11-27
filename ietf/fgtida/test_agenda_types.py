@@ -50,7 +50,7 @@ class AgendaTypeTests(TestCase):
             doc = Document.objects.get(pk=doc.pk)
             self.assertEqual(doc.rev, revision)
         slot.refresh_from_db()
-        self.assertEqual(slot.location_id, room.pk)
+        self.assertEqual(slot.location.name, 'ROOM XI')
         self.assertEqual(Document.objects.filter(session__meeting=meeting, name=doc.name).distinct().count(), 1)
 
     def test_all_leadership_roles_can_use_a_person_without_a_login_account(self):
@@ -85,10 +85,13 @@ class AgendaTypeTests(TestCase):
             session = Session.objects.get(pk=pk)
             self.assertTrue(session.on_agenda)
             self.assertIn(f'WG{wg}', session.name)
-            self.assertEqual(session.agenda_presenters, f'WG{wg} Co-Chairs')
+            if wg == 5:
+                self.assertIn('WG5 Co-Chairs', session.agenda_note)
+            else:
+                self.assertEqual(session.agenda_presenters, f'WG{wg} Co-Chairs')
         self.assertEqual(meeting.session_set.filter(name__icontains='ICAP').count(), 1)
         feedback.refresh_from_db()
-        self.assertEqual(feedback.name, 'Session 18 – Feedback and future directions')
+        self.assertEqual(feedback.name, 'Session 21 – Feedback and future directions')
         self.assertTrue(feedback.on_agenda)
 
     def test_paris_closing_adjustment_preserves_history_and_handles_an_already_deleted_break(self):
@@ -102,7 +105,7 @@ class AgendaTypeTests(TestCase):
         meeting.refresh_from_db()
         zone = ZoneInfo('Europe/Paris')
         clock = lambda hour, minute: datetime(2026,12,1,hour,minute,tzinfo=zone)
-        feedback = meeting.session_set.get(name__startswith='Session 18')
+        feedback = meeting.session_set.get(name__contains='Feedback and future directions')
         dinner = meeting.session_set.get(name__startswith='Networking & Trustech')
         feedback_entry = feedback.timeslotassignments.get(schedule=meeting.schedule)
         dinner_entry = dinner.timeslotassignments.get(schedule=meeting.schedule)
@@ -162,24 +165,26 @@ class AgendaTypeTests(TestCase):
         self.assertFalse(meeting.session_set.exists())
         call_command('update_paris_agenda', apply=True, stdout=StringIO())
         identifiers = set(meeting.session_set.values_list('pk', flat=True))
-        self.assertEqual(len(identifiers), 26)
+        self.assertEqual(len(identifiers), 30)
         first = meeting.session_set.get(short='paris2026-01')
-        self.assertEqual(first.agenda_outcome, 'Agenda adopted')
+        self.assertEqual(first.agenda_outcome, '')
         self.assertIn('1.2 Address by the French Government', first.agenda_note)
         self.assertEqual(meeting.session_set.filter(agenda_open_ended=True).count(), 0)
-        for wg, label in [('WG3', 'WG3 Co-Chairs'), ('WG4', 'WG4 Co-Chairs'), ('WG5', 'WG5 Co-Chairs'), ('WG6', 'WG6 Co-Chairs')]:
+        for wg, label in [('WG3', 'WG3 Co-Chairs'), ('WG6', 'WG6 Co-Chairs')]:
             self.assertEqual(meeting.session_set.get(name__contains=wg + ':').agenda_presenters, label)
+        self.assertIn('David Kelts', meeting.session_set.get(name__contains='WG4:').agenda_note)
+        self.assertIn('WG5 Co-Chairs', meeting.session_set.get(name__contains='WG5:').agenda_note)
         from pathlib import Path
         import json, re
         rows = json.loads(Path('ietf/fgtida/paris_agenda_2026.json').read_text())
         self.assertTrue(all(re.fullmatch(r'\d{2}:\d{2}–\d{2}:\d{2}', row['time']) for row in rows))
         end_of_day = [row for row in rows if row['day'] == 1][-2:]
-        self.assertEqual([row['time'] for row in end_of_day], ['16:45–17:15', '17:30–22:00'])
+        self.assertEqual([row['time'] for row in end_of_day], ['17:15–17:45', '17:45–22:00'])
         call_command('update_paris_agenda', apply=True, stdout=StringIO())
         self.assertEqual(identifiers, set(meeting.session_set.values_list('pk', flat=True)))
         page = self.client.get('/meeting/paris-test/agenda/')
-        self.assertContains(page, 'Status / expected outcome')
-        self.assertContains(page, 'Agenda adopted')
+        self.assertNotContains(page, '<th scope="col">Status / expected outcome</th>')
+        self.assertContains(page, 'Opening address - thanks to the sponsors')
         self.assertContains(self.client.get(f'/admin/meeting/session/{first.pk}/change/'), 'Status / expected outcome')
 
     def test_categories_migrate_to_types_and_wg0_use_cases_are_contributions(self):

@@ -1,4 +1,5 @@
 <div class="fgtida-session-actions" aria-label="Session resources">
+<a class="fgtida-resource-icon resource-session session-materials-open" href="{% url 'fgtida:session-materials' session.pk %}" title="Show meeting materials" aria-label="Show meeting materials for {{ session.name }}"><i class="bi bi-briefcase" aria-hidden="true"></i></a>
 {% for action in actions %}
 {% if action.links|length == 1 %}<a class="fgtida-resource-icon resource-{{ action.key }}" href="{{ action.links.0.1 }}" title="{{ action.label }}: {{ action.links.0.0 }}" aria-label="{{ action.label }}: {{ action.links.0.0 }}"><i class="bi bi-{{ action.icon }}" aria-hidden="true"></i></a>
 {% elif action.links %}<details class="fgtida-resource-menu"><summary class="fgtida-resource-icon resource-{{ action.key }}" title="{{ action.label }}" aria-label="{{ action.label }}"><i class="bi bi-{{ action.icon }}" aria-hidden="true"></i></summary><span class="fgtida-resource-list">{% for label, url in action.links %}<a href="{{ url }}">{{ label }}</a>{% endfor %}</span></details>

@@ -19,7 +19,9 @@ class Command(BaseCommand):
         parser.add_argument('--apply', action='store_true')
         parser.add_argument('--meeting', help='Exact meeting number if date lookup is ambiguous.')
         parser.add_argument('--agenda-file', help='Reviewed replacement DOCX agenda file, retained as a new document version.')
+        parser.add_argument('--bundled-agenda', action='store_true', help='Use the reviewed Paris agenda v0.3 Word document shipped with the code.')
         parser.add_argument('--agenda-document', help='Exact existing agenda document identifier when lookup is ambiguous.')
+        parser.add_argument('--agenda-version', help='Optional new X.Y archive version. The bundled agenda defaults to 0.3.')
 
     @transaction.atomic
     def handle(self, *args, **options):
@@ -32,6 +34,10 @@ class Command(BaseCommand):
         if meeting.date != date(2026, 11, 30) or meeting.days != 2:
             raise CommandError('The selected meeting must run 30 November–1 December 2026.')
         rows = json.loads(Path(__file__).resolve().parents[2].joinpath('paris_agenda_2026.json').read_text(encoding='utf-8-sig'))
+        if options.get('bundled_agenda'):
+            if options['agenda_file']:
+                raise CommandError('Choose --bundled-agenda or --agenda-file, not both.')
+            options['agenda_file'] = str(Path(__file__).resolve().parents[2] / 'paris_agenda_2026_v03.docx')
         replacement = agenda_document = None
         if options['agenda_file']:
             source = Path(options['agenda_file'])
@@ -97,12 +103,8 @@ class Command(BaseCommand):
                 if by_topic.count() > 1:
                     raise CommandError(f'Ambiguous topic {topic}; review existing rows first.')
                 session = by_topic.first()
-            if not session and number and not wg and 'ICAP' not in title:
-                candidates = Session.objects.filter(meeting=meeting, name__iregex=rf'^Session {number[1]}(?:\D|$)')
-                candidates = candidates.exclude(pk__in=matched)
-                if candidates.count() > 1:
-                    raise CommandError(f'Ambiguous session {number[1]}; review existing rows first.')
-                session = candidates.first()
+            # Session numbers can be reused for different topics in a revision.
+            # Never move another topic's existing materials by number alone.
             times = re.findall(r'\d{2}[:.]\d{2}', row['time'])
             start = datetime.combine(meeting.date + timedelta(days=row['day']), datetime.strptime(times[0].replace('.', ':'), '%H:%M').time(), ZoneInfo(meeting.time_zone or 'Europe/Paris'))
             end = datetime.combine(start.date(), datetime.strptime(times[1].replace('.', ':'), '%H:%M').time(), start.tzinfo) if len(times) > 1 else None
@@ -116,7 +118,12 @@ class Command(BaseCommand):
             if not options['apply']:
                 continue
             if not session:
-                session = Session(meeting=meeting, group=core.groups().get(acronym='tida'), purpose_id='regular', type_id='session')
+                group = core.groups().filter(acronym='tidawg' + wg[1]).first() if wg else None
+                session = Session(meeting=meeting, group=group or core.groups().get(acronym='tida'), purpose_id='regular', type_id='session')
+            if wg and wg[1].isdigit():
+                actual_group = core.groups().filter(tida_configuration__number=int(wg[1])).first()
+                if actual_group:
+                    session.group = actual_group
             session.name, session.short = title, short
             session.agenda_note = '\n'.join(lines[1:])
             session.agenda_presenters = row['presenters']
@@ -132,7 +139,9 @@ class Command(BaseCommand):
             slot = assignment.timeslot if assignment and not assignment.timeslot.sessionassignments.exclude(pk=assignment.pk).exists() else TimeSlot(meeting=meeting, type_id='session')
             slot.time, slot.name = start, title
             slot.duration = end-start if end else timedelta(0)
-            if not slot.location_id:
+            if row.get('location'):
+                slot.location, _ = Room.objects.get_or_create(meeting=meeting, name=row['location'])
+            elif not slot.location_id:
                 slot.location = dinner_room if 'dinner' in title.lower() else room
             slot.save()
             if assignment:
@@ -154,6 +163,10 @@ class Command(BaseCommand):
                 if current and current.is_file() and current.read_bytes() == replacement:
                     self.stdout.write('The current downloadable agenda already matches this DOCX; no extra version created.')
                 else:
-                    core.save_document(agenda_document, actor, 'Paris agenda replaced with the reviewed 23 November DCO revision.',
-                        data=replacement, filename='FG-TIDA_1st_meeting_agenda_revised_Nov_23_DCO.docx')
+                    core.save_document(agenda_document, actor, 'Paris agenda updated from the reviewed v0.3 Markdown, Session 1 wording and WG2 programme.',
+                        data=replacement, filename=Path(options['agenda_file']).name,
+                        source_metadata={'agenda_source': 'paris-v0.3'},
+                        version=options.get('agenda_version') or ('0.3' if options.get('bundled_agenda') else None))
+                    from ietf.fgtida.github_catalog import preserve_manual_document
+                    preserve_manual_document(agenda_document)
                     self.stdout.write('Downloadable agenda updated; earlier document versions retained.')

@@ -578,6 +578,12 @@ class DocumentForm(forms.ModelForm):
     document_direction = forms.ChoiceField(required=False, label='Liaison statements', choices=[('', 'Neither'), ('input', 'Incoming liaison statement'), ('output', 'Outgoing liaison statement')], help_text='Preserve the received/sent Word, PDF or ZIP as the original. ZIPs may contain Word/PDF documents and supporting text/images. An optional PDF reading copy can be attached to the same revision.')
     document_meeting = forms.ModelChoiceField(required=False, label='Document meeting', queryset=Meeting.objects.none())
     document_source = forms.CharField(required=False, max_length=255, label='Document source', help_text='Organization, author or working group displayed in the list.')
+    document_destination = forms.CharField(required=False, max_length=500, label='Liaison To')
+    document_posted_date = forms.DateField(required=False, label='Liaison date', widget=admin.widgets.AdminDateWidget)
+    document_deadline = forms.DateField(required=False, label='Liaison response deadline', widget=admin.widgets.AdminDateWidget)
+    document_purpose = forms.CharField(required=False, max_length=255, label='Liaison purpose')
+    document_body = forms.CharField(required=False, label='Liaison message', widget=forms.Textarea(attrs={'rows': 4}),
+        help_text='Optional public text. Uploaded original files remain attached to this document.')
     document_created = forms.SplitDateTimeField(required=False, label='Document creation date', widget=admin.widgets.AdminSplitDateTime, help_text='Leave blank to use the current date for a new list entry.')
     version = forms.CharField(required=False,max_length=32,label='New file version',help_text='Optional X.Y version. Otherwise use the version declared in the source, or start at 0.0 and increase on subsequent uploads.')
     catalogued = forms.BooleanField(required=False, initial=True, label='Show in public catalog', help_text='Leave unchecked for repository support files or records awaiting classification. This is catalog inclusion, not confidential storage.')
@@ -613,7 +619,9 @@ class DocumentForm(forms.ModelForm):
                 self.fields['current_version'].initial = self.current_version_record.version
             listing = DocumentListing.objects.filter(document=self.instance).first()
             if listing:
-                for field, value in [('document_direction', listing.direction), ('document_meeting', listing.meeting_id), ('document_source', listing.source), ('document_created', listing.created)]:
+                for field, value in [('document_direction', listing.direction), ('document_meeting', listing.meeting_id), ('document_source', listing.source), ('document_created', listing.created),
+                        ('document_destination', listing.destination), ('document_posted_date', listing.posted_date),
+                        ('document_deadline', listing.deadline), ('document_purpose', listing.purpose), ('document_body', listing.body)]:
                     self.fields[field].initial = value
             self.fields['catalogued'].initial = not self.instance.tags.filter(slug='tida-uncatalogued').exists()
             self.fields['lifecycle_state'].initial = self.instance.states.filter(type_id=type_id).first()
@@ -1022,7 +1030,9 @@ class DocumentCategoryAdmin(admin.ModelAdmin):
 class FgDocumentAdmin(DocumentAdmin):
     form = DocumentForm
     fields = ['name', 'title', 'type', 'group', 'abstract', 'catalogued', 'lifecycle_state',
-              'current_version', 'upload', 'version', 'document_direction', 'document_meeting', 'document_source', 'document_created', 'meeting_session', 'external_url', 'comment_about_changes']
+              'current_version', 'upload', 'version', 'document_direction', 'document_meeting', 'document_source', 'document_created',
+              'document_destination', 'document_posted_date', 'document_deadline', 'document_purpose', 'document_body',
+              'meeting_session', 'external_url', 'comment_about_changes']
     list_display = ['name', 'title', 'public_document_type', 'group', 'public_version', 'time']
     search_fields = ['name', 'title', 'abstract']
     list_filter = ['tida_attribution__public_type', 'tida_attribution__additional_types', 'type', 'group']
@@ -1110,6 +1120,9 @@ class FgDocumentAdmin(DocumentAdmin):
             DocumentListing.objects.update_or_create(document=form.instance, defaults={
                 'direction': values['document_direction'], 'meeting': values.get('document_meeting'),
                 'source': values.get('document_source', ''),
+                'destination': values.get('document_destination', ''), 'posted_date': values.get('document_posted_date'),
+                'deadline': values.get('document_deadline'), 'purpose': values.get('document_purpose', ''),
+                'body': values.get('document_body', ''),
                 'created': values.get('document_created') or (existing.created if existing else timezone.now())})
         else:
             DocumentListing.objects.filter(document=form.instance).delete()

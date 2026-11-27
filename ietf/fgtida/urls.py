@@ -9,9 +9,12 @@ from . import mfa
 from . import github_views
 from . import document_formats
 from . import training
+from . import liaisons
 
 app_name = 'fgtida'
 urlpatterns = [
+    path('liaison/', liaisons.index, name='liaisons'),
+    path('liaison/<int:pk>/', liaisons.detail, name='liaison'),
     path('work/incubation/', views.incubation, name='incubation'),
     path('document-formats/<int:pk>/download/', document_formats.download, name='document-format'),
     path('integrations/github/build/', github_views.build, name='github-build'),
@@ -25,6 +28,7 @@ urlpatterns = [
     path('accounts/mfa/setup/', mfa.setup, name='mfa-setup'),
     path('accounts/mfa/verify/', mfa.verify, name='mfa-verify'),
     path('session/<int:pk>/materials.tar', session_materials.archive, name='session-materials-tar'),
+    path('session/<int:pk>/materials/', session_materials.materials, name='session-materials'),
     path('session-resources/<int:pk>/file/', resource_files.download, name='session-resource-file'),
     path('accounts/csrf/', accounts.csrf_token, name='csrf-token'),
     path('admin/password_change/', account_changes.change, {'kind': 'password'}),

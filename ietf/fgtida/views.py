@@ -38,13 +38,8 @@ def home(request):
 
 
 def participants(request, num):
-    meeting = get_object_or_404(core.meetings(), number=num)
-    records = meeting.tida_participants.filter(published=True)
-    attendance = request.GET.get('attendance', '')
-    if attendance in ('onsite', 'remote'):
-        records = records.filter(attendance=attendance)
-    return render(request, 'fgtida/participants.html', {'meeting': meeting, 'section': 'participants',
-        'participants': records, 'selected_attendance': attendance})
+    from .participants import participant_list
+    return participant_list(request, num)
 
 
 def database_access(request):
@@ -244,6 +239,7 @@ def document(request, name, rev=None):
     from .author_links import document_people
     author_entries, submitted_by = document_people(doc, authors, credits, assigned_authors)
     return render(request, 'fgtida/document.html', {'doc': doc, 'snapshot': snapshot,
+        'liaison': getattr(doc, 'tida_listing', None),
         'revisions': ordered, 'file_available': file_available,'display_abstract':abstract,
         'security_pending': security_pending,
         'package_chapters': package_chapters,
@@ -475,7 +471,15 @@ def meeting(request, num, section='agenda'):
             for day in week] for week in month_calendar.Calendar().monthdatescalendar(calendar_month.year, calendar_month.month)]
         previous_month = calendar_month-timedelta(days=1)
         next_month = (calendar_month+timedelta(days=32)).replace(day=1)
+        agenda_candidates = core.documents().filter(session__meeting=meeting, uploaded_filename__iendswith='.docx').filter(
+            Q(type_id='agenda') | Q(title__icontains='agenda')).distinct()
+        agenda_document = agenda_candidates.filter(tida_versions__revision=F('rev'),
+            tida_versions__source_metadata__agenda_source='paris-v0.3').first()
+        if not agenda_document and agenda_candidates.count() == 1:
+            agenda_document = agenda_candidates.first()
+        from .file_safety import snapshot_allowed
         return render(request, 'fgtida/agenda.html', {'meeting': meeting, 'section': section,
+            'agenda_document': agenda_document, 'agenda_download_ready': bool(agenda_document and snapshot_allowed(agenda_document)),
             'display_zone': zone, 'zone_mode': zone_mode, 'local_zone': local_zone,
             'days': shown_days, 'all_days': all_days, 'query': query,
             'meeting_choices': core.meetings().order_by('-date').only('number', 'title', 'date', 'city'),

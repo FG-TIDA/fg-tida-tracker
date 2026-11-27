@@ -10,6 +10,15 @@ from django.utils.html import format_html_join
 register = template.Library()
 
 
+@register.simple_tag
+def room_label(room):
+    name = room.name if room else 'To be confirmed'
+    match = re.search(r'(?i)\bROOM\s+([IVXLCDM]+|\d+[A-Za-z]?)\b', name)
+    if match:
+        return format_html('<span class="fgtida-room-label"><span class="fgtida-room-badge">{}</span><span>{}</span></span>', match[1].upper(), name)
+    return format_html('<span class="fgtida-room-label">{}</span>', name)
+
+
 def fragment_key(kind, text, source_url, image_urls=()):
     import hashlib
     import json
@@ -63,7 +72,7 @@ def session_actions(session):
         checked = not resource.file_size or allowed_digest(resource.sha256, resource.filename)
         archive_ready = archive_ready and checked
         suffix = Path(resource.filename).suffix.lower()
-        key = resource.kind if resource.kind in ('notes', 'recording') else {'.pdf': 'pdf', '.pptx': 'pptx', '.ppt': 'pptx'}.get(suffix, 'other')
+        key = 'notes' if resource.kind == 'minutes' else resource.kind if resource.kind in ('notes', 'recording') else {'.pdf': 'pdf', '.pptx': 'pptx', '.ppt': 'pptx'}.get(suffix, 'other')
         if checked and resource.kind != 'login':
             groups[key].append((resource.title, resource.resource_url))
     categories = [('notes', 'Session notes / summary', 'chat-left-text'),

@@ -73,9 +73,34 @@ html { scroll-padding-top: calc(var(--fg-tida-header-height) + 24px); }
 .fgtida-agenda-table td { padding: .35rem .7rem; vertical-align: middle; }
 .fgtida-agenda-table th:first-child { width: 9rem; }
 .fgtida-agenda-table th:nth-child(2) { width: 14%; }
-.fgtida-agenda-table th:nth-child(4) { width: 18%; }
-.fgtida-agenda-table th:nth-child(5) { width: 18%; }
+.fgtida-agenda-table th:nth-child(2) { min-width: 10rem; }
 .fgtida-agenda-table .fgtida-agenda-presenters { white-space: pre-line; vertical-align: top; }
+.fgtida-room-label { display: inline-flex; align-items: center; gap: .45rem; white-space: nowrap; }
+.fgtida-room-badge { display: inline-flex; justify-content: center; align-items: center; background: #ffe69c; border: 1px solid #ffda6a; color: #332701; font-size: .75rem; border-radius: .3rem; min-width: 1.7rem; height: 1.6rem; padding: .1rem .25rem; }
+.fgtida-materials-dialog { width: min(70rem, calc(100% - 1.25rem)); max-height: 90dvh; border: 1px solid var(--bs-border-color); border-radius: .65rem; padding: 0; background: var(--bs-body-bg); color: var(--bs-body-color); }
+.fgtida-materials-dialog::backdrop { background: rgb(0 0 0 / .55); }
+.fgtida-materials-heading { display: flex; gap: 1rem; align-items: flex-start; justify-content: space-between; }
+.fgtida-materials-location { display: inline-flex; align-items: center; gap: .5rem; background: #f6f2ff; color: #4b2385; border-radius: .3rem; padding: .5rem .8rem; }
+.fgtida-material-panel { background: var(--bs-tertiary-bg); overflow-wrap: anywhere; }
+.fgtida-material-panel [hidden] { display: none !important; }
+.fg-liaison-metadata th { width: 12rem; white-space: nowrap; }
+.fgtida-liaison-table th { white-space: nowrap; }
+@media (max-width: 767.98px) {
+  .fgtida-agenda-table, .fgtida-agenda-table tbody { display: block; width: 100%; }
+  .fgtida-agenda-table thead { display: none; }
+  .fgtida-agenda-table tbody tr:not([data-session]) { display: block; }
+  .fgtida-agenda-table tbody tr:not([data-session]) > th { display: block; width: auto; white-space: normal; }
+  .fgtida-agenda-table tbody tr[data-session] { display: grid; grid-template-columns: 1fr 1fr; }
+  .fgtida-agenda-table tbody tr[data-session] > td { border: 0; min-width: 0; }
+  .fgtida-agenda-table tbody tr[data-session] > td:nth-child(2) { text-align: right; }
+  .fgtida-agenda-table tbody tr[data-session] > td:nth-child(3) { grid-column: 1 / -1; padding-bottom: .8rem; }
+  .fgtida-agenda-table .fgtida-session-actions { float: none; margin: .2rem 0; justify-content: flex-start; }
+  .fgtida-agenda-table .fgtida-resource-icon { min-width: 2rem; min-height: 2rem; }
+  .fgtida-agenda-table .fgtida-agenda-event summary { font-size: 1rem; line-height: 1.5; }
+  .fgtida-materials-heading { display: block; }
+  .fgtida-materials-heading h2 { font-size: 1.15rem; }
+  .fgtida-room-label { white-space: normal; }
+}
 .fg-training-video { max-width: 48rem; }
 .fgtida-session-actions { float: right; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .22rem; margin: .1rem 0 .1rem .65rem; }
 .fgtida-resource-icon { display: inline-flex; align-items: center; justify-content: center; min-width: 1.65rem; height: 1.7rem; padding: .15rem .22rem; border-radius: .2rem; text-decoration: none; color: #0657d9; background: #edf4ff; font-size: 1rem; }
@@ -173,7 +198,7 @@ html { scroll-padding-top: calc(var(--fg-tida-header-height) + 24px); }
     .fg-document-metadata { font-size: .9rem; }
     .fg-document-metadata th { white-space: normal; }
     .fg-version-timeline { padding-left: 2rem; }
-    .fgtida-agenda-table { min-width: 42rem; }
+    .fgtida-agenda-table { min-width: 0; }
     .fgtida-agenda-sidebar { margin-top: 1rem; }
     footer { display: flex; flex-wrap: wrap; justify-content: center; gap: .3rem .8rem; padding: 1.5rem 1rem !important; }
     footer > a { padding: .5rem 0 !important; }

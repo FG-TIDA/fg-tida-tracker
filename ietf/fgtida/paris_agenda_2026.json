@@ -2,83 +2,119 @@
   {
     "day": 0,
     "time": "09:00–09:30",
-    "event": "Session 1 – High-level session\n1.1 Welcome by UNESCO and ITU-T\n1.2 Address by the French Government- TBD\n1.3 Opening address by the Co-Chairs – thanks to the sponsors\n1.4 Adoption of the agenda",
-    "presenters": "1.1 UNESCO / ITU-TSB\n1.2 French Government\n1.3–1.4 Co-Chairs",
-    "outcome": "Agenda adopted"
+    "location": "ROOM XI",
+    "event": "Session 1 – High-level session\n1.1 Welcome by UNESCO and ITU-T\n\n- Mariagrazia SQUICCIARINI, Chief of Executive Office, UNESCO\n- Seizo ONOE, TSB Director, ITU\n\n1.2 Address by the French Government\n\n- French Government\n\n1.3–1.4 Opening address - thanks to the sponsors & Adoption of the agenda\n\n- Debora Comparin (Thales Cybersecurity and Digital Identity, France)\n- Amir Banifatemi (Cognizant, UK)",
+    "presenters": "",
+    "outcome": ""
   },
   {
     "day": 0,
     "time": "09:30–10:15",
+    "location": "ROOM XI",
     "event": "Session 2 – Terms of reference, objectives and current state of the Working Groups\n2.1 Terms of reference\n2.2 Objectives\n2.3 Current state of the Working Groups\n2.4 Calendar",
+    "presenters": "Debora Comparin, Amir Banifatemi",
+    "outcome": ""
+  },
+  {
+    "day": 0,
+    "time": "10:15–10:30",
+    "location": "ROOM XI",
+    "event": "Session 3 – Structure and leadership\n3.1 Approval of the structure\n3.2 Approval of the leadership",
     "presenters": "Co-Chairs",
-    "outcome": "—"
+    "outcome": ""
   },
   {
     "day": 0,
-    "time": "10:15–10:45",
-    "event": "Session 3 – Structure, leadership and dispatch\n3.1 Approval of the structure\n3.2 Approval of the leadership\n3.3 New Work Items (NWI) – Dispatch: allocation to an existing WG – results of the Dispatch Committee",
-    "presenters": "Co-Chairs; Dispatch Committee",
-    "outcome": "Structure and leadership approved – first milestone: the structure is in place"
+    "time": "10:30–11:00",
+    "location": "ROOM XI",
+    "event": "Session 4 – Aligning against frameworks and mental models",
+    "presenters": "Sounil Yu, Ward Duchamps",
+    "outcome": ""
   },
   {
     "day": 0,
-    "time": "10:45–11:15",
+    "time": "11:00–11:30",
+    "location": "Hall, ROOM XI",
     "event": "Coffee break",
     "presenters": "",
     "outcome": ""
   },
   {
     "day": 0,
-    "time": "11:15–12:45",
-    "event": "Session 4 – WG2: Identity, Behaviour and Enforcement for AI Agents (IBEA)\n4.1 Approval of WG2 charter\n4.2 Selected contributions discussion",
+    "time": "11:30–12:00",
+    "location": "ROOM XI",
+    "event": "Session 5 – New Work Items (NWI)\nDispatch: allocation to an existing WG – results of the Dispatch Committee",
+    "presenters": "Co-Chairs, Dispatch Committee",
+    "outcome": ""
+  },
+  {
+    "day": 0,
+    "time": "12:00–12:45",
+    "location": "ROOM XI",
+    "event": "Session 6 – WG2: Identity, Behaviour and Enforcement for AI Agents (IBEA) – part 1\n\n12:00–12:05 — Welcome by designated chairs — Designated chairs\n\n6.1 Charter approval\n\n12:05–12:15 — WG2 idea and charter presentations — Designated chairs\n\n12:15–12:20 — Approval of the proposed charter — all\n\n6.2 Selected contributions\n\n12:25–12:35 — Operation-Bound Least Agency: Requirements for Enforcing Security Policy on Agent Actions — Mohamed ElBendary\n\n12:35–12:45 — Preventive Enforcement and Bounded Escalation in AI-Agent Financial Services — Rimma Shiptsova",
     "presenters": "WG2 Co-Chairs",
-    "outcome": "—"
+    "outcome": ""
   },
   {
     "day": 0,
     "time": "12:45–14:00",
+    "location": "UNESCO restaurant",
     "event": "Lunch",
     "presenters": "",
     "outcome": ""
   },
   {
     "day": 0,
-    "time": "14:00–15:30",
-    "event": "Session 5 – WG0: Use Cases, Taxonomy, and Terminology (UCT)\n5.1 Approval of WG0 charter\n5.2 Terminology – selected contributions discussion",
-    "presenters": "WG0 Co-Chairs",
-    "outcome": "—"
+    "time": "14:00–14:45",
+    "location": "ROOM XI",
+    "event": "Session 6 – WG2: Identity, Behaviour and Enforcement for AI Agents (IBEA) – part 2\n\n6.2 Selected contributions\n\n14:00–14:10 — Power of Attorney — Paul Sydney Orozco\n\n14:10–14:20 — Two-Axis Governance Envelope & Ephemeral Control Plane (CDA 2.0) — Matías Salgado\n\n14:20–14:30 — Design-based identity for agents — Evangelos Haleplidis\n\n14:30–14:40 — Discussion, dependencies, other open issues — all\n\n14:40–14:45 — Conclusion, next steps — Designated chairs",
+    "presenters": "WG2 Co-Chairs",
+    "outcome": ""
   },
   {
     "day": 0,
-    "time": "15:30–16:00",
-    "event": "Session 6 – WG0: Use Cases (fireside format)\nUse cases preselected through the Dispatch",
+    "time": "14:45–16:15",
+    "location": "ROOM XI",
+    "event": "Session 7 – WG0: Use Cases, Taxonomy, and Terminology (UCT)\n7.1 Approval of WG0 charter\n7.2 Terminology – selected contributions discussion",
     "presenters": "WG0 Co-Chairs",
-    "outcome": "—"
+    "outcome": ""
   },
   {
     "day": 0,
-    "time": "16:00–16:30",
+    "time": "16:15–16:45",
+    "location": "Hall, ROOM XI",
     "event": "Coffee break",
     "presenters": "",
     "outcome": ""
   },
   {
     "day": 0,
-    "time": "16:30–17:15",
-    "event": "Session 7 – Working methods\n7.1 Tutorial on FG working methods (Recommendation ITU-T A.7)\n7.2 Deliverable lifecycle, open-development approach and decision process",
+    "time": "16:45–17:15",
+    "location": "ROOM XI",
+    "event": "Session 8 – WG0: Use Cases (fireside format)\nUse cases preselected through the Dispatch",
+    "presenters": "WG0 Co-Chairs",
+    "outcome": ""
+  },
+  {
+    "day": 0,
+    "time": "17:15–18:00",
+    "location": "ROOM XI",
+    "event": "Session 9 – Working methods\n9.1 Tutorial on FG working methods (Recommendation ITU-T A.7)\n9.2 Deliverable lifecycle, open-development approach and decision process",
     "presenters": "ITU-T Secretariat and Co-Chairs",
-    "outcome": "—"
+    "outcome": ""
   },
   {
     "day": 0,
-    "time": "17:15–17:30",
-    "event": "Session 8 – Conclusion of Day 1",
+    "time": "18:00–18:15",
+    "location": "ROOM XI",
+    "event": "Session 10 – Conclusion of Day 1",
     "presenters": "Co-Chairs",
-    "outcome": "—"
+    "outcome": ""
   },
   {
     "day": 0,
-    "time": "17:30–18:00",
+    "time": "18:15–22:00",
+    "location": "UNESCO",
     "event": "Networking and dinner at UNESCO",
     "presenters": "",
     "outcome": ""
@@ -86,41 +122,55 @@
   {
     "day": 1,
     "time": "09:00–09:15",
-    "event": "Session 9 – Opening of Day 2\n9.1 Welcome to Day 2\n9.2 Address by the Chair of ITU-T SG17",
-    "presenters": "9.1 Co-Chairs\n9.2 Chair, ITU-T SG17",
-    "outcome": "—"
+    "location": "ROOM XI",
+    "event": "Session 11 – Opening of Day 2\n11.1 Welcome to Day 2 – Co-Chairs\n11.2 Address by the Chair of ITU-T SG17 – Arnaud Taddei",
+    "presenters": "",
+    "outcome": ""
   },
   {
     "day": 1,
-    "time": "09:15–10:45",
-    "event": "Session 10 – WG1: Continuous and Dynamic Remote Attestation for Agentic AI (CDRA)\n10.1 Approval of WG1 charter\n10.2 Selected contributions discussion",
+    "time": "09:15–10:30",
+    "location": "ROOM XI",
+    "event": "Session 12 – WG1: Continuous and Dynamic Remote Attestation for Agentic AI (CDRA)\n12.1 Approval of WG1 charter\n12.2 Selected contributions discussion",
     "presenters": "WG1 Co-Chairs",
-    "outcome": "Decision: new WG or amended Charter"
+    "outcome": ""
+  },
+  {
+    "day": 1,
+    "time": "10:30–10:45",
+    "location": "ROOM XI",
+    "event": "Session 13 – Plenary: Future WGs and changes to existing WGs\nNew WGs to be created and changes to the existing WGs",
+    "presenters": "Co-Chairs, Dispatch Committee",
+    "outcome": ""
   },
   {
     "day": 1,
     "time": "10:45–11:15",
-    "event": "Session 11– Plenary: New WG or amended Charter?\nNew Work Items (NWI) that do not fit an existing WG",
-    "presenters": "Co-Chairs",
-    "outcome": "—"
-  },
-  {
-    "day": 1,
-    "time": "11:15–11:30",
+    "location": "Hall, ROOM XI",
     "event": "Coffee break",
     "presenters": "",
     "outcome": ""
   },
   {
     "day": 1,
-    "time": "11:30–12:30",
-    "event": "Session 12 – WG3: Discovery\n12.1 – WG proponents presentations\n12.2 - Proposal of charter",
+    "time": "11:15–12:00",
+    "location": "ROOM XI",
+    "event": "Session 14 – WG3: Discovery\n14.1 WG proponents presentations\n14.2 Proposal of charter and decision by consensus",
     "presenters": "WG3 Co-Chairs",
-    "outcome": "Discussion for Approval"
+    "outcome": ""
+  },
+  {
+    "day": 1,
+    "time": "12:00–12:30",
+    "location": "ROOM XI",
+    "event": "Session 15 – WG6: Regulated domains: Athena\n15.1 WG proponents presentations\n15.2 Proposal of charter and decision by consensus",
+    "presenters": "WG6 Co-Chairs",
+    "outcome": ""
   },
   {
     "day": 1,
     "time": "12:30–13:45",
+    "location": "UNESCO restaurant",
     "event": "Lunch",
     "presenters": "",
     "outcome": ""
@@ -128,62 +178,65 @@
   {
     "day": 1,
     "time": "13:45–14:30",
-    "event": "Session 13 – WG4: Governance / Cross-Border / Interoperable Credentials\n13.1 – WG proponents presentations\n13.2 - Proposal of charter",
-    "presenters": "WG4 Co-Chairs",
-    "outcome": "Discussion for Approval",
-    "match_topic": "Governance"
+    "location": "ROOM XI",
+    "event": "Session 16 – WG4: Governance / Cross-Border / Interoperable Credentials\n16.1 Use case presentation – Xiaoyu You (CAICT)\n16.2 WG proponents presentations – David Kelts\n16.3 Proposal of a merged charter and decision by consensus – David Kelts, Chris Wendt",
+    "presenters": "",
+    "outcome": ""
   },
   {
     "day": 1,
     "time": "14:30–15:00",
-    "event": "Session 14 – WG5: Implementation Conditions and Adoption Pathways for Trusted Agentic AI (ICAP)\n14.1 – WG proponents presentations\n14.2 - Proposal of charter",
-    "presenters": "WG5 Co-Chairs",
-    "outcome": "Discussion for Approval",
-    "match_topic": "ICAP"
+    "location": "ROOM XI",
+    "event": "Session 17 – WG5: Implementation Conditions and Adoption Pathways for Trusted Agentic AI (ICAP)\n17.1 Presentation – Arnaud Taddei\n17.2 WG proponents presentations – WG5 Co-Chairs\n17.3 Proposal of charter and decision by consensus – WG5 Co-Chairs",
+    "presenters": "",
+    "outcome": ""
   },
   {
     "day": 1,
     "time": "15:00–15:30",
-    "event": "Coffee break",
+    "location": "ROOM XI",
+    "event": "Session 18 – WG7: Protected groups: Child Online Protection\n18.1 SG17 COP presentation, updated after PP-26 – Arnaud Taddei\n18.2 WG proponents presentations – WG7 Co-Chairs\n18.3 Proposal of charter and decision by consensus – WG7 Co-Chairs",
     "presenters": "",
     "outcome": ""
   },
   {
     "day": 1,
     "time": "15:30–16:00",
-    "event": "Session 15 – WG6: Regulated domains: Athena\n15.1 – WG proponents presentations\n15.2 - Proposal of charter",
-    "presenters": "WG6 Co-Chairs",
-    "outcome": "Discussion for Approval",
-    "match_topic": "Athena"
+    "location": "ROOM XI",
+    "event": "Session 19 – Drafting of the outgoing liaison statements (LS/o) and actions for SG17\n19.1 LS/o to be drafted\n19.2 Actions for SG17",
+    "presenters": "Co-Chairs",
+    "outcome": ""
   },
   {
     "day": 1,
     "time": "16:00–16:30",
-    "event": "Session 16 – WG7: Protected groups: Child Online Protection\n16.1 – WG proponents presentations\n16.2 - Proposal of charter",
-    "presenters": "WG7 Co-Chairs",
-    "outcome": "Discussion for Approval",
-    "match_topic": "Protected groups"
+    "location": "Hall, ROOM XI",
+    "event": "Coffee break",
+    "presenters": "",
+    "outcome": ""
   },
   {
     "day": 1,
-    "time": "16:30–16:45",
-    "event": "Session 17 – WG8: Control Plane potentials - Arnaud\n17.1 – WG proponents presentations\n17.2 - Proposal of charter",
-    "presenters": "WG8 Co-Chairs",
-    "outcome": "",
-    "match_topic": "Control Plane"
+    "time": "16:30–17:15",
+    "location": "ROOM XI",
+    "event": "Session 20 – WG8: Control Plane potentials\n20.1 Contribution INCUBATION-025 – Arnaud Taddei\n20.2 Proposal of charter and decision by consensus – Laurent Beaumois",
+    "presenters": "",
+    "outcome": ""
   },
   {
     "day": 1,
-    "time": "16:45–17:15",
-    "event": "Session 18 – Feedback and future directions",
+    "time": "17:15–17:45",
+    "location": "ROOM XI",
+    "event": "Session 21 – Feedback and future directions",
     "presenters": "Co-Chairs",
-    "outcome": "—"
+    "outcome": ""
   },
   {
     "day": 1,
-    "time": "17:30–22:00",
-    "event": "Networking & Trustech dinner party for those who registered",
-    "presenters": "—",
-    "outcome": "—"
+    "time": "17:45–22:00",
+    "location": "TBC",
+    "event": "Networking & Trustech dinner party (for those who registered)",
+    "presenters": "",
+    "outcome": ""
   }
 ]

@@ -62,9 +62,13 @@ class WindowAdmin(admin.ModelAdmin):
 
 
 class ParticipantAdmin(admin.ModelAdmin):
-    list_display = ['last_name', 'first_name', 'affiliation', 'meeting', 'attendance', 'published']
+    list_display = ['display_name', 'affiliation', 'country', 'meeting', 'attendance', 'published']
     list_filter = ['meeting', 'attendance', 'published']
-    search_fields = ['first_name', 'last_name', 'affiliation']
+    search_fields = ['full_name', 'first_name', 'last_name', 'affiliation', 'country']
+
+    @admin.display(description='Full Name', ordering='full_name')
+    def display_name(self, obj):
+        return obj.display_name
 
     def get_queryset(self, request):
         return super().get_queryset(request).filter(meeting__type_id='tida').select_related('meeting')

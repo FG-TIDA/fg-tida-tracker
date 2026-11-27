@@ -214,6 +214,7 @@ class SessionResource(models.Model):
     sha256 = models.CharField(max_length=64, blank=True, editable=False)
     session = models.ForeignKey('meeting.Session', on_delete=models.CASCADE, related_name='tida_resources')
     kind = models.CharField(max_length=16, choices=[('recording', 'Recording'), ('notes', 'Notes'),
+        ('agenda', 'Agenda'), ('slides', 'Slides'), ('minutes', 'Minutes'),
         ('wiki', 'Wiki'), ('materials', 'Materials / PDF'), ('login', 'Remote participation / login')])
     title = models.CharField(max_length=160)
     url = models.URLField(max_length=2000, blank=True, validators=[URLValidator(schemes=['https', 'http'])])
@@ -228,6 +229,7 @@ class SessionResource(models.Model):
     @property
     def icon(self):
         return {'recording': 'camera-video', 'notes': 'chat-left-text', 'wiki': 'book',
+                'agenda': 'list-columns', 'slides': 'easel', 'minutes': 'journal-text',
                 'materials': 'file-earmark-pdf', 'login': 'headset'}[self.kind]
 
     def __str__(self):
@@ -494,6 +496,11 @@ class DocumentListing(models.Model):
     meeting = models.ForeignKey('meeting.Meeting', blank=True, null=True, on_delete=models.SET_NULL)
     source = models.CharField(max_length=255, blank=True, help_text='Submitting organization, author or working group.')
     created = models.DateTimeField(default=timezone.now, db_index=True)
+    posted_date = models.DateField(null=True, blank=True, help_text='Liaison submission date. Blank uses the recorded creation date.')
+    destination = models.CharField('To', max_length=500, blank=True)
+    deadline = models.DateField(null=True, blank=True)
+    purpose = models.CharField(max_length=255, blank=True)
+    body = models.TextField(blank=True, help_text='Optional public liaison message. The original document and attachments remain on its document page.')
 
 
 class DocumentFormatManager(models.Manager):
@@ -590,11 +597,12 @@ class MeetingSubmissionWindow(models.Model):
 
 class MeetingParticipant(models.Model):
     meeting = models.ForeignKey('meeting.Meeting', on_delete=models.CASCADE, related_name='tida_participants')
-    first_name = models.CharField(max_length=255)
-    last_name = models.CharField(max_length=255)
+    full_name = models.CharField(max_length=511, blank=True, help_text='Use the supplied full name without guessing its given/family-name order.')
+    first_name = models.CharField(max_length=255, blank=True)
+    last_name = models.CharField(max_length=255, blank=True)
     affiliation = models.CharField(max_length=255, blank=True, verbose_name='Organization / affiliation')
     country = models.CharField(max_length=100, blank=True, verbose_name='Country / territory')
-    attendance = models.CharField(max_length=8, choices=[('onsite', 'Onsite'), ('remote', 'Remote')])
+    attendance = models.CharField(max_length=8, blank=True, default='', choices=[('onsite', 'Onsite'), ('remote', 'Online')])
     published = models.BooleanField(default=False, help_text='Publish only participant data authorized for the public list.')
 
     class Meta:
@@ -602,8 +610,14 @@ class MeetingParticipant(models.Model):
 
     def clean(self):
         from django.core.exceptions import ValidationError
+        if not (self.full_name.strip() or self.first_name.strip() or self.last_name.strip()):
+            raise ValidationError({'full_name': 'Enter a full name or given/family name.'})
         if self.meeting_id and self.meeting.type_id != 'tida':
             raise ValidationError({'meeting': 'Select an FG-TIDA meeting.'})
 
     def __str__(self):
-        return f'{self.first_name} {self.last_name}'
+        return self.display_name
+
+    @property
+    def display_name(self):
+        return self.full_name.strip() or f'{self.first_name} {self.last_name}'.strip()

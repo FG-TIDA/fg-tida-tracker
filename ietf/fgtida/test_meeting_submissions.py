@@ -112,7 +112,7 @@ class MeetingSubmissionTests(TestCase):
         url = f'/meeting/{self.meeting.number}/participants/'
         response = self.client.get(url)
         self.assertContains(response, 'No participants have been published')
-        for column in ['Family Name', 'Given Name', 'Organization', 'Country/Territory', 'Reg Type']:
+        for column in ['Full Name', 'Organization', 'Country', 'Reg Type']:
             self.assertContains(response, column)
         row = MeetingParticipant.objects.create(meeting=self.meeting, first_name='Example', last_name='Participant',
             affiliation='Example Lab', country='Example territory', attendance='remote')
@@ -120,7 +120,7 @@ class MeetingSubmissionTests(TestCase):
         row.published = True
         row.save()
         self.assertContains(self.client.get(url), 'Example Lab')
-        self.assertNotContains(self.client.get(url, {'attendance': 'onsite'}), 'Example Lab')
+        self.assertEqual(self.client.get(url, {'attendance': 'onsite'}).context['page_obj'].paginator.count, 0)
 
     def test_paris_backfill_corrects_names_rooms_and_preserves_references(self):
         paris = Meeting.objects.create(number='paris-backfill', type_id='tida', date=date(2026,11,30), days=2, time_zone='Europe/Paris')

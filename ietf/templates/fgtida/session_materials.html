@@ -1,0 +1,4 @@
+{% extends 'base.html' %}{% load static %}
+{% block title %}{{ session.name }} — Meeting materials | FG-TIDA{% endblock %}
+{% block content %}<article class="fgtida-session-materials">{% include 'fgtida/session_materials_panel.html' %}</article>{% endblock %}
+{% block js %}{{ block.super }}<script src="{% static 'js/fgtida-session-materials.js' %}"></script>{% endblock %}
