@@ -3,7 +3,7 @@
 {% block content %}
 <h1>{{ meeting.display_title }} agenda</h1>
 <p>{% if meeting.category %}<span class="badge text-bg-secondary">{{ meeting.category.name }}</span> {% endif %}{% meeting_status meeting %}</p>
-<p>{{ meeting.city }} · {{ meeting.date|date:"j F Y" }} – {{ meeting.end_date|date:"j F Y" }}</p>
+<p>{{ meeting.city }} · {{ meeting.date|date:"j F Y" }} - {{ meeting.end_date|date:"j F Y" }}</p>
 {% include 'fgtida/meeting_nav.html' %}
 {% if agenda_document %}<p>{% if agenda_download_ready %}<a class="btn btn-outline-primary" href="{% url 'fgtida:download' agenda_document.name agenda_document.rev %}"><i class="bi bi-file-earmark-word" aria-hidden="true"></i> Download agenda (Word)</a>{% else %}<span class="text-body-secondary">The Word agenda is awaiting security checks.</span>{% endif %} <a class="small ms-2" href="{% url 'fgtida:document' agenda_document.name %}">Agenda document and version history</a></p>{% endif %}
 {% if perms.meeting.change_meeting %}<p><a class="btn btn-outline-primary" href="{% url 'admin:meeting_meeting_change' meeting.pk %}">Edit meeting</a> <a class="btn btn-outline-primary" href="{% url 'admin:meeting_session_add' %}?meeting={{ meeting.pk }}">Add session</a> <a class="btn btn-outline-primary" href="{% url 'admin:meeting_timeslot_add' %}?meeting={{ meeting.pk }}">Add time slot</a></p>{% endif %}
@@ -19,7 +19,7 @@
 <form method="get" id="agenda-filters" class="mb-4">
 <input type="hidden" name="local_zone" id="agenda-local-zone" value="{{ local_zone }}">
 <input type="hidden" id="agenda-zone" value="{{ zone_mode }}">
-<label for="agenda-meeting" class="form-label">Meeting</label><select id="agenda-meeting" name="meeting" class="form-select mb-3">{% for option in meeting_choices %}<option value="{{ option.number }}" {% if option.pk == meeting.pk %}selected{% endif %}>{{ option.display_title }} — {{ option.date|date:"j F Y" }}{% if option.city %} · {{ option.city }}{% endif %}</option>{% endfor %}</select>
+<label for="agenda-meeting" class="form-label">Meeting</label><select id="agenda-meeting" name="meeting" class="form-select mb-3">{% for option in meeting_choices %}<option value="{{ option.number }}" {% if option.pk == meeting.pk %}selected{% endif %}>{{ option.display_title }} - {{ option.date|date:"j F Y" }}{% if option.city %} · {{ option.city }}{% endif %}</option>{% endfor %}</select>
 <details id="agenda-filter-panel" {% if query or selected_group %}open{% endif %}><summary>Filter sessions</summary><div class="row g-3 align-items-end mt-1">
 <div class="col-md-3"><label class="form-label" for="agenda-group">Working group</label><select id="agenda-group" name="group" class="form-select"><option value="">All groups</option>{% for group in groups %}<option value="{{ group.acronym }}" {% if selected_group == group.acronym %}selected{% endif %}>{{ group|group_label }}</option>{% endfor %}</select></div>
 <div class="col-md-4"><label class="form-label" for="agenda-search">Search sessions</label><input class="form-control" id="agenda-search" name="q" value="{{ query }}" type="search"></div>
@@ -32,11 +32,11 @@
 {% timezone display_zone %}
 {% if days %}<div class="table-responsive"><table class="table table-bordered table-striped align-middle fgtida-agenda-table"><thead><tr><th scope="col">Time</th><th scope="col">Location</th><th scope="col">Event</th></tr></thead><tbody>
 {% for day, entries in days %}<tr id="day-{{ day|date:'Y-m-d' }}"><th colspan="3" class="text-center fgtida-day-heading">{{ day|date:"l, j F Y" }}</th></tr>
-{% for entry in entries %}<tr id="assignment-{{ entry.pk }}" data-session="{{ entry.session.pk }}" data-group="{{ entry.session.group.acronym }}"><td class="text-nowrap">{{ entry.timeslot.time|date:"H:i" }}{% if entry.session.agenda_open_ended %} →{% else %} – {{ entry.ends_at|date:"H:i" }}{% endif %}</td><td>{% room_label entry.timeslot.location %}</td><td class="fgtida-agenda-event-cell">
+{% for entry in entries %}<tr id="assignment-{{ entry.pk }}" data-session="{{ entry.session.pk }}" data-group="{{ entry.session.group.acronym }}"><td class="text-nowrap">{{ entry.timeslot.time|date:"H:i" }}{% if entry.session.agenda_open_ended %} →{% else %} - {{ entry.ends_at|date:"H:i" }}{% endif %}</td><td>{% room_label entry.timeslot.location %}</td><td class="fgtida-agenda-event-cell">
 {% session_actions entry.session %}<details class="fgtida-agenda-event"><summary>{{ entry.session.name|default:entry.session.group.name }} {% session_status entry.session %}</summary>
 {% if entry.session.agenda_note %}<div>{{ entry.session.agenda_note|agenda_topics }}</div>{% endif %}
 {% if entry.session.agenda_presenters %}<p class="small"><strong>Lead / Presenter:</strong> {{ entry.session.agenda_presenters }}</p>{% endif %}
-{% if entry.session.agenda_outcome and entry.session.agenda_outcome != '—' %}<p class="small"><strong>Status / expected outcome:</strong> {{ entry.session.agenda_outcome }}</p>{% endif %}
+{% if entry.session.agenda_outcome and entry.session.agenda_outcome != '-' and entry.session.agenda_outcome != '—' %}<p class="small"><strong>Status / expected outcome:</strong> {{ entry.session.agenda_outcome }}</p>{% endif %}
 {% if entry.session.current_status == 'canceled' or entry.session.current_status == 'canceledpa' %}<p class="text-warning-emphasis">This session is cancelled. Its materials remain available for reference.</p>{% elif entry.session.remote_instructions %}<div><strong>Remote participation:</strong> {{ entry.session.remote_instructions|rich_text }}</div>{% endif %}
 {% if perms.meeting.change_session %}<a class="small" href="{% url 'admin:meeting_session_change' entry.session.pk %}">Edit session and schedule</a>{% endif %}
 </details></td></tr>{% endfor %}{% endfor %}</tbody></table></div>

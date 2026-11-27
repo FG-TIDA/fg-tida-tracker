@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% load tz fgtida %}
 {% block title %}{{ meeting.display_title }} | FG-TIDA{% endblock %}
-{% block content %}<h1>{% if meeting.title %}{{ meeting.title }}{% elif sessions.0.name %}{{ sessions.0.name }}{% else %}{{ meeting.number }}{% endif %}</h1><p>{{ meeting.date|date:"j F Y" }} – {{ meeting.end_date|date:"j F Y" }} · {{ meeting.city }} · {{ meeting.time_zone }}</p>
+{% block content %}<h1>{% if meeting.title %}{{ meeting.title }}{% elif sessions.0.name %}{{ sessions.0.name }}{% else %}{{ meeting.number }}{% endif %}</h1><p>{{ meeting.date|date:"j F Y" }} - {{ meeting.end_date|date:"j F Y" }} · {{ meeting.city }} · {{ meeting.time_zone }}</p>
 <p>{% meeting_status meeting %}</p>{% include 'fgtida/meeting_nav.html' %}
 {% if perms.meeting.change_meeting %}<p><a class="btn btn-primary" href="{% url 'admin:meeting_meeting_change' meeting.pk %}">Edit meeting</a> <a class="btn btn-outline-primary" href="{% url 'admin:meeting_session_add' %}?meeting={{ meeting.pk }}">Add session</a> <a class="btn btn-outline-primary" href="{% url 'admin:meeting_timeslot_add' %}?meeting={{ meeting.pk }}">Add time slot</a></p>{% endif %}
 <div>{{ meeting.agenda_info_note|rich_text }}</div>{% if meeting.agenda_warning_note %}<div class="alert alert-warning">{{ meeting.agenda_warning_note|rich_text }}</div>{% endif %}

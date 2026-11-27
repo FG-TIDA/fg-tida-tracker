@@ -53,6 +53,10 @@ class MeetingRefreshTests(TestCase):
         descending = self.client.get(url, {'sort': '-name'})
         self.assertEqual(descending.context['participants'][0].full_name, 'Participant 104')
         self.assertContains(descending, 'aria-sort="descending"')
+        self.assertContains(response, 'id="participant-meeting"')
+        self.assertNotContains(response, 'Choose meeting</summary>')
+        other = Meeting.objects.create(number='another-participant-meeting', type_id='tida', date=date(2027, 1, 26), days=1)
+        self.assertRedirects(self.client.get(url, {'meeting': other.number}), f'/meeting/{other.number}/participants/')
 
     def test_participant_csv_import_is_public_field_only_idempotent_and_keeps_known_attendance(self):
         meeting = self.meeting()

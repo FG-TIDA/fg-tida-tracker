@@ -27,7 +27,7 @@
     <p>The original ZIP is retained. The maintained source package contains the entry document's folder and its subfolders. Include all supporting files there.</p>
   </div></div></section>
 </div>
-<details class="border rounded p-3 mb-4"><summary><strong>3. Word (.docx) — exceptional fallback, discouraged</strong></summary>
+<details class="border rounded p-3 mb-4"><summary><strong>3. Word (.docx) - exceptional fallback, discouraged</strong></summary>
   <p class="mt-2">Use this route if you cannot prepare RST, even with the ZIP method. No GitHub account or RST knowledge is required.</p>
   <ol><li>Write your contribution using Word heading styles. Include title, authors, scope, references, captions and embedded figures.</li>
   <li>Resolve all tracked changes. Embed images instead of linking to files on your computer or the web. Save as <code>.docx</code>, at most 10 MB.</li>
@@ -40,4 +40,4 @@
 <p>For assistance, contact <a href="mailto:{{ platform_content.secretariat_email }}">the secretariat</a>. Receipt and WG notifications use the same mail workflow for all three routes.</p>
 {% if not form.meeting.field.queryset.exists %}<p class="alert alert-info">No upcoming meetings are currently accepting submissions. Please contact the secretariat.</p>{% endif %}
 <form method="post" enctype="multipart/form-data">{% csrf_token %}{% bootstrap_form form %}<button class="btn btn-primary" type="submit">Submit for review</button></form>
-<h2 class="mt-4">My submissions</h2><div class="table-responsive"><table class="table"><thead><tr><th>Number</th><th>Title</th><th>Submitted</th><th>Status</th></tr></thead><tbody>{% for item in submissions %}<tr><td class="text-nowrap">{{ item.reference|default:"—" }}</td><td><a href="{% url 'fgtida:contribution' item.pk %}">{{ item.title }}</a></td><td>{{ item.created }}</td><td>{{ item.get_status_display }}</td></tr>{% empty %}<tr><td colspan="4">No submissions yet.</td></tr>{% endfor %}</tbody></table></div>{% include 'fgtida/pagination.html' %}{% endblock %}
+<h2 class="mt-4">My submissions</h2><div class="table-responsive"><table class="table"><thead><tr><th>Number</th><th>Title</th><th>Submitted</th><th>Status</th></tr></thead><tbody>{% for item in submissions %}<tr><td class="text-nowrap">{{ item.reference|default:"-" }}</td><td><a href="{% url 'fgtida:contribution' item.pk %}">{{ item.title }}</a></td><td>{{ item.created }}</td><td>{{ item.get_status_display }}</td></tr>{% empty %}<tr><td colspan="4">No submissions yet.</td></tr>{% endfor %}</tbody></table></div>{% include 'fgtida/pagination.html' %}{% endblock %}

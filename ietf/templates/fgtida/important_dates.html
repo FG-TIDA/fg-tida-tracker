@@ -7,7 +7,7 @@
 {% for meeting in page %}
 <section class="mb-5">
 <h2><a href="{% url 'fgtida:meeting' meeting.number %}">{{ meeting.display_title }}</a></h2>
-<p>{{ meeting.date|date:"j F Y" }} – {{ meeting.end_date|date:"j F Y" }}{% if meeting.city %} · {{ meeting.city }}{% endif %}</p>
+<p>{{ meeting.date|date:"j F Y" }} - {{ meeting.end_date|date:"j F Y" }}{% if meeting.city %} · {{ meeting.city }}{% endif %}</p>
 <div class="table-responsive"><table class="table table-striped"><thead><tr><th scope="col">Date</th><th scope="col">Weekday</th><th scope="col">Description</th></tr></thead><tbody>
 {% for date in meeting.published_dates %}<tr><td class="text-nowrap">{{ date.date|date:"Y-m-d" }}</td><td>{{ date.date|date:"l" }}</td><td>{{ date.name.name }}{% if perms.meeting.change_importantdate %} <a href="{% url 'admin:meeting_importantdate_change' date.pk %}" aria-label="Edit {{ date.name.name }}">Edit</a>{% endif %}</td></tr>{% endfor %}
 </tbody></table></div></section>

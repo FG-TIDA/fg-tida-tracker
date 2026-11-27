@@ -2,7 +2,7 @@
 {% block title %}Materials | {{ meeting.display_title }} | FG-TIDA{% endblock %}
 {% block content %}
 <h1>{{ meeting.display_title }}</h1>
-<p>{{ meeting.date|date:"j F Y" }} – {{ meeting.end_date|date:"j F Y" }} · {{ meeting.city }}</p>
+<p>{{ meeting.date|date:"j F Y" }} - {{ meeting.end_date|date:"j F Y" }} · {{ meeting.city }}</p>
 {% include 'fgtida/meeting_nav.html' with section='materials' %}
 <h2>Meeting documents</h2>
 {% if upload_session %}<div class="d-flex gap-2 mb-3">

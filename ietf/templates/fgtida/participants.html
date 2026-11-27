@@ -4,9 +4,9 @@
 {% include 'fgtida/meeting_nav.html' %}
 <section class="fg-participants" aria-label="Registered participants">
 <header class="fg-participants-header">
-<details class="fg-participants-meeting"><summary class="btn btn-outline-secondary">Choose meeting</summary><nav aria-label="Choose participant meeting" class="border rounded bg-body p-2">{% for choice in meeting_choices %}<a class="d-block p-2" href="{% url 'fgtida:participants' choice.number %}" {% if choice.pk == meeting.pk %}aria-current="page"{% endif %}>{{ choice.display_title }} — {{ choice.date|date:"j F Y" }}</a>{% endfor %}</nav></details>
-<div class="fg-participants-heading"><h1>Registered Participants — {{ meeting.display_title }}</h1>
-<div class="fg-participants-totals" aria-label="Registration statistics"><span>Onsite: {% if attendance_known %}{{ onsite }}{% else %}—{% endif %}</span><span>Online: {% if attendance_known %}{{ online }}{% else %}—{% endif %}</span><span>Total: {{ total }}</span></div>
+<form method="get" class="fg-participants-meeting"><label class="visually-hidden" for="participant-meeting">Meeting</label><select id="participant-meeting" name="meeting" class="form-select" aria-label="Meeting">{% for choice in meeting_choices %}<option value="{{ choice.number }}" {% if choice.pk == meeting.pk %}selected{% endif %}>Meeting - {{ choice.date|date:"j M Y" }}</option>{% endfor %}</select><noscript><button class="btn btn-outline-primary mt-2" type="submit">Show participants</button></noscript></form>
+<div class="fg-participants-heading"><h1>Registered Participants - {{ meeting.display_title }}</h1>
+<div class="fg-participants-totals" aria-label="Registration statistics"><span>Onsite: {% if attendance_known %}{{ onsite }}{% else %}-{% endif %}</span><span>Online: {% if attendance_known %}{{ online }}{% else %}-{% endif %}</span><span>Total: {{ total }}</span></div>
 {% if unknown %}<p class="small text-body-secondary mt-2">Registration type not specified: {{ unknown }}</p>{% endif %}</div>
 </header>
 {% if perms.fgtida.add_meetingparticipant %}<p><a href="{% url 'admin:fgtida_meetingparticipant_add' %}?meeting={{ meeting.pk }}">Add participant</a></p>{% endif %}

@@ -1,4 +1,5 @@
 :root { --fg-tida-header-height: 76px; }
+body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
 body.navbar-offset { padding-top: calc(var(--fg-tida-header-height) + 24px); }
 html { scroll-padding-top: calc(var(--fg-tida-header-height) + 24px); }
 #fg-tida-navbar.fg-tida-navbar {
@@ -103,8 +104,8 @@ html { scroll-padding-top: calc(var(--fg-tida-header-height) + 24px); }
 }
 .fg-training-video { max-width: 48rem; }
 .fg-participants-header { display: flex; align-items: flex-start; gap: 2rem; margin: 2rem 0 3rem; }
-.fg-participants-meeting { flex: 0 0 auto; position: relative; }
-.fg-participants-meeting nav { position: absolute; top: 100%; left: 0; z-index: 5; width: min(28rem, 85vw); box-shadow: 0 .3rem .8rem rgb(0 0 0 / .1); }
+.fg-participants-meeting { flex: 0 1 16rem; min-width: 0; max-width: 100%; }
+.fg-participants-meeting .form-select { font: inherit; font-size: 1.05rem; padding: .65rem 2.5rem .65rem 1rem; border-radius: .4rem; text-overflow: ellipsis; }
 .fg-participants-heading { flex: 1; text-align: center; min-width: 0; }
 .fg-participants-heading h1 { font-size: clamp(1.6rem, 2.6vw, 2.6rem); font-weight: 500; margin-bottom: .8rem; }
 .fg-participants-totals { display: flex; justify-content: space-around; gap: 1rem; color: var(--bs-secondary-color); font-size: 1.2rem; }
@@ -120,6 +121,7 @@ html { scroll-padding-top: calc(var(--fg-tida-header-height) + 24px); }
 .fg-participants-table th:nth-child(4) { width: 8%; }
 @media (max-width: 767.98px) {
   .fg-participants-header { flex-direction: column; gap: 1rem; margin: 1rem 0 2rem; }
+  .fg-participants-meeting { flex-basis: auto; width: min(100%, 22rem); }
   .fg-participants-heading { width: 100%; }
   .fg-participants-totals { font-size: 1rem; gap: .5rem; }
   .fg-participants-table { min-width: 38rem; font-size: .95rem; }

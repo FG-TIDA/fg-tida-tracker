@@ -2,7 +2,7 @@
     // Derive mobile card labels from the real table headings, keeping one set
     // of content and links for desktop, mobile and assistive technology.
     document.querySelectorAll('#content table.table').forEach(table => {
-        if (table.matches('.fg-mobile-cards, .fg-document-metadata, .fgtida-agenda-table')) return;
+        if (table.matches('.fg-mobile-cards, .fg-document-metadata, .fgtida-agenda-table, .fg-participants-table')) return;
         if (table.tHead?.rows.length !== 1) return;
         const headings = [...table.tHead.rows[0].cells];
         if (headings.some(cell => cell.colSpan !== 1 || cell.rowSpan !== 1)) return;
@@ -23,6 +23,22 @@
             });
         });
     });
+    const meeting = document.getElementById('participant-meeting');
+    meeting?.addEventListener('change', () => meeting.form.requestSubmit());
+    // Change visible punctuation, never URL attributes, stored documents or code.
+    const normalizeDashes = root => {
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        while (walker.nextNode()) {
+            const node = walker.currentNode;
+            if (node.parentElement?.closest('script, style, pre, code, textarea, input, svg, [contenteditable]')) continue;
+            const normalized = node.nodeValue.replace(/[\u2013\u2014]/g, '-');
+            if (normalized !== node.nodeValue) node.nodeValue = normalized;
+        }
+    };
+    normalizeDashes(document.body);
+    new MutationObserver(changes => changes.forEach(change => change.addedNodes.forEach(node => {
+        if (node.nodeType === Node.ELEMENT_NODE) normalizeDashes(node);
+    }))).observe(document.body, {childList: true, subtree: true});
     const header = document.getElementById('fg-tida-navbar');
     if (!header) return;
     const update = () => document.documentElement.style.setProperty(

@@ -2,13 +2,16 @@
 from collections import Counter
 from django.db.models import Case, CharField, F, Q, Value, When
 from django.db.models.functions import Concat, Lower, Trim
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_safe
 from . import core
 
 
 @require_safe
 def participant_list(request, num):
+    if selected_meeting := request.GET.get('meeting'):
+        target = get_object_or_404(core.meetings(), number=selected_meeting)
+        return redirect('fgtida:participants', num=target.number)
     meeting = get_object_or_404(core.meetings(), number=num)
     public = meeting.tida_participants.filter(published=True)
     statistics = list(public.values('affiliation', 'country', 'attendance'))
