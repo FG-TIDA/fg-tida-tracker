@@ -1,6 +1,5 @@
 """Public registration fields and aggregate meeting statistics."""
 from collections import Counter
-from django.core.paginator import Paginator
 from django.db.models import Case, CharField, F, Q, Value, When
 from django.db.models.functions import Concat, Lower, Trim
 from django.shortcuts import get_object_or_404, render
@@ -29,10 +28,12 @@ def participant_list(request, num):
         records = records.filter(attendance='' if attendance == 'unknown' else attendance)
     selected_sort = request.GET.get('sort', 'name')
     sorts = {'name': 'public_name', 'organization': 'affiliation', 'country': 'country', 'type': 'attendance'}
-    if selected_sort not in sorts:
+    sort_key = selected_sort.removeprefix('-')
+    if sort_key not in sorts:
         selected_sort = 'name'
-    records = records.order_by(Lower(sorts[selected_sort]), Lower('public_name'), 'pk')
-    page = Paginator(records, 100).get_page(request.GET.get('page'))
+        sort_key = 'name'
+    ordering = Lower(sorts[sort_key])
+    records = list(records.order_by(ordering.desc() if selected_sort.startswith('-') else ordering.asc(), Lower('public_name'), 'pk'))
 
     def url(**changes):
         params = request.GET.copy()
@@ -41,11 +42,11 @@ def participant_list(request, num):
         return '?' + params.urlencode()
 
     return render(request, 'fgtida/participants.html', {'meeting': meeting, 'section': 'participants',
-        'participants': page, 'page_obj': page, 'query': query, 'selected_attendance': attendance,
-        'sort_links': [(key, label, url(sort=key)) for key, label in [('name', 'Full Name'),
+        'participants': records, 'filtered_count': len(records), 'query': query, 'selected_attendance': attendance,
+        'meeting_choices': core.meetings().order_by('-date'),
+        'sort_links': [(key, label, url(sort=('-' + key) if selected_sort == key else key),
+            ('descending' if selected_sort.startswith('-') else 'ascending') if sort_key == key else 'none') for key, label in [('name', 'Full Name'),
             ('organization', 'Organization'), ('country', 'Country'), ('type', 'Reg Type')]],
-        'previous_url': url(page=page.previous_page_number()) if page.has_previous() else '',
-        'next_url': url(page=page.next_page_number()) if page.has_next() else '',
         'total': len(statistics), 'country_count': len(countries), 'organization_count': len({key.casefold() for key in organizations}),
         'countries': sorted(countries.items(), key=lambda pair: (-pair[1], pair[0])),
         'organizations': sorted(organizations.items(), key=lambda pair: (-pair[1], pair[0])),

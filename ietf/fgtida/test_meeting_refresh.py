@@ -37,6 +37,23 @@ class MeetingRefreshTests(TestCase):
     def meeting(self):
         return Meeting.objects.create(number='refresh-test', type_id='tida', title='Paris meeting', date=date(2026, 11, 30), days=2, time_zone='Europe/Paris')
 
+    def test_all_participants_are_on_one_page_and_sort_both_directions(self):
+        meeting = self.meeting()
+        MeetingParticipant.objects.bulk_create([
+            MeetingParticipant(meeting=meeting, full_name=f'Participant {number:03}', published=True)
+            for number in range(105)])
+        self.client.logout()
+        url = f'/meeting/{meeting.number}/participants/'
+        response = self.client.get(url, {'page': '2'})
+        self.assertEqual(response.context['filtered_count'], 105)
+        self.assertContains(response, 'Participant 000')
+        self.assertContains(response, 'Participant 104')
+        self.assertNotContains(response, 'Participant pages')
+        self.assertContains(response, 'aria-sort="ascending"')
+        descending = self.client.get(url, {'sort': '-name'})
+        self.assertEqual(descending.context['participants'][0].full_name, 'Participant 104')
+        self.assertContains(descending, 'aria-sort="descending"')
+
     def test_participant_csv_import_is_public_field_only_idempotent_and_keeps_known_attendance(self):
         meeting = self.meeting()
         known = MeetingParticipant.objects.create(meeting=meeting, full_name='Example Known', affiliation='Example Lab', country='France', attendance='onsite')
@@ -65,7 +82,7 @@ class MeetingRefreshTests(TestCase):
         self.assertContains(page, 'Full Name')
         self.assertNotContains(page, 'Family Name')
         self.assertNotContains(page, 'Hidden Org')
-        self.assertEqual(self.client.get(f'/meeting/{meeting.number}/participants/?attendance=unknown').context['page_obj'].paginator.count, 1)
+        self.assertEqual(self.client.get(f'/meeting/{meeting.number}/participants/?attendance=unknown').context['filtered_count'], 1)
         self.assertContains(self.client.get(f'/meeting/{meeting.number}/participants/?q=Germany'), 'Example New')
         self.assertEqual(self.client.post(f'/meeting/{meeting.number}/participants/').status_code, 405)
 

@@ -81,7 +81,7 @@ python ietf/manage.py import_fgtida_participants --meeting tida-2026-11-30-first
 ```
 
 Review the meeting's **Participants** page: Full Name, Organization, Country and
-Reg Type, with total/country/organization and participation statistics. New Reg
+Reg Type, with Onsite, Online and total counts above one complete sortable table. New Reg
 Type values remain blank. Existing known attendance is retained. Repeating the
 import matches existing identities rather than creating duplicate entries.
 Existing rows absent from the CSV are retained for administrator review.

@@ -120,7 +120,7 @@ class MeetingSubmissionTests(TestCase):
         row.published = True
         row.save()
         self.assertContains(self.client.get(url), 'Example Lab')
-        self.assertEqual(self.client.get(url, {'attendance': 'onsite'}).context['page_obj'].paginator.count, 0)
+        self.assertEqual(self.client.get(url, {'attendance': 'onsite'}).context['filtered_count'], 0)
 
     def test_paris_backfill_corrects_names_rooms_and_preserves_references(self):
         paris = Meeting.objects.create(number='paris-backfill', type_id='tida', date=date(2026,11,30), days=2, time_zone='Europe/Paris')
